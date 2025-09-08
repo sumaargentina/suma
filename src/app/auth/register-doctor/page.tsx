@@ -79,8 +79,31 @@ export default function RegisterDoctorPage() {
     const specialtySan = validateSpecialty(formData.specialty);
     const citySan = validateCity(formData.city);
     const addressSan = validateAddress(formData.address);
+    
+    // Debug: mostrar qué validaciones están fallando
+    console.log('Validaciones:', {
+      name: { isValid: nameSan.isValid, value: formData.name, sanitized: nameSan.sanitized },
+      email: { isValid: emailSan.isValid, value: formData.email, sanitized: emailSan.sanitized },
+      password: { isValid: passSan.isValid, value: formData.password, sanitized: passSan.sanitized },
+      specialty: { isValid: specialtySan.isValid, value: formData.specialty, sanitized: specialtySan.sanitized },
+      city: { isValid: citySan.isValid, value: formData.city, sanitized: citySan.sanitized },
+      address: { isValid: addressSan.isValid, value: formData.address, sanitized: addressSan.sanitized }
+    });
+    
     if (!nameSan.isValid || !emailSan.isValid || !passSan.isValid || !specialtySan.isValid || !citySan.isValid || !addressSan.isValid) {
-      toast({ variant: 'destructive', title: 'Error de Registro', description: 'Datos inválidos o peligrosos.' });
+      const failedValidations = [];
+      if (!nameSan.isValid) failedValidations.push('Nombre');
+      if (!emailSan.isValid) failedValidations.push('Email');
+      if (!passSan.isValid) failedValidations.push('Contraseña');
+      if (!specialtySan.isValid) failedValidations.push('Especialidad');
+      if (!citySan.isValid) failedValidations.push('Ciudad');
+      if (!addressSan.isValid) failedValidations.push('Dirección');
+      
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error de Registro', 
+        description: `Campos inválidos: ${failedValidations.join(', ')}` 
+      });
       setIsLoading(false);
       return;
     }
@@ -89,6 +112,7 @@ export default function RegisterDoctorPage() {
         ...formData,
         name: nameSan.sanitized,
         email: emailSan.sanitized,
+        password: passSan.sanitized,
         specialty: specialtySan.sanitized,
         city: citySan.sanitized,
         address: addressSan.sanitized,

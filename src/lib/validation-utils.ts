@@ -43,7 +43,7 @@ export const validateCedula = (cedula: string): { isValid: boolean; sanitized: s
 
 export const validateName = (name: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(name);
-  const nameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-']{2,50}$/;
+  const nameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-'0-9.]{2,50}$/;
   
   return {
     isValid: nameRegex.test(sanitized) && sanitized.length >= 2,
@@ -63,7 +63,7 @@ export const validateCity = (city: string): { isValid: boolean; sanitized: strin
 
 export const validateAddress = (address: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(address);
-  const addressRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-.,#]{5,10}$/;
+  const addressRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-.,#]{5,100}$/;
   
   return {
     isValid: addressRegex.test(sanitized) && sanitized.length >= 5,
@@ -73,10 +73,10 @@ export const validateAddress = (address: string): { isValid: boolean; sanitized:
 
 export const validateSpecialty = (specialty: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(specialty);
-  const specialtyRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-]{3,50}$/;
+  const specialtyRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-0-9.]{2,50}$/;
   
   return {
-    isValid: specialtyRegex.test(sanitized) && sanitized.length >= 3,
+    isValid: specialtyRegex.test(sanitized) && sanitized.length >= 2,
     sanitized
   };
 };
@@ -120,18 +120,18 @@ export const validateGender = (gender: string): { isValid: boolean; sanitized: s
   };
 };
 
-export const validatePassword = (password: string): { isValid: boolean; message: string } => {
+export const validatePassword = (password: string): { isValid: boolean; sanitized: string } => {
   if (!password || password.length < 8) {
-    return { isValid: false, message: 'La contraseña debe tener al menos 8 caracteres' };
+    return { isValid: false, sanitized: '' };
   }
   if (password.length > 128) {
-    return { isValid: false, message: 'La contraseña es demasiado larga' };
+    return { isValid: false, sanitized: '' };
   }
   const dangerousChars = /[<>"];/;
   if (dangerousChars.test(password)) {
-    return { isValid: false, message: 'La contraseña contiene caracteres no permitidos' };
+    return { isValid: false, sanitized: '' };
   }
-  return { isValid: true, message: 'Contraseña válida' };
+  return { isValid: true, sanitized: password };
 };
 
 export const sanitizeUserData = (userData: unknown): Record<string, unknown> => {
