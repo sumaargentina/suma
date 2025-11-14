@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as firestoreService from '@/lib/firestoreService';
 import { Loader2, Search } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { hashPassword } from '@/lib/password-utils';
 
 const SellerFormSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
@@ -184,9 +185,20 @@ export function SellersTab() {
     }
 
     if (editingSeller) {
+      const normalizedEmail = result.data.email.toLowerCase();
+      
+      // Validar si el email cambió y si ya está en uso por otro usuario
+      if (normalizedEmail !== editingSeller.email.toLowerCase()) {
+        const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+        if (existingUser && existingUser.id !== editingSeller.id) {
+          toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+          return;
+        }
+      }
+      
       await firestoreService.updateSeller(editingSeller.id, {
         name: result.data.name,
-        email: result.data.email,
+        email: normalizedEmail,
         commissionRate: result.data.commissionRate,
       });
       toast({ title: "Vendedora Actualizada", description: "Los datos han sido guardados." });
@@ -195,7 +207,8 @@ export function SellersTab() {
         toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para las nuevas vendedoras.' });
         return;
       }
-      const existingUser = await firestoreService.findUserByEmail(result.data.email);
+      const normalizedEmail = result.data.email.toLowerCase();
+      const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
       if (existingUser) {
         toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
         return;
@@ -203,10 +216,13 @@ export function SellersTab() {
       
       const referralCode = `${result.data.name.substring(0, 4).toUpperCase()}${Math.floor(100 + Math.random() * 900)}`;
 
+      // Encriptar contraseña
+      const hashedPassword = await hashPassword(result.data.password);
+
       const newSellerData: Omit<Seller, 'id'> = {
         name: result.data.name,
-        email: result.data.email,
-        password: result.data.password,
+        email: normalizedEmail,
+        password: hashedPassword,
         commissionRate: result.data.commissionRate,
         referralCode: referralCode,
         phone: null,

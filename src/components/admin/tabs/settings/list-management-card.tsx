@@ -70,29 +70,30 @@ export function ListManagementCard({ title, description, items, onAddItem, onUpd
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSaving(true);
-    
+
     const formData = new FormData(e.currentTarget);
     const newItemData: { [key: string]: unknown } = {};
-    
+
     for (const key in itemSchema) {
-        const value = formData.get(key) as string;
-        newItemData[key] = itemSchema[key].type === 'number' ? Number(value) : value;
+      const value = formData.get(key) as string;
+      newItemData[key] = itemSchema[key].type === 'number' ? Number(value) : value;
     }
 
     try {
-        if (editingItem) {
-            await onUpdateItem(editingItem.id, newItemData);
-            toast({ title: `${itemNameSingular} actualizado(a)`, description: 'Los cambios han sido guardados exitosamente.' });
-        } else {
-            await onAddItem(newItemData);
-            toast({ title: `${itemNameSingular} añadido(a)`, description: 'El elemento ha sido creado exitosamente.' });
-        }
-        setIsDialogOpen(false);
-        setEditingItem(null);
-    } catch {
-        toast({ variant: 'destructive', title: 'Error', description: `No se pudo guardar el/la ${itemNameSingular.toLowerCase()}.` });
+      if (editingItem) {
+        await onUpdateItem(editingItem.id, newItemData);
+        toast({ title: `${itemNameSingular} actualizado(a)`, description: 'Los cambios han sido guardados exitosamente.' });
+      } else {
+        await onAddItem(newItemData);
+        toast({ title: `${itemNameSingular} añadido(a)`, description: 'El elemento ha sido creado exitosamente.' });
+      }
+      setIsDialogOpen(false);
+      setEditingItem(null);
+    } catch (error) {
+      console.error('Error al guardar:', error);
+      toast({ variant: 'destructive', title: 'Error', description: `No se pudo guardar el/la ${itemNameSingular.toLowerCase()}.` });
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
 

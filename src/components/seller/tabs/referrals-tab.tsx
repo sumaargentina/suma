@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as firestoreService from '@/lib/firestoreService';
 import { useAuth } from '@/lib/auth';
 import { useSettings } from '@/lib/settings';
+import { useDynamicData } from '@/hooks/use-dynamic-data';
 import { z } from 'zod';
 import { hashPassword } from '@/lib/password-utils';
 import { PlusCircle, Search, Link as LinkIcon, Copy, Mail, Phone, DollarSign, CheckCircle, XCircle } from 'lucide-react';
@@ -64,7 +65,7 @@ interface ReferralsTabProps {
 export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: ReferralsTabProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { cities, specialties } = useSettings();
+  const { cities, specialties } = useDynamicData();
   const [doctorPayments, setDoctorPayments] = useState<DoctorPayment[]>([]);
 
   const [isDoctorDialogOpen, setIsDoctorDialogOpen] = useState(false);
@@ -138,13 +139,14 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
       return;
     }
 
-    const existingUser = await firestoreService.findUserByEmail(result.data.email);
+    const normalizedEmail = result.data.email.toLowerCase();
+    const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
     if (existingUser) {
         toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
         return;
     }
 
-    const { name, email, specialty, city, address, password, slotDuration, consultationFee } = result.data;
+    const { name, specialty, city, address, password, slotDuration, consultationFee } = result.data;
     
     // Encriptar contraseña
     const hashedPassword = await hashPassword(password);
@@ -154,7 +156,7 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
     const paymentDateVenezuela = getPaymentDateInVenezuela(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-        name, email, specialty, city, address,
+        name, email: normalizedEmail, specialty, city, address,
         password: hashedPassword,
         sellerId: user.id,
         cedula: '', sector: '', rating: 0, reviewCount: 0,
@@ -217,7 +219,7 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
                 </div>
                 <div className="mt-4 flex flex-col md:flex-row gap-2">
                     <div className="relative flex-1"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Buscar por nombre..." className="pl-8 w-full" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
-                    <Select value={cityFilter} onValueChange={setCityFilter}><SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filtrar por ciudad" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las ciudades</SelectItem>{cities.map((city) => (<SelectItem key={city.name} value={city.name}>{city.name}</SelectItem>))}</SelectContent></Select>
+                    <Select value={cityFilter} onValueChange={setCityFilter}><SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Filtrar por ciudad" /></SelectTrigger><SelectContent><SelectItem value="all">Todas las ciudades</SelectItem>{cities.map((city) => (<SelectItem key={city} value={city}>{city}</SelectItem>))}</SelectContent></Select>
                     <Select value={String(doctorsToShow)} onValueChange={(val) => setDoctorsToShow(Number(val))}><SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Mostrar" /></SelectTrigger><SelectContent><SelectItem value="5">Mostrar 5</SelectItem><SelectItem value="10">Mostrar 10</SelectItem><SelectItem value="20">Mostrar 20</SelectItem><SelectItem value="-1">Mostrar Todos</SelectItem></SelectContent></Select>
                 </div>
             </CardHeader>
@@ -228,7 +230,7 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
                             {filteredAndSortedDoctors.length > 0 ? filteredAndSortedDoctors.map((doctor) => (
                                 <TableRow key={doctor.id}>
                                     <TableCell className="font-medium">{doctor.name}</TableCell>
-                                    <TableCell><div className="flex flex-col gap-1 text-xs"><span className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.email}</span></span><span className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.whatsapp}</span></span></div></TableCell>
+                                    <TableCell><div className="flex flex-col gap-1 text-xs"><span key={`${doctor.id}-email`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.email}</span></span><span key={`${doctor.id}-phone`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.whatsapp}</span></span></div></TableCell>
                                     <TableCell>{doctor.specialty}</TableCell><TableCell>{doctor.city}, {doctor.sector}</TableCell>
                                     <TableCell>{format(new Date(doctor.joinDate + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es })}</TableCell>
                                     <TableCell className="text-center"><Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn(doctor.status === 'active' && 'bg-green-600 text-white')}>{doctor.status === 'active' ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}{doctor.status === 'active' ? 'Activo' : 'Inactivo'}</Badge></TableCell>
@@ -242,7 +244,7 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
                     {filteredAndSortedDoctors.length > 0 ? filteredAndSortedDoctors.map((doctor) => (
                         <div key={doctor.id} className="p-4 border rounded-lg space-y-4">
                             <div className="flex justify-between items-start gap-2"><div><p className="font-bold">{doctor.name}</p><p className="text-sm text-muted-foreground">{doctor.specialty}</p></div><Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn(doctor.status === 'active' && 'bg-green-600 text-white')}>{doctor.status === 'active' ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}{doctor.status === 'active' ? 'Activo' : 'Inactivo'}</Badge></div>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm"><div><p className="font-semibold text-xs text-muted-foreground mb-1">Ubicación</p><p>{doctor.city}</p></div><div><p className="font-semibold text-xs text-muted-foreground mb-1">Fecha Registro</p><p>{format(new Date(doctor.joinDate + 'T00:00:00'), "d MMM, yyyy", { locale: es })}</p></div><div className="col-span-2"><p className="font-semibold text-xs text-muted-foreground mb-1">Contacto</p><div className="flex flex-col gap-1.5 text-xs"><span className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span>{doctor.email}</span></span><span className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span>{doctor.whatsapp}</span></span></div></div></div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm"><div key={`${doctor.id}-location`}><p className="font-semibold text-xs text-muted-foreground mb-1">Ubicación</p><p>{doctor.city}</p></div><div key={`${doctor.id}-date`}><p className="font-semibold text-xs text-muted-foreground mb-1">Fecha Registro</p><p>{format(new Date(doctor.joinDate + 'T00:00:00'), "d MMM, yyyy", { locale: es })}</p></div><div key={`${doctor.id}-contact`} className="col-span-2"><p className="font-semibold text-xs text-muted-foreground mb-1">Contacto</p><div className="flex flex-col gap-1.5 text-xs"><span key={`${doctor.id}-email-mobile`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span>{doctor.email}</span></span><span key={`${doctor.id}-phone-mobile`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span>{doctor.whatsapp}</span></span></div></div></div>
                             <Separator /><Button variant="outline" size="sm" className="w-full" onClick={() => handleViewDoctorPayments(doctor)}><DollarSign className="mr-2 h-4 w-4" /> Ver Historial de Pagos</Button>
                         </div>
                     )) : (<div className="h-24 text-center flex items-center justify-center text-muted-foreground">No se encontraron médicos con los filtros actuales.</div>)}
@@ -342,7 +344,7 @@ export function ReferralsTab({ referredDoctors, referralCode, onUpdate }: Referr
                       </SelectTrigger>
                       <SelectContent>
                         {cities.map(c => (
-                          <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

@@ -115,9 +115,20 @@ export function PatientsTab() {
         return;
     }
 
+    const normalizedEmail = result.data.email.toLowerCase();
+    
+    // Validar si el email cambió y si ya está en uso por otro usuario
+    if (normalizedEmail !== editingPatient.email.toLowerCase()) {
+      const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+      if (existingUser && existingUser.id !== editingPatient.id) {
+        toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+        return;
+      }
+    }
+
     const updatedPatientData: Partial<Patient> = {
       name: result.data.name,
-      email: result.data.email,
+      email: normalizedEmail,
       cedula: result.data.cedula || null,
       phone: result.data.phone || null,
     };

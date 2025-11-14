@@ -64,42 +64,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         let settingsData = await firestoreService.getSettings();
         console.log('📋 Settings data received:', settingsData);
 
-        // Si no existe configuración, crear configuración por defecto
+        // Si no existe configuración, crear configuración vacía
         if (!settingsData) {
-            console.log('❌ No settings found, creating default settings...');
-            const defaultSettings = {
-                cities: [
-                    { name: 'Caracas', subscriptionFee: 50 },
-                    { name: 'Valencia', subscriptionFee: 45 },
-                    { name: 'Maracaibo', subscriptionFee: 40 }
-                ],
-                specialties: [
-                    'Cardiología',
-                    'Dermatología',
-                    'Ginecología',
-                    'Ortopedia',
-                    'Pediatría',
-                    'Psicología'
-                ],
-                beautySpecialties: [
-                    'Dermatología',
-                    'Cirugía Plástica'
-                ],
-                coupons: [
-                    {
-                        id: 'welcome-2024',
-                        code: 'WELCOME2024',
-                        description: 'Cupón de bienvenida',
-                        discountType: 'percentage' as const,
-                        discountValue: 20,
-                        validFrom: Timestamp.fromDate(new Date(getCurrentDateTimeInVenezuela().toISOString().split('T')[0])),
-                        validTo: Timestamp.fromDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)), // 1 año
-                        isActive: true,
-                        createdAt: Timestamp.fromDate(getCurrentDateTimeInVenezuela()),
-                        updatedAt: Timestamp.fromDate(getCurrentDateTimeInVenezuela()),
-                        scopeType: 'all' as const
-                    }
-                ],
+            console.log('❌ No settings found, creating empty settings...');
+            const emptySettings = {
+                cities: [],
+                specialties: [],
+                beautySpecialties: [],
+                coupons: [],
                 companyBankDetails: [],
                 companyExpenses: [],
                 currency: 'USD',
@@ -110,10 +82,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 billingCycleEndDay: 6
             };
             
-            await firestoreService.updateSettings(defaultSettings);
+            await firestoreService.updateSettings(emptySettings);
             settingsData = await firestoreService.getSettings();
-            console.log('✅ Default settings created:', settingsData);
-            toast({ title: "Configuración Creada", description: "Se ha creado la configuración inicial del sistema." });
+            console.log('✅ Empty settings created:', settingsData);
+            toast({ title: "Configuración Creada", description: "Se ha creado la configuración inicial vacía del sistema." });
         }
 
         if (settingsData && (!settingsData.coupons || !settingsData.companyExpenses || !settingsData.companyBankDetails)) {
@@ -166,8 +138,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [fetchData]);
 
   const updateSetting = useCallback(async (key: keyof AppSettings, value: unknown) => {
-    if (!settings) return;
-    
+    if (!settings) {
+      return;
+    }
+
     // Filtrar campos undefined del valor antes de enviar a Firestore
     const cleanValue = value;
     if (typeof cleanValue === 'object' && cleanValue !== null) {
@@ -177,15 +151,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-    
+
     const newSettings = { ...settings, [key]: cleanValue };
-    await firestoreService.updateSettings({ [key]: cleanValue });
-    setSettings(newSettings);
+
+    try {
+      await firestoreService.updateSettings({ [key]: cleanValue });
+      setSettings(newSettings);
+    } catch (error) {
+      console.error('Error al actualizar configuración:', error);
+      throw error;
+    }
   }, [settings]);
   
   const addListItem = useCallback(async (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => {
-    if (!settings) return;
-    
+    if (!settings) {
+      return;
+    }
+
     const list = (settings[listName] as unknown[]) || [];
     
     // Check for duplicates
@@ -221,7 +203,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
 
     const newList = [...list, newItem];
-    await updateSetting(listName, newList);
+
+    try {
+      await updateSetting(listName, newList);
+    } catch (error) {
+      console.error('Error al agregar elemento:', error);
+      throw error;
+    }
   }, [settings, updateSetting, toast]);
 
   const updateListItem = useCallback(async (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemIdOrName: string, newItem: City | string | BankDetail | CompanyExpense | Coupon) => {

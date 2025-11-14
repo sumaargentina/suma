@@ -17,6 +17,7 @@ import { ArrowLeft, Stethoscope, Loader2 } from "lucide-react";
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/lib/settings';
+import { useDynamicData } from '@/hooks/use-dynamic-data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
@@ -43,7 +44,8 @@ const DoctorRegistrationSchema = z.object({
 
 export default function RegisterDoctorPage() {
   const { registerDoctor } = useAuth();
-  const { cities, specialties, logoUrl } = useSettings();
+  const { logoUrl } = useSettings();
+  const { specialties, cities, loading: dynamicLoading } = useDynamicData();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -193,16 +195,36 @@ export default function RegisterDoctorPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label htmlFor="specialty">Especialidad</Label>
-                    <Select name="specialty" value={formData.specialty} onValueChange={(v) => handleSelectChange('specialty', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecciona..."/></SelectTrigger>
-                        <SelectContent>{specialties.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                    <Select name="specialty" value={formData.specialty} onValueChange={(v) => handleSelectChange('specialty', v)} disabled={dynamicLoading}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={dynamicLoading ? "Cargando..." : "Selecciona una especialidad"}/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {specialties.length > 0 ? (
+                                specialties.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
+                            ) : (
+                                <SelectItem value="no-specialties" disabled>
+                                    {dynamicLoading ? "Cargando especialidades..." : "No hay especialidades disponibles"}
+                                </SelectItem>
+                            )}
+                        </SelectContent>
                     </Select>
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="city">Ciudad</Label>
-                    <Select name="city" value={formData.city} onValueChange={(v) => handleSelectChange('city', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecciona..."/></SelectTrigger>
-                        <SelectContent>{cities.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+                    <Select name="city" value={formData.city} onValueChange={(v) => handleSelectChange('city', v)} disabled={dynamicLoading}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={dynamicLoading ? "Cargando..." : "Selecciona una ciudad"}/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {cities.length > 0 ? (
+                                cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
+                            ) : (
+                                <SelectItem value="no-cities" disabled>
+                                    {dynamicLoading ? "Cargando ciudades..." : "No hay ciudades disponibles"}
+                                </SelectItem>
+                            )}
+                        </SelectContent>
                     </Select>
                 </div>
             </div>

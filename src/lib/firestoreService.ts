@@ -19,6 +19,7 @@ import {
 import type { Doctor, Seller, Patient, Appointment, AdminSupportTicket, SellerPayment, DoctorPayment, AppSettings, MarketingMaterial, ChatMessage } from './types';
 import { storage } from './firebase';
 import { ref, uploadBytes, getDownloadURL, StorageReference } from 'firebase/storage';
+import { hashPassword } from './password-utils';
 
 
 // Helper to convert Firestore Timestamps to strings
@@ -430,18 +431,19 @@ export const updateSupportTicket = async (id: string, data: Partial<AdminSupport
 
 // Settings
 export const updateSettings = async (data: Partial<AppSettings>) => {
-    try {
-        // Intentar actualizar primero
-        return await updateDoc(doc(db, 'settings', 'main'), data);
-    } catch (error: unknown) {
-        // Si el documento no existe, crearlo
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'not-found' || 
-            error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.includes('not found')) {
-            console.log('📝 Settings document does not exist, creating it...');
-            return await setDoc(doc(db, 'settings', 'main'), data);
-        }
-        throw error;
+  try {
+    const result = await updateDoc(doc(db, 'settings', 'main'), data);
+    return result;
+  } catch (error: unknown) {
+    // Si el documento no existe, crearlo
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'not-found' ||
+        error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.includes('not found')) {
+      const result = await setDoc(doc(db, 'settings', 'main'), data);
+      return result;
     }
+    console.error('Error al actualizar configuración:', error);
+    throw error;
+  }
 };
 
 // Payments
@@ -1104,11 +1106,14 @@ export const createTestSellers = async () => {
     if (existingSellers.length === 0) {
       console.log('🆕 No hay vendedoras, creando vendedoras de prueba...');
       
+      // Encriptar contraseñas de prueba
+      const hashedPassword = await hashPassword("1234");
+      
       // Crear vendedora principal
       const mainSeller: Omit<Seller, 'id'> = {
         name: "Vendedora Principal",
         email: "vendedora@venta.com",
-        password: "1234",
+        password: hashedPassword,
         phone: "0412-9876543",
         profileImage: "https://placehold.co/400x400.png",
         referralCode: "VENDE123",
@@ -1136,7 +1141,7 @@ export const createTestSellers = async () => {
       const secondSeller: Omit<Seller, 'id'> = {
         name: "Maria Garcia",
         email: "maria.g@venta.com",
-        password: "1234",
+        password: hashedPassword,
         phone: "0414-1112233",
         profileImage: "https://placehold.co/400x400.png",
         referralCode: "MARIA456",

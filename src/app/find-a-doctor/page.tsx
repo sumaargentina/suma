@@ -61,6 +61,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { useSettings } from "@/lib/settings";
+import { useDynamicData } from "@/hooks/use-dynamic-data";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 // Removed mock data import - using only Firestore data
@@ -92,7 +93,8 @@ const specialtyColors: Record<string, string> = {
 };
 
 export default function FindDoctorPage() {
-  const { cities, specialties, beautySpecialties } = useSettings();
+  const { beautySpecialties } = useSettings();
+  const { specialties, cities } = useDynamicData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
@@ -347,8 +349,8 @@ export default function FindDoctorPage() {
                               <SelectContent>
                                 <SelectItem value="all">Todas las ciudades</SelectItem>
                                 {cities.map((city) => (
-                                  <SelectItem key={city.name} value={city.name}>
-                                    {city.name}
+                                  <SelectItem key={city} value={city}>
+                                    {city}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -504,8 +506,8 @@ export default function FindDoctorPage() {
                         <SelectContent>
                           <SelectItem value="all">Todas las ciudades</SelectItem>
                           {cities.map((city) => (
-                            <SelectItem key={city.name} value={city.name}>
-                              {city.name}
+                            <SelectItem key={city} value={city}>
+                              {city}
                             </SelectItem>
                           ))}
                         </SelectContent>

@@ -298,7 +298,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const registerDoctor = async (doctorData: DoctorRegistrationData) => {
     const { email, password, name, specialty, city, address, slotDuration, consultationFee } = doctorData;
     
-    const existingUser = await firestoreService.findUserByEmail(email);
+    const normalizedEmail = email.toLowerCase();
+    const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
     if (existingUser) {
         toast({ variant: "destructive", title: "Error de Registro", description: "Este correo electrónico ya está en uso." });
         return;
@@ -312,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const paymentDateVenezuela = getPaymentDateInVenezuela(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-        name, email, specialty, city, address, password: hashedPassword,
+        name, email: normalizedEmail, specialty, city, address, password: hashedPassword,
         sellerId: null, cedula: '', sector: '', rating: 0, reviewCount: 0,
         profileImage: 'https://placehold.co/400x400.png',
         bannerImage: 'https://placehold.co/1200x400.png',
@@ -336,7 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const newDoctorId = await firestoreService.addDoctor(newDoctorData);
     // Fetch actualizado desde Firestore
-    const freshUser = await firestoreService.findUserByEmail(email);
+    const freshUser = await firestoreService.findUserByEmail(normalizedEmail);
     if (freshUser) {
       const loggedInUser = buildUserFromData({ ...freshUser, id: newDoctorId, role: 'doctor' });
       setUser(loggedInUser);

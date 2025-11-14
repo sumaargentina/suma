@@ -18,8 +18,10 @@ import { Loader2, User, Pencil, Trash2, Search, History } from 'lucide-react';
 import { z } from 'zod';
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/lib/settings";
+import { useDynamicData } from '@/hooks/use-dynamic-data';
 import { getCurrentDateInVenezuela, getPaymentDateInVenezuela } from '@/lib/utils';
 import { getDoctorInactivationLogs } from '@/lib/firestoreService';
+import { hashPassword } from '@/lib/password-utils';
 
 
 const DoctorFormSchema = z.object({
@@ -47,7 +49,7 @@ interface InactivationLog {
 
 export function DoctorsTab() {
   const { toast } = useToast();
-  const { specialties, cities } = useSettings();
+  const { specialties, cities } = useDynamicData();
   
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -134,10 +136,21 @@ export function DoctorsTab() {
     }
     
     if (editingDoctor) {
+      const normalizedEmail = result.data.email.toLowerCase();
+      
+      // Validar si el email cambió y si ya está en uso por otro usuario
+      if (normalizedEmail !== editingDoctor.email.toLowerCase()) {
+        const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+        if (existingUser && existingUser.id !== editingDoctor.id) {
+          toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+          return;
+        }
+      }
+      
       // Logic for updating a doctor
       const updateData: Partial<Doctor> = {
         name: result.data.name,
-        email: result.data.email,
+        email: normalizedEmail,
         specialty: result.data.specialty,
         city: result.data.city,
         address: result.data.address,
@@ -147,7 +160,9 @@ export function DoctorsTab() {
       };
 
       if (result.data.password) {
-        updateData.password = result.data.password;
+        // Encriptar nueva contraseña
+        const hashedPassword = await hashPassword(result.data.password);
+        updateData.password = hashedPassword;
       }
       
       await firestoreService.updateDoctor(editingDoctor.id, updateData);
@@ -158,18 +173,24 @@ export function DoctorsTab() {
             toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para los nuevos médicos.' });
             return;
        }
+       
+       const normalizedEmail = result.data.email.toLowerCase();
        // Check if email exists
-       const existingUser = await firestoreService.findUserByEmail(result.data.email);
+       const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
        if(existingUser) {
             toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
             return;
        }
        
         const { password, ...restOfData } = result.data;
+        
+        // Encriptar contraseña
+        const hashedPassword = await hashPassword(password);
 
         const newDoctorData: Omit<Doctor, 'id'> = {
             ...restOfData,
-            password: password,
+            email: normalizedEmail,
+            password: hashedPassword,
             cedula: '',
             sector: '',
             rating: 0,
@@ -419,7 +440,7 @@ export function DoctorsTab() {
                     </SelectTrigger>
                     <SelectContent>
                       {cities.length > 0 ? (
-                        cities.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)
+                        cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
                       ) : (
                         <SelectItem value="no-cities" disabled>No hay ciudades disponibles</SelectItem>
                       )}
