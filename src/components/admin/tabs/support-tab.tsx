@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { Mail, Briefcase, User, Send, Check, Loader2, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 export function SupportTab() {
   const { toast } = useToast();
-  
+
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
@@ -31,15 +31,15 @@ export function SupportTab() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const data = await firestoreService.getSupportTickets();
-        setTickets(data);
+      const data = await supabaseService.getSupportTickets();
+      setTickets(data);
     } catch {
-        toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los tickets de soporte.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los tickets de soporte.' });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   }, [toast]);
-  
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -50,7 +50,7 @@ export function SupportTab() {
       // Primero por estado (abiertos primero)
       if (a.status === 'abierto' && b.status !== 'abierto') return -1;
       if (a.status !== 'abierto' && b.status === 'abierto') return 1;
-      
+
       // Luego por fecha (más recientes primero)
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
@@ -59,15 +59,15 @@ export function SupportTab() {
   // Filtrar tickets
   const filteredTickets = useMemo(() => {
     let filtered = sortedTickets;
-    
+
     if (statusFilter !== 'all') {
       filtered = filtered.filter(ticket => ticket.status === statusFilter);
     }
-    
+
     if (roleFilter !== 'all') {
       filtered = filtered.filter(ticket => ticket.userRole === roleFilter);
     }
-    
+
     return filtered;
   }, [sortedTickets, statusFilter, roleFilter]);
 
@@ -82,23 +82,43 @@ export function SupportTab() {
 
   const handleSendAdminReply = async () => {
     if (!selectedTicket || !replyMessage.trim()) return;
-    const newMessage: Omit<ChatMessage, 'id' | 'timestamp'> = { sender: 'admin', text: replyMessage.trim() };
-    await firestoreService.addMessageToSupportTicket(selectedTicket.id, newMessage);
+
+    const messageText = replyMessage.trim();
     setReplyMessage("");
-    fetchData(); // Re-fetch to get the updated ticket
-    // Optimistically update dialog
-    const updatedTicket = { ...selectedTicket, messages: [...(selectedTicket.messages || []), { ...newMessage, id: `temp-${Date.now()}`, timestamp: new Date().toISOString() }]};
-    setSelectedTicket(updatedTicket);
+
+    // Optimistic update - mostrar mensaje inmediatamente
+    const newMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'admin' as const,
+      text: messageText,
+      timestamp: new Date().toISOString()
+    };
+    setSelectedTicket({
+      ...selectedTicket,
+      messages: [...(selectedTicket.messages || []), newMessage]
+    });
+
+    // Enviar al servidor
+    try {
+      await supabaseService.addMessageToSupportTicket(selectedTicket.id, {
+        sender: 'admin',
+        text: messageText
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo enviar el mensaje' });
+    }
   };
 
   const handleCloseTicket = async () => {
     if (!selectedTicket) return;
-    await firestoreService.updateSupportTicket(selectedTicket.id, { status: 'cerrado' });
+    await supabaseService.updateSupportTicket(selectedTicket.id, { status: 'cerrado' });
     setIsDetailDialogOpen(false);
     fetchData();
     toast({ title: 'Ticket Cerrado', description: `El ticket de ${selectedTicket.userName} ha sido cerrado.` });
   };
-  
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -134,7 +154,7 @@ export function SupportTab() {
                 <SelectItem value="cerrado">Cerrados</SelectItem>
               </SelectContent>
             </Select>
-            
+
             <Select value={roleFilter} onValueChange={(value: 'all' | 'doctor' | 'seller') => setRoleFilter(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Filtrar por rol" />
@@ -189,15 +209,15 @@ export function SupportTab() {
               </TableHeader>
               <TableBody>
                 {filteredTickets.length > 0 ? filteredTickets.map((ticket) => (
-                  <TableRow 
-                    key={ticket.id} 
+                  <TableRow
+                    key={ticket.id}
                     className={cn(
                       ticket.status === 'abierto' && "bg-blue-50 border-l-4 border-l-blue-500",
                       "hover:bg-muted/50 transition-colors"
                     )}
                   >
                     <TableCell className="font-medium">
-                      {format(parseISO(ticket.date), 'dd MMM yyyy', { locale: es })}
+                      {format(parseISO(ticket.createdAt || ticket.date), 'dd MMM yyyy HH:mm', { locale: es })}
                     </TableCell>
                     <TableCell className="font-medium">{ticket.userName}</TableCell>
                     <TableCell>
@@ -233,8 +253,8 @@ export function SupportTab() {
                 )) : (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                      {statusFilter === 'all' && roleFilter === 'all' 
-                        ? 'No hay tickets de soporte.' 
+                      {statusFilter === 'all' && roleFilter === 'all'
+                        ? 'No hay tickets de soporte.'
                         : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${roleFilter === 'doctor' ? 'médicos' : 'vendedoras'}` : ''}.`
                       }
                     </TableCell>
@@ -247,8 +267,8 @@ export function SupportTab() {
           {/* Vista móvil */}
           <div className="space-y-3 md:hidden">
             {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-              <div 
-                key={ticket.id} 
+              <div
+                key={ticket.id}
                 className={cn(
                   "p-4 border rounded-lg space-y-3 transition-colors",
                   ticket.status === 'abierto' && "bg-blue-50 border-l-4 border-l-blue-500",
@@ -284,11 +304,11 @@ export function SupportTab() {
                 </div>
                 <div className="flex justify-between items-center">
                   <p className="text-xs text-muted-foreground">
-                    {format(parseISO(ticket.date), 'dd MMM yyyy', { locale: es })}
+                    {format(parseISO(ticket.createdAt || ticket.date), 'dd MMM yyyy HH:mm', { locale: es })}
                   </p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => handleViewTicket(ticket)}
                   >
                     Ver Ticket
@@ -297,8 +317,8 @@ export function SupportTab() {
               </div>
             )) : (
               <div className="text-center py-8 text-muted-foreground">
-                {statusFilter === 'all' && roleFilter === 'all' 
-                  ? 'No hay tickets de soporte.' 
+                {statusFilter === 'all' && roleFilter === 'all'
+                  ? 'No hay tickets de soporte.'
                   : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${roleFilter === 'doctor' ? 'médicos' : 'vendedoras'}` : ''}.`
                 }
               </div>
@@ -315,15 +335,15 @@ export function SupportTab() {
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2">
                 <DialogDescription className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <span className="flex items-center gap-1.5">
-                    <User className="h-4 w-4"/> {selectedTicket.userName}
+                    <User className="h-4 w-4" /> {selectedTicket.userName}
                   </span>
                   <span className="hidden sm:inline">•</span>
                   <span className="flex items-center gap-1.5">
-                    <Mail className="h-4 w-4"/> {selectedTicket.userId}
+                    <Mail className="h-4 w-4" /> {selectedTicket.userId}
                   </span>
                   <span className="hidden sm:inline">•</span>
                   <span className="flex items-center gap-1.5">
-                    <Briefcase className="h-4 w-4"/> 
+                    <Briefcase className="h-4 w-4" />
                     <span className="capitalize">{selectedTicket.userRole === 'doctor' ? 'Médico' : 'Vendedora'}</span>
                   </span>
                 </DialogDescription>
@@ -339,7 +359,7 @@ export function SupportTab() {
           {selectedTicket && (
             <>
               <div className="flex-1 space-y-4 py-4 max-h-[50vh] overflow-y-auto pr-4">
-                {(selectedTicket.messages || []).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((msg) => (
+                {(selectedTicket.messages || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((msg) => (
                   <div key={msg.id} className={cn("flex items-end gap-2", msg.sender === 'admin' && 'justify-end')}>
                     {msg.sender !== 'admin' && (
                       <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm">
@@ -348,8 +368,8 @@ export function SupportTab() {
                     )}
                     <div className={cn(
                       "p-3 rounded-lg max-w-sm shadow-sm",
-                      msg.sender === 'admin' 
-                        ? 'bg-primary text-primary-foreground rounded-br-none' 
+                      msg.sender === 'admin'
+                        ? 'bg-primary text-primary-foreground rounded-br-none'
                         : 'bg-background rounded-bl-none'
                     )}>
                       <p className="text-sm">{msg.text}</p>
@@ -366,21 +386,32 @@ export function SupportTab() {
                 ))}
               </div>
               {selectedTicket.status === 'abierto' && (
-                <div className="flex items-end gap-2 border-t pt-4">
-                  <Input 
-                    placeholder="Escribe tu respuesta..." 
-                    value={replyMessage} 
-                    onChange={(e) => setReplyMessage(e.target.value)} 
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleSendAdminReply} 
-                    disabled={!replyMessage.trim()} 
-                    size="icon"
-                    className="shrink-0"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2 border-t pt-4">
+                  <div className="flex items-end gap-2">
+                    <Input
+                      placeholder="Escribe tu respuesta..."
+                      value={replyMessage}
+                      onChange={(e) => setReplyMessage(e.target.value)}
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendAdminReply();
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={handleSendAdminReply}
+                      disabled={!replyMessage.trim()}
+                      size="icon"
+                      className="shrink-0"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Presiona Enter para enviar
+                  </p>
                 </div>
               )}
             </>
@@ -391,7 +422,7 @@ export function SupportTab() {
             </Button>
             {selectedTicket?.status === 'abierto' && (
               <Button onClick={handleCloseTicket}>
-                <Check className="mr-2 h-4 w-4"/> Marcar como Resuelto
+                <Check className="mr-2 h-4 w-4" /> Marcar como Resuelto
               </Button>
             )}
           </DialogFooter>

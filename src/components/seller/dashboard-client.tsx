@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useSellerNotifications } from '@/lib/seller-notifications';
 import { HeaderWrapper } from '@/components/header';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import type { Doctor, SellerPayment, MarketingMaterial, AdminSupportTicket, Seller } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { } from 'lucide-react';
@@ -58,11 +58,11 @@ export function SellerDashboardClient({ currentTab }: { currentTab: string }) {
     setIsLoading(true);
     try {
         const [materials, seller, allDocs, allPayments, allTickets] = await Promise.all([
-            firestoreService.getMarketingMaterials(),
-            firestoreService.getSeller(user.id),
-            firestoreService.getDoctors(),
-            firestoreService.getSellerPayments(),
-            firestoreService.getSupportTickets(),
+            supabaseService.getMarketingMaterials(),
+            supabaseService.getSeller(user.id),
+            supabaseService.getDoctors(),
+            supabaseService.getSellerPayments(),
+            supabaseService.getSupportTickets(),
         ]);
         
         setMarketingMaterials(materials);

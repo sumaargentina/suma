@@ -50,7 +50,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     // Sanitizar y validar antes de zod
     const nameSan = validateName(fullName);
     const emailSan = validateEmail(email);
@@ -60,20 +60,39 @@ export default function RegisterPage() {
       setIsLoading(false);
       return;
     }
-    
+
     const result = RegisterSchema.safeParse({ fullName: nameSan.sanitized, email: emailSan.sanitized, password, confirmPassword });
-    
+
     if (!result.success) {
       const errorMessage = result.error.errors.map(err => err.message).join(' ');
       toast({ variant: 'destructive', title: 'Error de Registro', description: errorMessage });
       setIsLoading(false);
       return;
     }
-    
+
     try {
+      // Validar email único antes de registrar
+      const uniqueValidationResponse = await fetch('/api/validate-unique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'email', value: emailSan.sanitized })
+      });
+      const emailCheck = await uniqueValidationResponse.json();
+
+      if (!emailCheck.isUnique) {
+        toast({ variant: 'destructive', title: 'Email ya registrado', description: emailCheck.message });
+        setIsLoading(false);
+        return;
+      }
+
       await register(nameSan.sanitized, emailSan.sanitized, password);
-    } catch {
-       toast({ variant: 'destructive', title: 'Error', description: "Ocurrió un error inesperado durante el registro." });
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : "Ocurrió un error inesperado durante el registro."
+      });
     } finally {
       setIsLoading(false);
     }
@@ -83,22 +102,17 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader className="text-center">
-          {logoUrl ? (
-            <div className="mx-auto mb-4 h-16 flex items-center">
-              <Image 
-                src={logoUrl} 
-                alt="SUMA Logo" 
-                width={160} 
-                height={60} 
-                className="object-contain"
-                data-ai-hint="logo"
-              />
-            </div>
-          ) : (
-            <div className="inline-block mx-auto mb-4">
-              <Stethoscope className="h-10 w-10 text-primary" />
-            </div>
-          )}
+          <div className="mx-auto mb-6 flex items-center justify-center">
+            <Image
+              src="/images/logo_suma.png"
+              alt="SUMA Logo"
+              width={200}
+              height={80}
+              className="h-16 w-auto object-contain"
+              priority
+              data-ai-hint="logo"
+            />
+          </div>
           <CardTitle className="text-2xl font-headline">
             Registro de Paciente
           </CardTitle>
@@ -142,7 +156,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
                 />
-                 <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
+                <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
@@ -171,8 +185,8 @@ export default function RegisterPage() {
           <Separator className="my-4" />
           <Button variant="ghost" asChild className="w-full text-muted-foreground">
             <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Volver a la página de inicio
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver a la página de inicio
             </Link>
           </Button>
         </CardContent>

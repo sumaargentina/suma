@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Image from 'next/image';
-import { getSettings } from '@/lib/firestoreService';
+import { getSettings } from '@/lib/supabaseService';
 import { useToast } from '@/hooks/use-toast';
 
 interface SubscriptionTabProps {

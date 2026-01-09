@@ -1,22 +1,22 @@
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { app } from './firebase';
+// import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+// import { app } from './supabase';
 
 // Inicializar Firebase Messaging solo en el cliente
-let messaging: ReturnType<typeof getMessaging> | null = null;
+// let messaging: ReturnType<typeof getMessaging> | null = null;
 
-if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-  try {
-    messaging = getMessaging(app);
-  } catch (error) {
-    console.warn('Firebase Messaging no disponible:', error);
-  }
-}
+// if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+//   try {
+//     messaging = getMessaging(app);
+//   } catch (error) {
+//     console.warn('Firebase Messaging no disponible:', error);
+//   }
+// }
 
 // Tipos de notificación
-export type NotificationType = 
-  | 'appointment_reminder' 
-  | 'message' 
-  | 'system' 
+export type NotificationType =
+  | 'appointment_reminder'
+  | 'message'
+  | 'system'
   | 'background';
 
 export interface PushNotification {
@@ -32,6 +32,9 @@ export interface PushNotification {
 
 // Solicitar permisos y obtener token
 export async function requestNotificationPermission(): Promise<string | null> {
+  console.log('🔔 Notificaciones Push desactivadas temporalmente (Migración a Supabase)');
+  return null;
+  /*
   if (typeof window === 'undefined' || !messaging) {
     console.warn('Firebase Messaging no disponible en este entorno');
     return null;
@@ -60,10 +63,14 @@ export async function requestNotificationPermission(): Promise<string | null> {
     console.error('❌ Error al solicitar permisos:', error);
     return null;
   }
+  */
 }
 
 // Escuchar notificaciones en primer plano
 export function onForegroundMessage(callback: (payload: unknown) => void) {
+  console.log('🔔 Notificaciones Push desactivadas temporalmente');
+  return () => { };
+  /*
   if (typeof window === 'undefined' || !messaging) {
     console.warn('Firebase Messaging no disponible en este entorno');
     return () => {};
@@ -95,6 +102,7 @@ export function onForegroundMessage(callback: (payload: unknown) => void) {
     // Ejecutar callback
     callback(payload);
   });
+  */
 }
 
 // Enviar notificación push (desde el servidor)
@@ -105,6 +113,9 @@ export async function sendPushNotification(
   body: string,
   data?: Record<string, string>
 ): Promise<boolean> {
+  console.log('📤 (Simulado) Enviando notificación push:', { userId, type, title, body });
+  return true;
+  /*
   try {
     console.log('📤 Enviando notificación push:', { userId, type, title, body });
     
@@ -133,14 +144,17 @@ export async function sendPushNotification(
     console.error('❌ Error al enviar notificación:', error);
     return false;
   }
+  */
 }
 
 // Verificar si las notificaciones están habilitadas
 export function isNotificationSupported(): boolean {
-  return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator;
+  return false; // Desactivado temporalmente
+  // return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator;
 }
 
 // Verificar si los permisos están concedidos
 export function hasNotificationPermission(): boolean {
-  return typeof window !== 'undefined' && Notification.permission === 'granted';
-} 
+  return false; // Desactivado temporalmente
+  // return typeof window !== 'undefined' && Notification.permission === 'granted';
+}

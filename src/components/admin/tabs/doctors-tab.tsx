@@ -13,14 +13,22 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
-import { Loader2, User, Pencil, Trash2, Search, History } from 'lucide-react';
+import * as supabaseService from '@/lib/supabaseService';
+import { Loader2, User, Pencil, Trash2, Search, History, CheckCircle, XCircle, Clock, ShieldCheck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { z } from 'zod';
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/lib/settings";
 import { useDynamicData } from '@/hooks/use-dynamic-data';
-import { getCurrentDateInVenezuela, getPaymentDateInVenezuela } from '@/lib/utils';
-import { getDoctorInactivationLogs } from '@/lib/firestoreService';
+import { getCurrentDateInArgentina, getPaymentDateInArgentina } from '@/lib/utils';
+import { getDoctorInactivationLogs } from '@/lib/supabaseService';
 import { hashPassword } from '@/lib/password-utils';
 
 
@@ -50,7 +58,7 @@ interface InactivationLog {
 export function DoctorsTab() {
   const { toast } = useToast();
   const { specialties, cities } = useDynamicData();
-  
+
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -61,30 +69,39 @@ export function DoctorsTab() {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Doctor | null>(null);
-  
+
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [historyLogs, setHistoryLogs] = useState<InactivationLog[]>([]);
   const [historyDoctor, setHistoryDoctor] = useState<Doctor | null>(null);
-  
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const [docs, sells] = await Promise.all([
-            firestoreService.getDoctors(),
-            firestoreService.getSellers(),
-        ]);
-        setDoctors(docs);
-        setSellers(sells);
+      const [docs, sells] = await Promise.all([
+        supabaseService.getDoctors(),
+        supabaseService.getSellers(),
+      ]);
+      setDoctors(docs);
+      setSellers(sells);
     } catch {
-        toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los datos de los médicos.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los datos de los médicos.' });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   }, [toast]);
-  
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Resetear a página 1 cuando cambia el filtro
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const openDeleteDialog = (doctor: Doctor) => {
     setItemToDelete(doctor);
@@ -94,7 +111,7 @@ export function DoctorsTab() {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     try {
-      await firestoreService.deleteDoctor(itemToDelete.id);
+      await supabaseService.deleteDoctor(itemToDelete.id);
       toast({ title: "Médico Eliminado" });
       fetchData();
     } catch {
@@ -107,9 +124,20 @@ export function DoctorsTab() {
 
   const handleToggleDoctorStatus = async (doctor: Doctor) => {
     const newStatus = doctor.status === 'active' ? 'inactive' : 'active';
-    await firestoreService.updateDoctorStatus(doctor.id, newStatus);
+    await supabaseService.updateDoctorStatus(doctor.id, newStatus);
     toast({ title: "Estado Actualizado", description: `El Dr. ${doctor.name} ahora está ${newStatus === 'active' ? 'activo' : 'inactivo'}.` });
     fetchData();
+  };
+
+  const handleVerificationStatusChange = async (doctor: Doctor, status: 'pending' | 'verified' | 'rejected') => {
+    try {
+      await supabaseService.updateDoctor(doctor.id, { verificationStatus: status });
+      toast({ title: "Verificación Actualizada", description: `La matrícula del Dr. ${doctor.name} ha sido marcada como ${status === 'verified' ? 'verificada' : status === 'rejected' ? 'rechazada' : 'pendiente'}.` });
+      fetchData();
+    } catch (error) {
+      console.error('Error updating verification status:', error);
+      toast({ variant: "destructive", title: "Error", description: "No se pudo actualizar el estado de verificación." });
+    }
   };
 
   const handleSaveDoctor = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -128,25 +156,28 @@ export function DoctorsTab() {
       consultationFee: formData.get('consultationFee') as string,
     };
 
+    // Get medicalLicense separately as it's not in the schema
+    const medicalLicense = formData.get('medicalLicense') as string;
+
     const result = DoctorFormSchema.safeParse(dataToValidate);
 
     if (!result.success) {
       toast({ variant: 'destructive', title: 'Error de Validación', description: result.error.errors.map(err => err.message).join(' ') });
       return;
     }
-    
+
     if (editingDoctor) {
       const normalizedEmail = result.data.email.toLowerCase();
-      
+
       // Validar si el email cambió y si ya está en uso por otro usuario
       if (normalizedEmail !== editingDoctor.email.toLowerCase()) {
-        const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+        const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
         if (existingUser && existingUser.id !== editingDoctor.id) {
           toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
           return;
         }
       }
-      
+
       // Logic for updating a doctor
       const updateData: Partial<Doctor> = {
         name: result.data.name,
@@ -157,6 +188,7 @@ export function DoctorsTab() {
         sellerId: result.data.sellerId,
         slotDuration: result.data.slotDuration,
         consultationFee: result.data.consultationFee,
+        medicalLicense: medicalLicense || '',
       };
 
       if (result.data.password) {
@@ -164,72 +196,72 @@ export function DoctorsTab() {
         const hashedPassword = await hashPassword(result.data.password);
         updateData.password = hashedPassword;
       }
-      
-      await firestoreService.updateDoctor(editingDoctor.id, updateData);
+
+      await supabaseService.updateDoctor(editingDoctor.id, updateData);
       toast({ title: "Médico Actualizado", description: "Los datos del médico han sido guardados." });
     } else {
       // Logic for adding a new doctor
-       if (!result.data.password) {
-            toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para los nuevos médicos.' });
-            return;
-       }
-       
-       const normalizedEmail = result.data.email.toLowerCase();
-       // Check if email exists
-       const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
-       if(existingUser) {
-            toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
-            return;
-       }
-       
-        const { password, ...restOfData } = result.data;
-        
-        // Encriptar contraseña
-        const hashedPassword = await hashPassword(password);
+      if (!result.data.password) {
+        toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para los nuevos médicos.' });
+        return;
+      }
 
-        const newDoctorData: Omit<Doctor, 'id'> = {
-            ...restOfData,
-            email: normalizedEmail,
-            password: hashedPassword,
-            cedula: '',
-            sector: '',
-            rating: 0,
-            reviewCount: 0,
-            profileImage: 'https://placehold.co/400x400.png',
-            bannerImage: 'https://placehold.co/1200x400.png',
-            aiHint: 'doctor portrait',
-            description: 'Especialista comprometido con la salud y el bienestar de mis pacientes.',
-            services: [],
-            bankDetails: [],
-            schedule: {
-                monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                wednesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                thursday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                friday: { active: true, slots: [{ start: "09:00", end: "13:00" }] },
-                saturday: { active: false, slots: [] },
-                sunday: { active: false, slots: [] },
-            },
-            status: 'active',
-            lastPaymentDate: '',
-            whatsapp: '',
-            lat: 0,
-            lng: 0,
-            joinDate: getCurrentDateInVenezuela(),
-            subscriptionStatus: 'active',
-            nextPaymentDate: getPaymentDateInVenezuela(new Date()),
-            coupons: [],
-            expenses: []
-        };
-        await firestoreService.addDoctor(newDoctorData);
-        toast({ title: 'Médico Registrado', description: `El Dr. ${result.data.name} ha sido añadido.` });
+      const normalizedEmail = result.data.email.toLowerCase();
+      // Check if email exists
+      const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
+      if (existingUser) {
+        toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+        return;
+      }
+
+      const { password, confirmPassword, ...restOfData } = result.data;
+
+      // Encriptar contraseña
+      const hashedPassword = await hashPassword(password);
+
+      const newDoctorData: Omit<Doctor, 'id'> = {
+        ...restOfData,
+        email: normalizedEmail,
+        password: hashedPassword,
+        cedula: '', // Vacío por defecto, el doctor lo completará después
+        sector: '',
+        rating: 0,
+        reviewCount: 0,
+        profileImage: 'https://placehold.co/400x400.png',
+        bannerImage: 'https://placehold.co/1200x400.png',
+        aiHint: 'doctor portrait',
+        description: 'Especialista comprometido con la salud y el bienestar de mis pacientes.',
+        services: [],
+        bankDetails: [],
+        schedule: {
+          monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+          tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+          wednesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+          thursday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+          friday: { active: true, slots: [{ start: "09:00", end: "13:00" }] },
+          saturday: { active: false, slots: [] },
+          sunday: { active: false, slots: [] },
+        },
+        status: 'active',
+        // lastPaymentDate: null, // Dejar que la base de datos maneje el valor por defecto (NULL)
+        whatsapp: '',
+        lat: 0,
+        lng: 0,
+        joinDate: getCurrentDateInArgentina(),
+        subscriptionStatus: 'active',
+        nextPaymentDate: getPaymentDateInArgentina(new Date()),
+        coupons: [],
+        expenses: []
+      };
+      await supabaseService.addDoctor(newDoctorData);
+      toast({ title: 'Médico Registrado', description: `El Dr. ${result.data.name} ha sido añadido.` });
     }
 
     fetchData();
     setIsDoctorDialogOpen(false);
     setEditingDoctor(null);
   };
-  
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -246,6 +278,18 @@ export function DoctorsTab() {
       (assignedSeller && assignedSeller.name.toLowerCase().includes(searchLower))
     );
   });
+
+  // Cálculos de paginación
+  const totalPages = Math.ceil(filteredDoctors.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedDoctors = filteredDoctors.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   const openHistoryDialog = async (doctor: Doctor) => {
     setHistoryDoctor(doctor);
@@ -274,7 +318,7 @@ export function DoctorsTab() {
             <CardDescription>Visualiza, edita y gestiona los médicos de la plataforma.</CardDescription>
           </div>
           <Button onClick={() => { setEditingDoctor(null); setIsDoctorDialogOpen(true); }}>
-            <User className="mr-2 h-4 w-4"/> Añadir Médico
+            <User className="mr-2 h-4 w-4" /> Añadir Médico
           </Button>
         </CardHeader>
         <CardContent>
@@ -296,58 +340,143 @@ export function DoctorsTab() {
             )}
           </div>
 
-           <div className="hidden md:block">
-              <Table>
-                <TableHeader><TableRow><TableHead>Médico</TableHead><TableHead>Especialidad</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora Asignada</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {filteredDoctors.map((doctor) => (
-                    <TableRow key={doctor.id}>
-                      <TableCell className="font-medium">{doctor.name}</TableCell>
-                      <TableCell>{doctor.specialty}</TableCell>
-                      <TableCell>{doctor.city}</TableCell>
-                      <TableCell>{sellers.find(s => s.id === doctor.sellerId)?.name || 'N/A'}</TableCell>
-                      <TableCell>
-                        <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
-                          {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right flex items-center justify-end gap-2">
-                        <Button variant="outline" size="icon" onClick={() => { setEditingDoctor(doctor); setIsDoctorDialogOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="destructive" size="icon" onClick={() => openDeleteDialog(doctor)}><Trash2 className="h-4 w-4" /></Button>
-                        {['inactive', 'inactivo'].includes(doctor.status?.toLowerCase?.()) && (
-                          <Button variant="secondary" size="icon" title="Ver historial de inactivaciones" onClick={() => openHistoryDialog(doctor)}>
-                            <History className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-           </div>
-           <div className="space-y-4 md:hidden">
-              {doctors.map((doctor) => (
-                <div key={doctor.id} className="p-4 border rounded-lg space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold">{doctor.name}</p>
-                      <p className="text-sm text-muted-foreground">{doctor.specialty} - {doctor.city}</p>
-                    </div>
-                    <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
-                      {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
-                    </Badge>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader><TableRow><TableHead>Médico</TableHead><TableHead>Especialidad</TableHead><TableHead>Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora Asignada</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {paginatedDoctors.map((doctor) => (
+                  <TableRow key={doctor.id}>
+                    <TableCell className="font-medium">{doctor.name}</TableCell>
+                    <TableCell>{doctor.specialty}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium">{doctor.medicalLicense || '-'}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Badge
+                              className={cn("cursor-pointer w-fit flex items-center gap-1",
+                                doctor.verificationStatus === 'verified' ? 'bg-blue-600 hover:bg-blue-700' :
+                                  doctor.verificationStatus === 'rejected' ? 'bg-red-600 hover:bg-red-700' :
+                                    'bg-yellow-500 hover:bg-yellow-600'
+                              )}
+                            >
+                              {doctor.verificationStatus === 'verified' ? <ShieldCheck className="h-3 w-3" /> :
+                                doctor.verificationStatus === 'rejected' ? <XCircle className="h-3 w-3" /> :
+                                  <Clock className="h-3 w-3" />
+                              }
+                              {doctor.verificationStatus === 'verified' ? 'Verificado' : doctor.verificationStatus === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                            </Badge>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuLabel>Estado de Matrícula</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'verified')}>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Aprobar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'rejected')}>
+                              <XCircle className="mr-2 h-4 w-4 text-red-500" /> Rechazar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'pending')}>
+                              <Clock className="mr-2 h-4 w-4 text-yellow-500" /> Pendiente
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                    <TableCell>{doctor.city}</TableCell>
+                    <TableCell>{sellers.find(s => s.id === doctor.sellerId)?.name || 'N/A'}</TableCell>
+                    <TableCell>
+                      <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
+                        {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right flex items-center justify-end gap-2">
+                      <Button variant="outline" size="icon" onClick={() => { setEditingDoctor(doctor); setIsDoctorDialogOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="destructive" size="icon" onClick={() => openDeleteDialog(doctor)}><Trash2 className="h-4 w-4" /></Button>
+                      {['inactive', 'inactivo'].includes(doctor.status?.toLowerCase?.()) && (
+                        <Button variant="secondary" size="icon" title="Ver historial de inactivaciones" onClick={() => openHistoryDialog(doctor)}>
+                          <History className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-4 md:hidden">
+            {paginatedDoctors.map((doctor) => (
+              <div key={doctor.id} className="p-4 border rounded-lg space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold">{doctor.name}</p>
+                    <p className="text-sm text-muted-foreground">{doctor.specialty} - {doctor.city}</p>
                   </div>
-                  <Separator />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setEditingDoctor(doctor); setIsDoctorDialogOpen(true); }}><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
-                    <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(doctor)}><Trash2 className="mr-2 h-4 w-4" /> Eliminar</Button>
-                  </div>
+                  <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
+                    {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
+                  </Badge>
                 </div>
-              ))}
-           </div>
+                <Separator />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setEditingDoctor(doctor); setIsDoctorDialogOpen(true); }}><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
+                  <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(doctor)}><Trash2 className="mr-2 h-4 w-4" /> Eliminar</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Controles de paginación */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {startIndex + 1}-{Math.min(endIndex, filteredDoctors.length)} de {filteredDoctors.length} médicos
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(1)}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm px-3">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
-      
+
       <Dialog open={isDoctorDialogOpen} onOpenChange={setIsDoctorDialogOpen}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -362,48 +491,48 @@ export function DoctorsTab() {
             {/* Información Personal */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Información Personal</h3>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium">Nombre Completo</Label>
-                <Input 
-                  id="name" 
-                  name="name" 
-                  defaultValue={editingDoctor?.name} 
+                <Input
+                  id="name"
+                  name="name"
+                  defaultValue={editingDoctor?.name}
                   required
                   className="w-full"
                   placeholder="Dr. Juan Pérez"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium">Correo Electrónico</Label>
-                <Input 
-                  id="email" 
-                  name="email" 
-                  type="email" 
-                  defaultValue={editingDoctor?.email} 
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  defaultValue={editingDoctor?.email}
                   required
                   className="w-full"
                   placeholder="doctor@ejemplo.com"
                 />
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm font-medium">Nueva Contraseña</Label>
-                  <Input 
-                    id="password" 
-                    name="password" 
-                    type="password" 
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
                     placeholder={editingDoctor ? 'Dejar en blanco para no cambiar' : 'Requerido'}
                     className="w-full"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword" className="text-sm font-medium">Confirmar Contraseña</Label>
-                  <Input 
-                    id="confirmPassword" 
-                    name="confirmPassword" 
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
                     type="password"
                     className="w-full"
                     placeholder="Confirmar contraseña"
@@ -415,13 +544,13 @@ export function DoctorsTab() {
             {/* Información Profesional */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Información Profesional</h3>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="specialty" className="text-sm font-medium">Especialidad</Label>
                   <Select name="specialty" defaultValue={editingDoctor?.specialty}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona una especialidad"/>
+                      <SelectValue placeholder="Selecciona una especialidad" />
                     </SelectTrigger>
                     <SelectContent>
                       {specialties.length > 0 ? (
@@ -436,7 +565,7 @@ export function DoctorsTab() {
                   <Label htmlFor="city" className="text-sm font-medium">Ciudad</Label>
                   <Select name="city" defaultValue={editingDoctor?.city}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona una ciudad"/>
+                      <SelectValue placeholder="Selecciona una ciudad" />
                     </SelectTrigger>
                     <SelectContent>
                       {cities.length > 0 ? (
@@ -451,29 +580,43 @@ export function DoctorsTab() {
 
               <div className="space-y-2">
                 <Label htmlFor="address" className="text-sm font-medium">Dirección del Consultorio</Label>
-                <Input 
-                  id="address" 
-                  name="address" 
-                  defaultValue={editingDoctor?.address} 
+                <Input
+                  id="address"
+                  name="address"
+                  defaultValue={editingDoctor?.address}
                   required
                   className="w-full"
                   placeholder="Av. Principal 123, Centro"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="medicalLicense" className="text-sm font-medium">Número de Matrícula Médica</Label>
+                <Input
+                  id="medicalLicense"
+                  name="medicalLicense"
+                  defaultValue={editingDoctor?.medicalLicense || ''}
+                  className="w-full"
+                  placeholder="Ej: MN 123456"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Este número puede ser verificado usando el badge en la tabla
+                </p>
               </div>
             </div>
 
             {/* Configuración de Consultas */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Configuración de Consultas</h3>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="consultationFee" className="text-sm font-medium">Tarifa de Consulta ($)</Label>
-                  <Input 
-                    id="consultationFee" 
-                    name="consultationFee" 
-                    type="number" 
-                    defaultValue={editingDoctor?.consultationFee || 20} 
+                  <Input
+                    id="consultationFee"
+                    name="consultationFee"
+                    type="number"
+                    defaultValue={editingDoctor?.consultationFee || 20}
                     required
                     className="w-full"
                     min="0"
@@ -482,11 +625,11 @@ export function DoctorsTab() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="slotDuration" className="text-sm font-medium">Duración por Cita (min)</Label>
-                  <Input 
-                    id="slotDuration" 
-                    name="slotDuration" 
-                    type="number" 
-                    defaultValue={editingDoctor?.slotDuration || 30} 
+                  <Input
+                    id="slotDuration"
+                    name="slotDuration"
+                    type="number"
+                    defaultValue={editingDoctor?.slotDuration || 30}
                     required
                     className="w-full"
                     min="5"
@@ -499,12 +642,12 @@ export function DoctorsTab() {
             {/* Asignación de Vendedora */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Asignación</h3>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="sellerId" className="text-sm font-medium">Vendedora Asignada</Label>
                 <Select name="sellerId" defaultValue={editingDoctor?.sellerId || 'none'}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecciona una vendedora"/>
+                    <SelectValue placeholder="Selecciona una vendedora" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Ninguna</SelectItem>
@@ -513,7 +656,7 @@ export function DoctorsTab() {
                 </Select>
               </div>
             </div>
-            
+
             <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">
               <DialogClose asChild>
                 <Button type="button" variant="outline" className="w-full sm:w-auto">
@@ -530,18 +673,18 @@ export function DoctorsTab() {
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>¿Estás seguro que deseas eliminar?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Esta acción es permanente y no se puede deshacer. Se eliminará a {itemToDelete?.name} del sistema.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteItem} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Sí, Eliminar
-                </AlertDialogAction>
-            </AlertDialogFooter>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro que deseas eliminar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción es permanente y no se puede deshacer. Se eliminará a {itemToDelete?.name} del sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteItem} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sí, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -572,8 +715,8 @@ export function DoctorsTab() {
                   {historyLogs.map(log => (
                     <TableRow key={log.id}>
                       <TableCell>{('inactivatedAt' in log && log.inactivatedAt?.seconds)
-  ? new Date(log.inactivatedAt.seconds * 1000).toLocaleString()
-  : '-'}</TableCell>
+                        ? new Date(log.inactivatedAt.seconds * 1000).toLocaleString()
+                        : '-'}</TableCell>
                       <TableCell>{log.reason}</TableCell>
                       <TableCell>{log.origin}</TableCell>
                     </TableRow>

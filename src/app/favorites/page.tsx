@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useMemo, useEffect, useState } from "react";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import { useAuth } from "@/lib/auth";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { type Doctor } from "@/lib/types";
 import { DoctorCard } from "@/components/doctor-card";
 import { Heart, Loader2 } from "lucide-react";
@@ -21,7 +21,7 @@ export default function FavoritesPage() {
     const fetchDocs = async () => {
         setIsLoading(true);
         try {
-            const docs = await firestoreService.getDoctors();
+            const docs = await supabaseService.getDoctors();
             setAllDoctors(docs);
         } catch (error) {
             console.error("Failed to fetch doctors for favorites, possibly offline.", error);

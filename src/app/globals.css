@@ -6,27 +6,33 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 224 71.4% 4.1%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 71.4% 4.1%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 224 71.4% 4.1%;
+    
+    /* Primary: Elegant Dark Slate/Blue-Grey */
+    --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
+    
+    /* Secondary/Accent: Refined Copper */
+    --secondary: 25 85% 55%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
+    --ring: 25 85% 55%; /* Copper Ring Focus */
+    --radius: 0.75rem; /* More rounded, modern */
+
+    --chart-1: 25 85% 55%; /* Copper */
+    --chart-2: 222.2 47.4% 11.2%; /* Dark */
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
@@ -39,10 +45,15 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    
+    /* Primary: White on Dark */
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    /* Secondary: Copper stays vibrant */
+    --secondary: 25 85% 60%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 217.2 32.6% 17.5%;
@@ -51,9 +62,10 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
+    --ring: 25 85% 60%;
+    
+    --chart-1: 25 85% 60%;
+    --chart-2: 210 40% 98%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
@@ -69,61 +81,11 @@
   }
 }
 
-/* Ocultar scrollbar en móvil */
-.scrollbar-hide {
-  -ms-overflow-style: none;  /* Internet Explorer 10+ */
-  scrollbar-width: none;  /* Firefox */
-}
-
+/* Utilities */
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Safari and Chrome */
+  display: none;
 }
-
-/* Mejorar scroll horizontal en móvil */
-.overflow-x-auto {
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Optimizaciones para móvil */
-@media (max-width: 768px) {
-  /* Mejorar espaciado en móvil */
-  .container {
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-  
-  /* Botones más táctiles en móvil */
-  button {
-    min-height: 44px; /* Tamaño mínimo recomendado para touch */
-  }
-  
-  /* Mejorar legibilidad de texto en móvil */
-  .text-xs {
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-  
-  /* Optimizar cards en móvil */
-  .doctor-card {
-    transition: transform 0.2s ease-in-out;
-  }
-  
-  .doctor-card:active {
-    transform: scale(0.98);
-  }
-}
-
-/* Animaciones suaves para mejor UX */
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-/* Mejorar contraste en móvil */
-@media (max-width: 768px) {
-  .text-muted-foreground {
-    color: hsl(var(--muted-foreground) / 0.8);
-  }
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

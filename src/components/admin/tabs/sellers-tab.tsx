@@ -13,8 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
-import * as firestoreService from '@/lib/firestoreService';
-import { Loader2, Search } from 'lucide-react';
+import * as supabaseService from '@/lib/supabaseService';
+import { Loader2, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { hashPassword } from '@/lib/password-utils';
 
@@ -32,8 +32,8 @@ export function SellersTab() {
   // const { settings } = useSettings(); // Comentado porque no se usa actualmente
   const [activeTab, setActiveTab] = useState("pendientes");
   const [sellers, setSellers] = useState<Seller[]>([]);
-  const [ , setDoctors] = useState<Doctor[]>([]);
-  const [ , setDoctorPayments] = useState<DoctorPayment[]>([]);
+  const [, setDoctors] = useState<Doctor[]>([]);
+  const [, setDoctorPayments] = useState<DoctorPayment[]>([]);
   const [sellerPayments, setSellerPayments] = useState<SellerPayment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,6 +54,10 @@ export function SellersTab() {
   const [sellerPaymentHistory, setSellerPaymentHistory] = useState<SellerPayment[]>([]);
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   // Agrupar pagos pendientes por vendedora
   const pendingPaymentsBySeller = useMemo(() => {
     const grouped: Record<string, SellerPayment[]> = {};
@@ -77,10 +81,10 @@ export function SellersTab() {
     setIsLoading(true);
     try {
       const [sells, docs, docPayments, sellerPaymentsData] = await Promise.all([
-        firestoreService.getSellers(),
-        firestoreService.getDoctors(),
-        firestoreService.getDoctorPayments(),
-        firestoreService.getSellerPayments(),
+        supabaseService.getSellers(),
+        supabaseService.getDoctors(),
+        supabaseService.getDoctorPayments(),
+        supabaseService.getSellerPayments(),
       ]);
       setSellers(sells);
       setDoctors(docs);
@@ -107,11 +111,28 @@ export function SellersTab() {
     );
   });
 
+  // Cálculos de paginación
+  const totalPages = Math.ceil(filteredSellers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedSellers = filteredSellers.slice(startIndex, endIndex);
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  // Resetear a página 1 cuando cambia el filtro
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   // Calcular comisión pendiente para cada vendedora
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     try {
-      await firestoreService.deleteSeller(itemToDelete.id);
+      await supabaseService.deleteSeller(itemToDelete.id);
       toast({ title: "Vendedora Eliminada" });
       fetchData();
     } catch {
@@ -134,12 +155,12 @@ export function SellersTab() {
       // Subir comprobante una sola vez (si existe)
       let proofUrl = pendientes[0].paymentProofUrl;
       if (paymentProofFile) {
-        proofUrl = await firestoreService.uploadPaymentProof(paymentProofFile, `seller-payments/${pendingPaymentData.seller.id}/${Date.now()}-${paymentProofFile.name}`);
+        proofUrl = await supabaseService.uploadPaymentProof(paymentProofFile, `seller-payments/${pendingPaymentData.seller.id}/${Date.now()}-${paymentProofFile.name}`);
       }
       // Actualizar todos a 'paid'
       await Promise.all(
         pendientes.map(p =>
-          firestoreService.updateSellerPayment(p.id, {
+          supabaseService.updateSellerPayment(p.id, {
             status: "paid",
             paymentProofUrl: proofUrl,
             transactionId: pendingPaymentData.transactionId || p.transactionId
@@ -186,17 +207,17 @@ export function SellersTab() {
 
     if (editingSeller) {
       const normalizedEmail = result.data.email.toLowerCase();
-      
+
       // Validar si el email cambió y si ya está en uso por otro usuario
       if (normalizedEmail !== editingSeller.email.toLowerCase()) {
-        const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+        const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
         if (existingUser && existingUser.id !== editingSeller.id) {
           toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
           return;
         }
       }
-      
-      await firestoreService.updateSeller(editingSeller.id, {
+
+      await supabaseService.updateSeller(editingSeller.id, {
         name: result.data.name,
         email: normalizedEmail,
         commissionRate: result.data.commissionRate,
@@ -208,12 +229,12 @@ export function SellersTab() {
         return;
       }
       const normalizedEmail = result.data.email.toLowerCase();
-      const existingUser = await firestoreService.findUserByEmail(normalizedEmail);
+      const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
       if (existingUser) {
         toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
         return;
       }
-      
+
       const referralCode = `${result.data.name.substring(0, 4).toUpperCase()}${Math.floor(100 + Math.random() * 900)}`;
 
       // Encriptar contraseña
@@ -230,7 +251,7 @@ export function SellersTab() {
         bankDetails: [],
         expenses: [],
       };
-      await firestoreService.addSeller(newSellerData);
+      await supabaseService.addSeller(newSellerData);
       toast({ title: "Vendedora Registrada", description: `${result.data.name} ha sido añadida.` });
     }
 
@@ -238,7 +259,7 @@ export function SellersTab() {
     setIsSellerDialogOpen(false);
     setEditingSeller(null);
   };
-  
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -251,33 +272,33 @@ export function SellersTab() {
       </TabsList>
       {/* TAB PENDIENTES */}
       <TabsContent value="pendientes">
-      <Card>
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
+        <Card>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
               <CardTitle>Pagos Pendientes a Vendedoras</CardTitle>
-          </div>
-          <Button onClick={() => { setEditingSeller(null); setIsSellerDialogOpen(true); }}>
-              Registrar vendedora
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {/* Buscador */}
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar vendedoras por nombre, email o código de referido..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
             </div>
-            {searchTerm && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Mostrando {filteredSellers.length} de {sellers.length} vendedoras
-              </p>
-            )}
-          </div>
+            <Button onClick={() => { setEditingSeller(null); setIsSellerDialogOpen(true); }}>
+              Registrar vendedora
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {/* Buscador */}
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar vendedoras por nombre, email o código de referido..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              {searchTerm && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Mostrando {filteredSellers.length} de {sellers.length} vendedoras
+                </p>
+              )}
+            </div>
 
             <Table>
               <TableHeader>
@@ -293,21 +314,21 @@ export function SellersTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSellers.map(seller => {
+                {paginatedSellers.map(seller => {
                   const pendientes = pendingPaymentsBySeller[seller.id] || [];
                   const total = pendientes.reduce((sum, p) => sum + (p.amount || 0), 0);
                   const doctors = Array.from(new Set(pendientes.flatMap(p => p.includedDoctors.map(d => d.name))));
                   const tienePendientes = pendientes.length > 0;
                   return (
-                  <TableRow key={seller.id}>
+                    <TableRow key={seller.id}>
                       <TableCell>{seller.name}</TableCell>
                       <TableCell>${total.toFixed(2)}</TableCell>
                       <TableCell>{doctors.length}</TableCell>
                       <TableCell>
                         {tienePendientes ? (
-                          <span style={{color: 'orange', fontWeight: 'bold'}}>Pendiente</span>
+                          <span style={{ color: 'orange', fontWeight: 'bold' }}>Pendiente</span>
                         ) : (
-                          <span style={{color: 'green'}}>Sin pagos pendientes</span>
+                          <span style={{ color: 'green' }}>Sin pagos pendientes</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -369,6 +390,56 @@ export function SellersTab() {
                 })}
               </TableBody>
             </Table>
+
+            {/* Controles de paginación */}
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Mostrando {startIndex + 1}-{Math.min(endIndex, filteredSellers.length)} de {filteredSellers.length} vendedoras
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(1)}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm px-3">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </TabsContent>
@@ -411,8 +482,8 @@ export function SellersTab() {
                         }}>
                           Ver Detalle
                         </Button>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                    </TableRow>
                   ));
                 })}
               </TableBody>
@@ -462,22 +533,22 @@ export function SellersTab() {
                   <h4 className="font-semibold">Procesar Pago:</h4>
                   <div>
                     <Label htmlFor="paymentProof">Comprobante de Pago</Label>
-                    <Input 
-                      id="paymentProof" 
-                      type="file" 
+                    <Input
+                      id="paymentProof"
+                      type="file"
                       accept="image/*,.pdf"
                       onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
                     />
                   </div>
                   <div>
                     <Label htmlFor="transactionId">ID de Transacción</Label>
-                    <Input 
-                      id="transactionId" 
-                      type="text" 
+                    <Input
+                      id="transactionId"
+                      type="text"
                       onChange={(e) => setPendingPaymentData(prev => prev ? { ...prev, transactionId: e.target.value } : prev)}
                     />
                   </div>
-                  <Button 
+                  <Button
                     onClick={handleMarkAsPaid}
                     disabled={!paymentProofFile || isProcessingPayment}
                   >
@@ -499,7 +570,7 @@ export function SellersTab() {
               Registro de todas las comisiones pagadas a esta vendedora
             </DialogDescription>
           </DialogHeader>
-          
+
           {sellerPaymentHistory.length > 0 ? (
             <div className="space-y-4">
               {sellerPaymentHistory.map((payment, idx) => (
@@ -515,7 +586,7 @@ export function SellersTab() {
                       <Badge variant="outline" className="font-mono text-xs">
                         {payment.transactionId}
                       </Badge>
-              </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
@@ -540,12 +611,12 @@ export function SellersTab() {
                       </div>
                       {payment.paymentProofUrl && (
                         <div>
-                          <a href={payment.paymentProofUrl} target="_blank" rel="noopener noreferrer" style={{color: '#0070f3'}}>Ver comprobante</a>
+                          <a href={payment.paymentProofUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0070f3' }}>Ver comprobante</a>
                         </div>
                       )}
-          </div>
-        </CardContent>
-      </Card>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : (
@@ -564,15 +635,15 @@ export function SellersTab() {
             <div className="space-y-4 py-4">
               <div>
                 <Label htmlFor="name">Nombre Completo</Label>
-                <Input id="name" name="name" defaultValue={editingSeller?.name} required/>
+                <Input id="name" name="name" defaultValue={editingSeller?.name} required />
               </div>
               <div>
                 <Label htmlFor="email">Correo Electrónico</Label>
-                <Input id="email" name="email" type="email" defaultValue={editingSeller?.email} required/>
+                <Input id="email" name="email" type="email" defaultValue={editingSeller?.email} required />
               </div>
               <div>
                 <Label htmlFor="commissionRate">Tasa de Comisión (ej. 0.2 para 20%)</Label>
-                <Input id="commissionRate" name="commissionRate" type="number" step="0.01" defaultValue={editingSeller?.commissionRate || 0.2} required/>
+                <Input id="commissionRate" name="commissionRate" type="number" step="0.01" defaultValue={editingSeller?.commissionRate || 0.2} required />
               </div>
               <div>
                 <Label htmlFor="password">Nueva Contraseña</Label>
@@ -580,7 +651,7 @@ export function SellersTab() {
               </div>
               <div>
                 <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
-                <Input id="confirmPassword" name="confirmPassword" type="password"/>
+                <Input id="confirmPassword" name="confirmPassword" type="password" />
               </div>
             </div>
             <DialogFooter>
@@ -596,18 +667,18 @@ export function SellersTab() {
       {/* Diálogo de Confirmación de Eliminación */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>¿Estás seguro que deseas eliminar?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Esta acción es permanente y no se puede deshacer. Se eliminará a {itemToDelete?.name} del sistema.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteItem} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Sí, Eliminar
-                </AlertDialogAction>
-            </AlertDialogFooter>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro que deseas eliminar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción es permanente y no se puede deshacer. Se eliminará a {itemToDelete?.name} del sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteItem} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sí, Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </Tabs>

@@ -1,0 +1,32 @@
+{
+  "total": 3,
+  "records": [
+    {
+      "id": "989444b6-9005-45ac-acaf-71ef4d87bb89",
+      "created_at": "2025-12-19T16:12:56.114672+00:00",
+      "patient_name": "UNKNOWN",
+      "patient_id": "85661f4c-6f17-4124-bcd0-8cd77c0caa9e",
+      "doctor_name": "juan perez",
+      "doctor_id": "9290a2f1-6a2e-4bd3-ada8-e419430cd53b",
+      "diagnosis": "Migraña sin aura..."
+    },
+    {
+      "id": "512cdb90-72f4-4e4e-87d9-d3d5168a9d87",
+      "created_at": "2025-12-19T16:26:27.461502+00:00",
+      "patient_name": "UNKNOWN",
+      "patient_id": "85661f4c-6f17-4124-bcd0-8cd77c0caa9e",
+      "doctor_name": "juan perez",
+      "doctor_id": "9290a2f1-6a2e-4bd3-ada8-e419430cd53b",
+      "diagnosis": "Migraña sin aura..."
+    },
+    {
+      "id": "f0e18ff9-ad5f-49be-a013-a851fbda2776",
+      "created_at": "2025-12-19T16:47:12.916678+00:00",
+      "patient_name": "UNKNOWN",
+      "patient_id": "1bbd288f-58f7-4847-8761-f57b506143b4",
+      "doctor_name": "juan perez",
+      "doctor_id": "9290a2f1-6a2e-4bd3-ada8-e419430cd53b",
+      "diagnosis": "Migraña episódica si..."
+    }
+  ]
+}

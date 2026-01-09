@@ -6,8 +6,9 @@ import { useAuth } from "@/lib/auth";
 import { useNotifications } from "@/lib/notifications";
 import { useDoctorNotifications } from "@/lib/doctor-notifications";
 import { useSellerNotifications } from "@/lib/seller-notifications";
+import { useClinicNotifications } from "@/lib/clinic-notifications";
 import { useChatNotifications } from "@/lib/chat-notifications";
-import * as firestoreService from "@/lib/firestoreService";
+import * as supabaseService from "@/lib/supabaseService";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,7 +29,7 @@ import Link from "next/link";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { type AdminNotification, type DoctorNotification, type PatientNotification, type SellerNotification } from "@/lib/types";
+import { type AdminNotification, type DoctorNotification, type PatientNotification, type SellerNotification, type ClinicNotification } from "@/lib/types";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -70,49 +71,61 @@ export function Header() {
   const { notifications, unreadCount, markAllAsRead } = useNotifications();
   const { doctorNotifications, doctorUnreadCount, markDoctorNotificationsAsRead } = useDoctorNotifications();
   const { sellerNotifications, sellerUnreadCount, markSellerNotificationsAsRead } = useSellerNotifications();
+  const { clinicNotifications, clinicUnreadCount, markClinicNotificationsAsRead } = useClinicNotifications();
   const { unreadChatCount } = useChatNotifications();
   const pathname = usePathname();
 
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
-  
+
   const getAdminNotificationIcon = (type: AdminNotification['type']) => {
-    switch(type) {
-        case 'payment': return <DollarSign className="h-4 w-4 text-green-500" />;
-        case 'new_doctor': return <UserPlus className="h-4 w-4 text-blue-500" />;
-        case 'support_ticket': return <Ticket className="h-4 w-4 text-orange-500" />;
-        default: return <BellRing className="h-4 w-4 text-primary" />;
+    switch (type) {
+      case 'payment': return <DollarSign className="h-4 w-4 text-green-500" />;
+      case 'new_doctor': return <UserPlus className="h-4 w-4 text-blue-500" />;
+      case 'support_ticket': return <Ticket className="h-4 w-4 text-orange-500" />;
+      default: return <BellRing className="h-4 w-4 text-primary" />;
     }
   };
 
   const getPatientNotificationIcon = (type: PatientNotification['type']) => {
-    switch(type) {
-        case 'reminder': return <BellRing className="h-4 w-4 text-primary" />;
-        case 'payment_approved': return <CheckCircle className="h-4 w-4 text-green-500" />;
-        case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
-        case 'record_added': return <ClipboardList className="h-4 w-4 text-purple-500" />;
-        default: return <Bell className="h-4 w-4 text-primary" />;
+    switch (type) {
+      case 'reminder': return <BellRing className="h-4 w-4 text-primary" />;
+      case 'payment_approved': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'record_added': return <ClipboardList className="h-4 w-4 text-purple-500" />;
+      default: return <Bell className="h-4 w-4 text-primary" />;
     }
   };
 
   const getDoctorNotificationIcon = (type: DoctorNotification['type']) => {
-    switch(type) {
-        case 'payment_verification': return <DollarSign className="h-4 w-4 text-amber-500" />;
-        case 'patient_confirmed': return <CheckCircle className="h-4 w-4 text-green-500" />;
-        case 'patient_cancelled': return <XCircle className="h-4 w-4 text-red-500" />;
-        case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
-        case 'support_reply': return <LifeBuoy className="h-4 w-4 text-orange-500" />;
-        case 'subscription_update': return <CreditCard className="h-4 w-4 text-indigo-500" />;
-        default: return <BellRing className="h-4 w-4 text-primary" />;
+    switch (type) {
+      case 'payment_verification': return <DollarSign className="h-4 w-4 text-amber-500" />;
+      case 'patient_confirmed': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'patient_cancelled': return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'support_reply': return <LifeBuoy className="h-4 w-4 text-orange-500" />;
+      case 'subscription_update': return <CreditCard className="h-4 w-4 text-indigo-500" />;
+      default: return <BellRing className="h-4 w-4 text-primary" />;
     }
   };
 
   const getSellerNotificationIcon = (type: SellerNotification['type']) => {
-    switch(type) {
-        case 'payment_processed': return <DollarSign className="h-4 w-4 text-green-500" />;
-        case 'new_doctor_registered': return <UserPlus className="h-4 w-4 text-blue-500" />;
-        case 'support_reply': return <LifeBuoy className="h-4 w-4 text-orange-500" />;
-        default: return <BellRing className="h-4 w-4 text-primary" />;
+    switch (type) {
+      case 'payment_processed': return <DollarSign className="h-4 w-4 text-green-500" />;
+      case 'new_doctor_registered': return <UserPlus className="h-4 w-4 text-blue-500" />;
+      case 'support_reply': return <LifeBuoy className="h-4 w-4 text-orange-500" />;
+      default: return <BellRing className="h-4 w-4 text-primary" />;
+    }
+  };
+
+  const getClinicNotificationIcon = (type: ClinicNotification['type']) => {
+    switch (type) {
+      case 'new_appointment': return <BellRing className="h-4 w-4 text-primary" />;
+      case 'payment_verification': return <DollarSign className="h-4 w-4 text-amber-500" />;
+      case 'patient_confirmed': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'patient_cancelled': return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      default: return <BellRing className="h-4 w-4 text-primary" />;
     }
   };
 
@@ -124,50 +137,50 @@ export function Header() {
     }
 
     const [tickets, payments, doctors] = await Promise.all([
-        firestoreService.getSupportTickets(),
-        firestoreService.getDoctorPayments(),
-        firestoreService.getDoctors(),
+      supabaseService.getSupportTickets(),
+      supabaseService.getDoctorPayments(),
+      supabaseService.getDoctors(),
     ]);
 
     const paymentNotifications: AdminNotification[] = payments
-        .filter(p => p.status === 'Pending' && !p.readByAdmin)
-        .map(p => ({
-            id: `payment-${p.id}`,
-            type: 'payment',
-            title: 'Pago Pendiente de Aprobación',
-            description: `El Dr. ${p.doctorName} ha reportado un pago.`,
-            date: p.date,
-            read: false,
-            link: `/admin/dashboard?view=finances`
-        }));
-    
+      .filter(p => p.status === 'Pending' && !p.readByAdmin)
+      .map(p => ({
+        id: `payment-${p.id}`,
+        type: 'payment',
+        title: 'Pago Pendiente de Aprobación',
+        description: `El Dr. ${p.doctorName} ha reportado un pago.`,
+        date: p.date,
+        read: false,
+        link: `/admin/dashboard?view=finances`
+      }));
+
     const ticketNotifications: AdminNotification[] = tickets
-        .filter(t => !t.readByAdmin)
-        .map(t => ({
-            id: `ticket-${t.id}`,
-            type: 'support_ticket',
-            title: 'Nuevo Ticket de Soporte',
-            description: `De: ${t.userName}`,
-            date: t.date,
-            read: false,
-            link: `/admin/dashboard?view=support`
-        }));
-    
+      .filter(t => !t.readByAdmin)
+      .map(t => ({
+        id: `ticket-${t.id}`,
+        type: 'support_ticket',
+        title: 'Nuevo Ticket de Soporte',
+        description: `De: ${t.userName}`,
+        date: t.date,
+        read: false,
+        link: `/admin/dashboard?view=support`
+      }));
+
     const doctorNotifications: AdminNotification[] = doctors
-        .filter(d => !d.readByAdmin)
-        .map(d => ({
-            id: `doctor-${d.id}`,
-            type: 'new_doctor',
-            title: 'Nuevo Médico Registrado',
-            description: `El Dr. ${d.name} se ha unido a la plataforma.`,
-            date: d.joinDate,
-            read: false,
-            link: `/admin/dashboard?view=doctors`
-        }));
+      .filter(d => !d.readByAdmin)
+      .map(d => ({
+        id: `doctor-${d.id}`,
+        type: 'new_doctor',
+        title: 'Nuevo Médico Registrado',
+        description: `El Dr. ${d.name} se ha unido a la plataforma.`,
+        date: d.joinDate,
+        read: false,
+        link: `/admin/dashboard?view=doctors`
+      }));
 
     const allNotifications = [...paymentNotifications, ...ticketNotifications, ...doctorNotifications]
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
     setAdminNotifications(allNotifications);
     setAdminUnreadCount(allNotifications.filter(n => !n.read).length);
   }, [user]);
@@ -177,7 +190,7 @@ export function Header() {
     const interval = setInterval(fetchAdminNotifications, 60000); // Poll every 60 seconds
     return () => clearInterval(interval);
   }, [fetchAdminNotifications]);
-  
+
   const markAdminNotificationsAsRead = async () => {
     if (adminUnreadCount === 0) return;
 
@@ -188,27 +201,27 @@ export function Header() {
     const unreadPaymentIds = adminNotifications
       .filter(n => n.type === 'payment' && !n.read)
       .map(n => n.id.replace('payment-', ''));
-    
+
     const unreadDoctorIds = adminNotifications
       .filter(n => n.type === 'new_doctor' && !n.read)
       .map(n => n.id.replace('doctor-', ''));
 
     if (unreadTicketIds.length > 0 || unreadPaymentIds.length > 0 || unreadDoctorIds.length > 0) {
-        await firestoreService.batchUpdateNotificationsAsRead(unreadTicketIds, unreadPaymentIds, unreadDoctorIds);
-        
-        // Optimistically update the UI
-        setAdminUnreadCount(0);
-        setAdminNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      await supabaseService.batchUpdateNotificationsAsRead(unreadTicketIds, unreadPaymentIds, unreadDoctorIds);
+
+      // Optimistically update the UI
+      setAdminUnreadCount(0);
+      setAdminNotifications(prev => prev.map(n => ({ ...n, read: true })));
     }
   };
+
 
 
   const patientNavLinks = [
     { href: "/find-a-doctor", label: "Buscar Médico" },
     { href: "/ai-assistant", label: "Asistente IA" },
-    { href: "/dashboard", label: "Mis Citas", unreadCount: unreadChatCount },
   ];
-  
+
   const adminNavLinks = [
     { href: "/admin/dashboard?view=overview", label: "General" },
     { href: "/admin/dashboard?view=doctors", label: "Médicos" },
@@ -220,18 +233,24 @@ export function Header() {
     { href: "/admin/dashboard?view=settings", label: "Configuración" },
   ];
 
+  const isClinicDoctor = user?.role === 'doctor' && user?.isClinicEmployee;
+
   const doctorNavLinks = [
     { href: "/doctor/dashboard?view=appointments", label: "Citas" },
-    { href: "/doctor/dashboard?view=finances", label: "Finanzas" },
-    { href: "/doctor/dashboard?view=subscription", label: "Suscripción" },
-    { href: "/doctor/dashboard?view=profile", label: "Mi Perfil" },
-    { href: "/doctor/dashboard?view=services", label: "Servicios" },
-    { href: "/doctor/dashboard?view=schedule", label: "Horario" },
-    { href: "/doctor/dashboard?view=bank-details", label: "Cuentas" },
-    { href: "/doctor/dashboard?view=coupons", label: "Cupones" },
+    { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
     { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
+    { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },
+    { href: "/doctor/dashboard?view=profile", label: "Mi Perfil" },
     { href: "/doctor/dashboard?view=support", label: "Soporte" },
   ];
+
+  if (!isClinicDoctor) {
+    doctorNavLinks.splice(1, 0, { href: "/doctor/dashboard?view=finances", label: "Finanzas" });
+    doctorNavLinks.splice(3, 0, { href: "/doctor/dashboard?view=addresses", label: "Consultorios" });
+    doctorNavLinks.splice(5, 0, { href: "/doctor/dashboard?view=coupons", label: "Cupones" });
+    doctorNavLinks.splice(6, 0, { href: "/doctor/dashboard?view=bank-details", label: "Cuentas" });
+    doctorNavLinks.splice(8, 0, { href: "/doctor/dashboard?view=subscription", label: "Suscripción" });
+  }
 
   const sellerNavLinks = [
     { href: "/seller/dashboard?view=referrals", label: "Mis Referidos" },
@@ -241,18 +260,19 @@ export function Header() {
     { href: "/seller/dashboard?view=support", label: "Soporte" },
   ];
 
-  const dashboardHref = user?.role === 'doctor' 
-    ? '/doctor/dashboard' 
+  const dashboardHref = user?.role === 'doctor'
+    ? '/doctor/dashboard'
     : user?.role === 'seller'
-    ? '/seller/dashboard?view=referrals'
-    : user?.role === 'admin'
-    ? '/admin/dashboard?view=overview'
-    : '/dashboard';
+      ? '/seller/dashboard?view=referrals'
+      : user?.role === 'admin'
+        ? '/admin/dashboard?view=overview'
+        : '/dashboard';
 
   const isPatient = user?.role === 'patient';
   const isAdmin = user?.role === 'admin';
   const isDoctor = user?.role === 'doctor';
   const isSeller = user?.role === 'seller';
+  const isClinicOrSecretary = user?.role === 'clinic' || user?.role === 'secretary';
 
 
   return (
@@ -291,15 +311,10 @@ export function Header() {
             <Button key={link.href} variant="ghost" asChild className="relative">
               <Link href={link.href}>
                 {link.label}
-                {link.unreadCount && link.unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">
-                    {link.unreadCount}
-                  </span>
-                )}
               </Link>
             </Button>
           ))}
-          
+
           {user && isAdmin && (
             <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
               <PopoverTrigger asChild>
@@ -377,7 +392,7 @@ export function Header() {
               </PopoverContent>
             </Popover>
           )}
-          
+
           {user && isSeller && (
             <Popover onOpenChange={(open) => { if (open && sellerUnreadCount > 0) markSellerNotificationsAsRead(); }}>
               <PopoverTrigger asChild>
@@ -422,10 +437,49 @@ export function Header() {
             </Popover>
           )}
 
+          {user && isClinicOrSecretary && (
+            <Popover onOpenChange={(open) => { if (open && clinicUnreadCount > 0) markClinicNotificationsAsRead(); }}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative ml-2">
+                  <Bell className="h-5 w-5" />
+                  {clinicUnreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{clinicUnreadCount}</span>
+                    </span>
+                  )}
+                  <span className="sr-only">Ver notificaciones de clínica</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 md:w-96">
+                <div className="flex justify-between items-center mb-2 px-2">
+                  <h4 className="font-medium text-sm">Notificaciones</h4>
+                </div>
+                {clinicNotifications.length > 0 ? (
+                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                    {clinicNotifications.map(n => (
+                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
+                        <div className="mt-1">
+                          {getClinicNotificationIcon(n.type)}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-sm">{n.title}</p>
+                          <p className="text-xs text-muted-foreground">{n.description}</p>
+                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
+
           {user && isPatient && (
             <Popover onOpenChange={(open) => {
               if (open && unreadCount > 0) {
-                setTimeout(() => markAllAsRead(), 500); 
+                setTimeout(() => markAllAsRead(), 500);
               }
             }}>
               <PopoverTrigger asChild>
@@ -472,7 +526,7 @@ export function Header() {
           )}
 
           {user ? (
-             <DropdownMenu>
+            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-1">
                   <Avatar className="h-8 w-8">
@@ -497,7 +551,7 @@ export function Header() {
                     <span>Panel de Control</span>
                   </Link>
                 </DropdownMenuItem>
-                 {user.role === 'patient' && (
+                {user.role === 'patient' && (
                   <>
                     <DropdownMenuItem asChild>
                       <Link href="/profile">
@@ -514,12 +568,12 @@ export function Header() {
                   </>
                 )}
                 {user.role === 'seller' && (
-                   <DropdownMenuItem asChild>
-                      <Link href="/seller/profile">
-                        <User className="mr-2 h-4 w-4" />
-                        <span>Mi Perfil</span>
-                      </Link>
-                    </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/seller/profile">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Mi Perfil</span>
+                    </Link>
+                  </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
@@ -531,7 +585,7 @@ export function Header() {
           ) : (
             <div className="flex items-center gap-2 ml-4">
               <Button variant="ghost" asChild>
-                <Link href="/auth/login">
+                <Link href="/login">
                   <LogIn className="mr-2 h-4 w-4" /> Iniciar Sesión
                 </Link>
               </Button>
@@ -566,7 +620,7 @@ export function Header() {
                 <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {adminUnreadCount > 0 && (
-                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                       <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{adminUnreadCount}</span>
                     </span>
                   )}
@@ -601,40 +655,40 @@ export function Header() {
 
           {user && isDoctor && (
             <Popover onOpenChange={(open) => { if (open && doctorUnreadCount > 0) markDoctorNotificationsAsRead(); }}>
-                <PopoverTrigger asChild>
+              <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5" />
-                    {doctorUnreadCount > 0 && (
+                  <Bell className="h-5 w-5" />
+                  {doctorUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{doctorUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{doctorUnreadCount}</span>
                     </span>
-                    )}
-                    <span className="sr-only">Ver notificaciones de doctor</span>
+                  )}
+                  <span className="sr-only">Ver notificaciones de doctor</span>
                 </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-80">
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80">
                 <div className="flex justify-between items-center mb-2 px-2">
-                    <h4 className="font-medium text-sm">Notificaciones</h4>
+                  <h4 className="font-medium text-sm">Notificaciones</h4>
                 </div>
                 {doctorNotifications.length > 0 ? (
-                    <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1 max-h-80 overflow-y-auto">
                     {doctorNotifications.map(n => (
-                        <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
+                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
                         <div className="mt-1">
-                            {getDoctorNotificationIcon(n.type)}
+                          {getDoctorNotificationIcon(n.type)}
                         </div>
                         <div className="flex-1">
-                            <p className="font-semibold text-sm">{n.title}</p>
-                            <p className="text-xs text-muted-foreground">{n.description}</p>
-                            <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                          <p className="font-semibold text-sm">{n.title}</p>
+                          <p className="text-xs text-muted-foreground">{n.description}</p>
+                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
                         </div>
-                        </Link>
+                      </Link>
                     ))}
-                    </div>
+                  </div>
                 ) : (
-                    <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
                 )}
-                </PopoverContent>
+              </PopoverContent>
             </Popover>
           )}
 
@@ -644,7 +698,7 @@ export function Header() {
                 <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {sellerUnreadCount > 0 && (
-                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                       <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{sellerUnreadCount}</span>
                     </span>
                   )}
@@ -735,7 +789,7 @@ export function Header() {
             </SheetTrigger>
             <SheetContent side="right" className="overflow-y-auto">
               <SheetHeader className="text-left">
-                 <SheetTitle className="sr-only">Menú</SheetTitle>
+                <SheetTitle className="sr-only">Menú</SheetTitle>
               </SheetHeader>
               <div className="flex flex-col gap-4 py-6 px-2">
                 <div className="flex items-center gap-2 font-bold text-base mb-3">
@@ -766,7 +820,7 @@ export function Header() {
                     ))}
                   </div>
                 )}
-                 {user?.role === 'seller' && pathname.startsWith('/seller') && (
+                {user?.role === 'seller' && pathname.startsWith('/seller') && (
                   <div className="flex flex-col gap-2">
                     <p className="text-muted-foreground font-semibold text-xs mb-1">PANEL VENDEDORA</p>
                     {sellerNavLinks.map((link) => (
@@ -836,7 +890,7 @@ export function Header() {
                     <div className="space-y-2">
                       <SheetClose asChild>
                         <Button variant="outline" className="w-full h-8 text-sm" asChild>
-                          <Link href="/auth/login">Iniciar Sesión</Link>
+                          <Link href="/login">Iniciar Sesión</Link>
                         </Button>
                       </SheetClose>
                       <SheetClose asChild>
@@ -870,17 +924,17 @@ const patientBottomNavItems = [
 ];
 
 const publicBottomNavItems = [
-    { href: "/", label: "Inicio", icon: Home },
-    { href: "/find-a-doctor", label: "Buscar", icon: Search },
-    { href: "/ai-assistant", label: "Asistente", icon: Bot },
-    { href: "/auth/login", label: "Acceder", icon: LogIn },
+  { href: "/", label: "Inicio", icon: Home },
+  { href: "/find-a-doctor", label: "Buscar", icon: Search },
+  { href: "/ai-assistant", label: "Asistente", icon: Bot },
+  { href: "/login", label: "Acceder", icon: LogIn },
 ];
 
 
 export function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuth();
-  
+
   const isPublicPage = ['/', '/find-a-doctor', '/ai-assistant'].includes(pathname);
 
   let navItems;

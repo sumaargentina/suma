@@ -1,29 +1,10 @@
-console.log('GOOGLE_APPLICATION_CREDENTIALS:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
-
-
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js';
 
-// Inicializar Firebase Admin si no está inicializado
-if (!getApps().length) {
-  let adminConfig;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    adminConfig = {
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-    };
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    // En local, GOOGLE_APPLICATION_CREDENTIALS debe estar configurada
-    adminConfig = {};
-  }
-  if (adminConfig) {
-    initializeApp(adminConfig);
-  } else {
-    console.error('Firebase Admin no inicializado: variables de entorno faltantes');
-  }
-}
-const db = getFirestore();
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_PASS = process.env.GMAIL_PASS;
@@ -45,15 +26,30 @@ export async function POST(req: NextRequest) {
 
     // Generar token aleatorio y expiración (1 hora)
     const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const expiresAt = Date.now() + 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-    // Guardar token en Firestore
-    await db.collection('passwordResets').doc(email).set({
+    // Guardar token en Supabase (tabla password_resets)
+    // Primero intentamos borrar tokens anteriores para este email
+    await supabase.from('password_resets').delete().eq('email', email);
+
+    // Insertar nuevo token
+    const { error: dbError } = await supabase.from('password_resets').insert({
+      email,
       token,
-      expiresAt,
+      expires_at: expiresAt,
     });
 
-    // URL de recuperación (ajusta la ruta según tu frontend)
+    if (dbError) {
+      console.error('Error guardando token en Supabase:', dbError);
+      // Si la tabla no existe, loguear pero no fallar catastróficamente (para desarrollo)
+      if (dbError.code === '42P01') { // undefined_table
+        console.warn('Tabla password_resets no existe. Crea la tabla en Supabase.');
+      } else {
+        throw new Error('Error de base de datos');
+      }
+    }
+
+    // URL de recuperación
     const resetUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
     // Enviar correo
@@ -87,4 +83,4 @@ export async function POST(req: NextRequest) {
     console.error('Error enviando correo de recuperación:', error);
     return NextResponse.json({ error: 'Error enviando correo' }, { status: 500 });
   }
-} 
+}

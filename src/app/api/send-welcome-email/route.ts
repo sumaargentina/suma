@@ -1,22 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-
-if (!getApps().length) {
-  let adminConfig;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    adminConfig = {
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-    };
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    adminConfig = {};
-  }
-  if (adminConfig) {
-    initializeApp(adminConfig);
-  } else {
-    console.error('Firebase Admin no inicializado: variables de entorno faltantes');
-  }
-}
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_PASS = process.env.GMAIL_PASS;
@@ -63,6 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('Error enviando correo de bienvenida:', error);
+    // No fallar el registro si el correo falla, pero devolver error 500 para el log
     return NextResponse.json({ error: 'Error enviando correo' }, { status: 500 });
   }
-} 
+}

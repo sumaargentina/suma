@@ -13,6 +13,7 @@ import { FinancesTab } from './tabs/finances-tab';
 import { MarketingTab } from './tabs/marketing-tab';
 import { SupportTab } from './tabs/support-tab';
 import { SettingsTab } from './tabs/settings-tab';
+import { ClinicsTab } from './tabs/clinics-tab';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 
@@ -83,6 +84,8 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
         return <SupportTab />;
       case 'settings':
         return <SettingsTab />;
+      case 'clinics':
+        return <ClinicsTab />;
       default:
         return <OverviewTab />;
     }
@@ -101,13 +104,14 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
           <Button variant={currentTab === 'sellers' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=sellers')}>Vendedoras</Button>
           <Button variant={currentTab === 'patients' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=patients')}>Pacientes</Button>
           <Button variant={currentTab === 'finances' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=finances')}>Finanzas</Button>
+          <Button variant={currentTab === 'clinics' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=clinics')}>Clínicas</Button>
           <Button variant={currentTab === 'marketing' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=marketing')}>Marketing</Button>
           <Button variant={currentTab === 'support' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=support')}>Soporte</Button>
           <Button variant={currentTab === 'settings' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=settings')}>Configuración</Button>
           <Button variant={currentTab === 'audit' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=audit')}>Historial</Button>
         </div>
       </div>
-      
+
       {renderContent()}
     </div>
   );

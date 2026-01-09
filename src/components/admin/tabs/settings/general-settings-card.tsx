@@ -10,7 +10,7 @@ import { } from "@/components/ui/textarea";
 import { Save, Upload, X, HelpCircle, CheckCircle, AlertCircle, Image as ImageIcon, Loader2, Settings, MapPin, CreditCard, Stethoscope, Shield, AlertTriangle, Calendar, Lock } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import type { AppSettings } from '@/lib/types';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
@@ -33,26 +33,27 @@ interface GeneralSettingsCardProps {
 }
 
 const CURRENCIES = [
-  { code: 'USD', name: 'Dólar Estadounidense ($)', symbol: '$' },
+  { code: 'ARS', name: 'Peso Argentino ($)', symbol: '$' },
+  { code: 'USD', name: 'Dólar Estadounidense (US$)', symbol: 'US$' },
   { code: 'VES', name: 'Bolívar Soberano (Bs)', symbol: 'Bs' },
 ];
 
 const TIMEZONES = [
-  { value: 'America/Caracas', name: 'Caracas, Venezuela (GMT-4)' },
+  { value: 'America/Argentina/Buenos_Aires', name: 'Buenos Aires, Argentina (GMT-3)' },
+  { value: 'America/Caracas', name: 'Caracas (GMT-4)' },
   { value: 'America/Santo_Domingo', name: 'Santo Domingo (GMT-4)' },
   { value: 'America/New_York', name: 'Nueva York (GMT-5/-4)' },
   { value: 'America/Mexico_City', name: 'Ciudad de México (GMT-6/-5)' },
   { value: 'America/Bogota', name: 'Bogotá (GMT-5)' },
   { value: 'America/Lima', name: 'Lima (GMT-5)' },
   { value: 'America/Santiago', name: 'Santiago (GMT-3/-4)' },
-  { value: 'America/Argentina/Buenos_Aires', name: 'Buenos Aires (GMT-3)' },
   { value: 'America/Sao_Paulo', name: 'São Paulo (GMT-3/-2)' },
   { value: 'Europe/Madrid', name: 'Madrid (GMT+1/+2)' },
 ];
 
-export function GeneralSettingsCard({ 
-  logoUrl, 
-  heroImageUrl, 
+export function GeneralSettingsCard({
+  logoUrl,
+  heroImageUrl,
   currency = 'USD',
   timezone = 'America/Santo_Domingo',
   beautySpecialties = [],
@@ -79,7 +80,7 @@ export function GeneralSettingsCard({
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new window.Image();
-      
+
       img.onload = () => {
         // Calcular nuevas dimensiones manteniendo proporción
         let { width, height } = img;
@@ -87,13 +88,13 @@ export function GeneralSettingsCard({
           height = (height * maxWidth) / width;
           width = maxWidth;
         }
-        
+
         canvas.width = width;
         canvas.height = height;
-        
+
         // Dibujar imagen comprimida
         ctx?.drawImage(img, 0, 0, width, height);
-        
+
         // Convertir a blob con calidad reducida
         canvas.toBlob(
           (blob) => {
@@ -111,7 +112,7 @@ export function GeneralSettingsCard({
           quality
         );
       };
-      
+
       img.onerror = () => reject(new Error('Error al cargar imagen'));
       img.src = URL.createObjectURL(file);
     });
@@ -129,7 +130,7 @@ export function GeneralSettingsCard({
       const { width, quality } = attempts[i];
       try {
         const compressedFile = await compressImage(file, width, quality);
-        
+
         // Verificar que el archivo comprimido no sea demasiado grande
         if (compressedFile.size <= 500 * 1024) {
           console.log(`Compresión exitosa en intento ${i + 1}:`, {
@@ -145,204 +146,206 @@ export function GeneralSettingsCard({
         console.warn(`Intento ${i + 1} falló:`, error);
       }
     }
-    
+
     throw new Error('No se pudo comprimir la imagen lo suficiente. Intenta con una imagen más pequeña.');
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'hero') => {
-      const file = event.target.files?.[0];
-      if (!file) {
-          toast({ variant: 'destructive', title: 'Error', description: 'No se seleccionó ningún archivo.' });
-          return;
-      }
+    const file = event.target.files?.[0];
+    if (!file) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se seleccionó ningún archivo.' });
+      return;
+    }
 
-      // Validar tipo de archivo
-      if (!file.type.startsWith('image/')) {
-          toast({ variant: 'destructive', title: 'Error', description: `Por favor selecciona un archivo de imagen válido. Tipo actual: ${file.type}` });
-          return;
-      }
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      toast({ variant: 'destructive', title: 'Error', description: `Por favor selecciona un archivo de imagen válido. Tipo actual: ${file.type}` });
+      return;
+    }
 
-      setIsUploading(true);
-      try {
-          console.log('Iniciando subida de imagen:', { type, fileName: file.name, fileSize: file.size });
-          
-          if (type === 'hero') {
-              // Para imagen hero: usar alta calidad (máximo 10MB)
-              if (file.size > 10 * 1024 * 1024) {
-                  const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-                  toast({ variant: 'destructive', title: 'Error', description: `La imagen hero no puede ser mayor a 10MB. Tamaño actual: ${sizeMB}MB` });
-                  return;
-              }
-              
-              console.log('🎨 Subiendo imagen hero con alta calidad...');
-              const imageUrl = await firestoreService.saveImageLocally(file, type);
-              
-              await onSave('heroImageUrl', imageUrl);
-              setHeroUrlInput(imageUrl);
-              setHeroValidation('valid');
-              
-              toast({ 
-                  title: 'Imagen Hero Guardada', 
-                  description: 'La imagen principal ha sido guardada exitosamente.' 
-              });
-          } else {
-              // Para logo: mantener la compresión original (máximo 5MB)
-              if (file.size > 5 * 1024 * 1024) {
-                  const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-                  toast({ variant: 'destructive', title: 'Error', description: `La imagen del logo no puede ser mayor a 5MB. Tamaño actual: ${sizeMB}MB` });
-                  return;
-              }
-              
-              // Comprimir imagen antes de convertir a base64 (como estaba antes)
-              const compressedFile = await compressImageWithRetry(file, type);
-              console.log('Imagen comprimida:', { 
-                  originalSize: file.size, 
-                  compressedSize: compressedFile.size,
-                  reduction: `${((1 - compressedFile.size / file.size) * 100).toFixed(1)}%`
-              });
-              
-              // Verificar que el archivo comprimido no sea demasiado grande (máximo 500KB para base64)
-              if (compressedFile.size > 500 * 1024) {
-                  throw new Error('La imagen es demasiado grande. Intenta con una imagen más pequeña o de menor resolución.');
-              }
-              
-              // Convertir imagen comprimida a base64
-              const base64Image = await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = (e) => {
-                      resolve(e.target?.result as string);
-                  };
-                  reader.onerror = reject;
-                  reader.readAsDataURL(compressedFile);
-              });
-              
-              // Verificar que el base64 no exceda el límite de Firestore (1MB)
-              if (base64Image.length > 1000000) {
-                  throw new Error('La imagen es demasiado grande incluso después de la compresión. Intenta con una imagen más pequeña.');
-              }
-              
-              console.log('Imagen convertida a base64 exitosamente');
-              
-              await onSave('logoUrl', base64Image);
-              setLogoUrlInput(base64Image);
-              setLogoValidation('valid');
-              
-              toast({ title: 'Logo Subido', description: 'El logo ha sido comprimido y actualizado exitosamente.' });
-          }
-      } catch (error) {
-          console.error('Error al guardar configuración:', error);
-          const errorMessage = 'No se pudo procesar la imagen. Intenta de nuevo.';
-          
-          toast({ variant: 'destructive', title: 'Error', description: errorMessage });
-      } finally {
-          setIsUploading(false);
-          // Limpiar el input de archivo
-          if (event.target) {
-              event.target.value = '';
-          }
+    setIsUploading(true);
+    try {
+      console.log('Iniciando subida de imagen:', { type, fileName: file.name, fileSize: file.size });
+
+      if (type === 'hero') {
+        // Para imagen hero: usar alta calidad (máximo 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+          toast({ variant: 'destructive', title: 'Error', description: `La imagen hero no puede ser mayor a 10MB. Tamaño actual: ${sizeMB}MB` });
+          return;
+        }
+
+        console.log('🎨 Subiendo imagen hero con alta calidad...');
+        // Usar función uploadImage directamente con path y maxSizeMB
+        const path = `main-page/hero-${Date.now()}.${file.name.split('.').pop()}`;
+        const imageUrl = await supabaseService.uploadImage(file, path, 10);
+
+        await onSave('heroImageUrl', imageUrl);
+        setHeroUrlInput(imageUrl);
+        setHeroValidation('valid');
+
+        toast({
+          title: 'Imagen Hero Guardada',
+          description: 'La imagen principal ha sido guardada exitosamente.'
+        });
+      } else {
+        // Para logo: mantener la compresión original (máximo 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+          toast({ variant: 'destructive', title: 'Error', description: `La imagen del logo no puede ser mayor a 5MB. Tamaño actual: ${sizeMB}MB` });
+          return;
+        }
+
+        // Comprimir imagen antes de convertir a base64 (como estaba antes)
+        const compressedFile = await compressImageWithRetry(file, type);
+        console.log('Imagen comprimida:', {
+          originalSize: file.size,
+          compressedSize: compressedFile.size,
+          reduction: `${((1 - compressedFile.size / file.size) * 100).toFixed(1)}%`
+        });
+
+        // Verificar que el archivo comprimido no sea demasiado grande (máximo 500KB para base64)
+        if (compressedFile.size > 500 * 1024) {
+          throw new Error('La imagen es demasiado grande. Intenta con una imagen más pequeña o de menor resolución.');
+        }
+
+        // Convertir imagen comprimida a base64
+        const base64Image = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            resolve(e.target?.result as string);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(compressedFile);
+        });
+
+        // Verificar que el base64 no exceda el límite de Firestore (1MB)
+        if (base64Image.length > 1000000) {
+          throw new Error('La imagen es demasiado grande incluso después de la compresión. Intenta con una imagen más pequeña.');
+        }
+
+        console.log('Imagen convertida a base64 exitosamente');
+
+        await onSave('logoUrl', base64Image);
+        setLogoUrlInput(base64Image);
+        setLogoValidation('valid');
+
+        toast({ title: 'Logo Subido', description: 'El logo ha sido comprimido y actualizado exitosamente.' });
       }
+    } catch (error) {
+      console.error('Error al guardar configuración:', error);
+      const errorMessage = 'No se pudo procesar la imagen. Intenta de nuevo.';
+
+      toast({ variant: 'destructive', title: 'Error', description: errorMessage });
+    } finally {
+      setIsUploading(false);
+      // Limpiar el input de archivo
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
   };
 
   const validateImageUrl = async (url: string): Promise<boolean> => {
-      try {
-          const response = await fetch(url, { method: 'HEAD' });
-          const contentType = response.headers.get('content-type');
-          return contentType?.startsWith('image/') || false;
-      } catch {
-          return false;
-      }
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      const contentType = response.headers.get('content-type');
+      return contentType?.startsWith('image/') || false;
+    } catch {
+      return false;
+    }
   };
 
   const handleLogoUrlChange = async (url: string) => {
-      setLogoUrlInput(url);
-      if (!url.trim()) {
-          setLogoValidation('idle');
-          return;
-      }
-      
-      setLogoValidation('validating');
-      const isValid = await validateImageUrl(url);
-      setLogoValidation(isValid ? 'valid' : 'invalid');
+    setLogoUrlInput(url);
+    if (!url.trim()) {
+      setLogoValidation('idle');
+      return;
+    }
+
+    setLogoValidation('validating');
+    const isValid = await validateImageUrl(url);
+    setLogoValidation(isValid ? 'valid' : 'invalid');
   };
 
   const handleHeroUrlChange = async (url: string) => {
-      setHeroUrlInput(url);
-      if (!url.trim()) {
-          setHeroValidation('idle');
-          return;
-      }
-      
-      setHeroValidation('validating');
-      const isValid = await validateImageUrl(url);
-      setHeroValidation(isValid ? 'valid' : 'invalid');
+    setHeroUrlInput(url);
+    if (!url.trim()) {
+      setHeroValidation('idle');
+      return;
+    }
+
+    setHeroValidation('validating');
+    const isValid = await validateImageUrl(url);
+    setHeroValidation(isValid ? 'valid' : 'invalid');
   };
 
   const handleSaveGeneral = async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      setIsSaving(true);
-      
-      try {
-          const formData = new FormData(e.currentTarget);
-          
-          const updates = {
-              logoUrl: logoUrlInput,
-              heroImageUrl: heroUrlInput,
-              currency: formData.get('currency') as string,
-              timezone: formData.get('timezone') as string,
-              billingCycleStartDay: Number(formData.get('billingCycleStartDay')),
-              billingCycleEndDay: Number(formData.get('billingCycleEndDay')),
-          };
+    e.preventDefault();
+    setIsSaving(true);
 
-          for (const [key, value] of Object.entries(updates)) {
-              if (value !== undefined && value !== null) {
-                  await onSave(key as keyof AppSettings, value);
-              }
-          }
+    try {
+      const formData = new FormData(e.currentTarget);
 
-          toast({ title: 'Configuración Guardada', description: 'Los ajustes generales han sido actualizados.' });
-      } catch (error) {
-          console.error('Error al guardar configuración:', error);
-          toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la configuración.' });
-      } finally {
-          setIsSaving(false);
+      const updates = {
+        logoUrl: logoUrlInput,
+        heroImageUrl: heroUrlInput,
+        currency: formData.get('currency') as string,
+        timezone: formData.get('timezone') as string,
+        billingCycleStartDay: Number(formData.get('billingCycleStartDay')),
+        billingCycleEndDay: Number(formData.get('billingCycleEndDay')),
+      };
+
+      for (const [key, value] of Object.entries(updates)) {
+        if (value !== undefined && value !== null) {
+          await onSave(key as keyof AppSettings, value);
+        }
       }
+
+      toast({ title: 'Configuración Guardada', description: 'Los ajustes generales han sido actualizados.' });
+    } catch (error) {
+      console.error('Error al guardar configuración:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo guardar la configuración.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddBeautySpecialty = async (specialty: string) => {
-      if (!onAddBeautySpecialty) return;
-      
-      try {
-          await onAddBeautySpecialty(specialty);
-          toast({ title: 'Especialidad Añadida', description: `La especialidad "${specialty}" ha sido añadida.` });
-      } catch {
-          toast({ variant: 'destructive', title: 'Error', description: 'No se pudo añadir la especialidad.' });
-      }
+    if (!onAddBeautySpecialty) return;
+
+    try {
+      await onAddBeautySpecialty(specialty);
+      toast({ title: 'Especialidad Añadida', description: `La especialidad "${specialty}" ha sido añadida.` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo añadir la especialidad.' });
+    }
   };
 
   const handleRemoveBeautySpecialty = async (specialty: string) => {
-      if (!onRemoveBeautySpecialty) return;
-      
-      try {
-          await onRemoveBeautySpecialty(specialty);
-          toast({ title: 'Especialidad Eliminada', description: `La especialidad "${specialty}" ha sido eliminada.` });
-      } catch {
-          toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la especialidad.' });
-      }
+    if (!onRemoveBeautySpecialty) return;
+
+    try {
+      await onRemoveBeautySpecialty(specialty);
+      toast({ title: 'Especialidad Eliminada', description: `La especialidad "${specialty}" ha sido eliminada.` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar la especialidad.' });
+    }
   };
 
   const getValidationIcon = (status: 'idle' | 'validating' | 'valid' | 'invalid') => {
-      switch (status) {
-          case 'validating':
-              return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
-          case 'valid':
-              return <CheckCircle className="h-4 w-4 text-green-500" />;
-          case 'invalid':
-              return <AlertCircle className="h-4 w-4 text-red-500" />;
-          default:
-              return null;
-      }
+    switch (status) {
+      case 'validating':
+        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      case 'valid':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'invalid':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return null;
+    }
   };
-  
+
   return (
     <Card className="border-primary/10">
       <form onSubmit={handleSaveGeneral}>
@@ -355,7 +358,7 @@ export function GeneralSettingsCard({
             Ajustes globales de la plataforma, incluyendo apariencia, moneda, zona horaria y ciclo de facturación.
           </CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-8">
           {/* Imágenes - Mejorado para móvil */}
           <div className="space-y-6">
@@ -363,14 +366,14 @@ export function GeneralSettingsCard({
               <ImageIcon className="h-5 w-5 text-primary" />
               <h3 className="text-lg font-semibold">Imágenes de la Plataforma</h3>
             </div>
-            
+
             <Alert className="border-blue-200 bg-blue-50/30">
               <HelpCircle className="h-4 w-4 text-blue-600" />
               <AlertDescription className="text-blue-800">
                 <strong>Configuración de Imágenes:</strong> El logo se comprime para optimizar almacenamiento (máx. 5MB). La imagen principal (hero) mantiene alta calidad (máx. 10MB). Formatos: JPG, PNG, GIF, WebP.
               </AlertDescription>
             </Alert>
-            
+
             <div className="grid grid-cols-1 gap-6">
               {/* Logo */}
               <div className="space-y-4 p-4 bg-secondary/20 rounded-lg">
@@ -378,20 +381,20 @@ export function GeneralSettingsCard({
                   <Label htmlFor="logoUrl" className="text-base font-medium">Logo de la Plataforma</Label>
                   {getValidationIcon(logoValidation)}
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Input 
-                      id="logoUrl" 
-                      name="logoUrl" 
+                    <Input
+                      id="logoUrl"
+                      name="logoUrl"
                       value={logoUrlInput}
                       onChange={(e) => handleLogoUrlChange(e.target.value)}
                       placeholder="URL de la imagen o sube un archivo"
                       className="flex-1"
                     />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => logoFileInputRef.current?.click()}
                       disabled={isUploading}
                       className="shrink-0"
@@ -409,7 +412,7 @@ export function GeneralSettingsCard({
                       )}
                     </Button>
                   </div>
-                  
+
                   <input
                     ref={logoFileInputRef}
                     type="file"
@@ -417,7 +420,7 @@ export function GeneralSettingsCard({
                     className="hidden"
                     onChange={(e) => handleFileUpload(e, 'logo')}
                   />
-                  
+
                   {logoUrl && (
                     <div className="flex items-center gap-3 p-3 bg-background rounded-lg border">
                       <Image src={logoUrl} alt="Logo actual" width={64} height={32} className="h-8 w-auto" unoptimized />
@@ -436,20 +439,20 @@ export function GeneralSettingsCard({
                   <Label htmlFor="heroImageUrl" className="text-base font-medium">Imagen Principal (Hero)</Label>
                   {getValidationIcon(heroValidation)}
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Input 
-                      id="heroImageUrl" 
-                      name="heroImageUrl" 
+                    <Input
+                      id="heroImageUrl"
+                      name="heroImageUrl"
                       value={heroUrlInput}
                       onChange={(e) => handleHeroUrlChange(e.target.value)}
                       placeholder="URL de la imagen o sube un archivo"
                       className="flex-1"
                     />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => heroFileInputRef.current?.click()}
                       disabled={isUploading}
                       className="shrink-0"
@@ -467,7 +470,7 @@ export function GeneralSettingsCard({
                       )}
                     </Button>
                   </div>
-                  
+
                   <input
                     ref={heroFileInputRef}
                     type="file"
@@ -475,7 +478,7 @@ export function GeneralSettingsCard({
                     className="hidden"
                     onChange={(e) => handleFileUpload(e, 'hero')}
                   />
-                  
+
                   {heroImageUrl && (
                     <div className="flex items-center gap-3 p-3 bg-background rounded-lg border">
                       <Image src={heroImageUrl} alt="Imagen principal actual" width={192} height={48} className="h-12 w-auto rounded" unoptimized />
@@ -498,7 +501,7 @@ export function GeneralSettingsCard({
               <MapPin className="h-5 w-5 text-primary" />
               Configuración Regional
             </h3>
-            
+
             <div className="grid grid-cols-1 gap-6">
               <div className="space-y-3">
                 <Label htmlFor="currency" className="text-base font-medium">Moneda de la Plataforma</Label>
@@ -548,7 +551,7 @@ export function GeneralSettingsCard({
             <p className="text-sm text-muted-foreground">
               Define los días del mes en que se procesan los pagos de suscripción de los médicos.
             </p>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <Label htmlFor="billingCycleStartDay" className="text-base font-medium">Día de Inicio del Ciclo</Label>
@@ -557,7 +560,7 @@ export function GeneralSettingsCard({
                     <SelectValue placeholder="Selecciona el día" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({length: 28}, (_, i) => i + 1).map(day => (
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
                       <SelectItem key={day} value={day.toString()}>
                         {day}
                       </SelectItem>
@@ -573,7 +576,7 @@ export function GeneralSettingsCard({
                     <SelectValue placeholder="Selecciona el día" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({length: 28}, (_, i) => i + 1).map(day => (
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
                       <SelectItem key={day} value={day.toString()}>
                         {day}
                       </SelectItem>
@@ -595,7 +598,7 @@ export function GeneralSettingsCard({
             <p className="text-sm text-muted-foreground">
               Selecciona las especialidades médicas que aparecerán como &quot;Especialidades de Belleza&quot; en la búsqueda de médicos.
             </p>
-            
+
             <div className="space-y-4">
               {/* Especialidades disponibles para seleccionar */}
               <div className="space-y-3">
@@ -610,8 +613,8 @@ export function GeneralSettingsCard({
                         key={specialty}
                         className={cn(
                           "flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors",
-                          isSelected 
-                            ? "bg-primary/10 border-primary text-primary" 
+                          isSelected
+                            ? "bg-primary/10 border-primary text-primary"
                             : "bg-secondary/50 border-border hover:bg-secondary"
                         )}
                         onClick={() => {
@@ -638,7 +641,7 @@ export function GeneralSettingsCard({
                     );
                   })}
                 </div>
-                
+
                 {allSpecialties.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Stethoscope className="h-8 w-8 mx-auto mb-2" />
@@ -681,7 +684,7 @@ export function GeneralSettingsCard({
               <Shield className="h-5 w-5 text-blue-600" />
               <h3 className="text-lg font-semibold">Gestión de Suscripciones</h3>
             </div>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Card className="border-amber-200 bg-amber-50/30">
                 <CardHeader className="pb-3">
@@ -694,8 +697,8 @@ export function GeneralSettingsCard({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
-                    onClick={() => {}}
+                  <Button
+                    onClick={() => { }}
                     disabled={false}
                     size="sm"
                     className="bg-amber-600 hover:bg-amber-700 w-full sm:w-auto"
@@ -717,8 +720,8 @@ export function GeneralSettingsCard({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
-                    onClick={() => {}}
+                  <Button
+                    onClick={() => { }}
                     disabled={false}
                     size="sm"
                     className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
@@ -749,7 +752,7 @@ export function GeneralSettingsCard({
               <Lock className="h-5 w-5 text-purple-600" />
               <h3 className="text-lg font-semibold">Seguridad de Contraseñas</h3>
             </div>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Card className="border-purple-200 bg-purple-50/30">
                 <CardHeader className="pb-3">
@@ -762,7 +765,7 @@ export function GeneralSettingsCard({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
+                  <Button
                     onClick={() => window.open('/admin/password-migration', '_blank')}
                     size="sm"
                     className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto"
@@ -784,7 +787,7 @@ export function GeneralSettingsCard({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
+                  <Button
                     onClick={() => window.open('/admin/password-migration', '_blank')}
                     size="sm"
                     className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
@@ -807,13 +810,13 @@ export function GeneralSettingsCard({
             </div>
           </div>
         </CardContent>
-        
+
         <CardFooter className="flex flex-col sm:flex-row justify-between gap-4">
           <div className="text-sm text-muted-foreground text-center sm:text-left">
             Los cambios se guardan automáticamente al hacer clic en &quot;Guardar Cambios&quot;
           </div>
           <Button type="submit" disabled={isSaving || isUploading} className="w-full sm:w-auto">
-            <Save className="mr-2 h-4 w-4"/>
+            <Save className="mr-2 h-4 w-4" />
             {isSaving ? 'Guardando...' : 'Guardar Cambios'}
           </Button>
         </CardFooter>

@@ -1,5 +1,5 @@
 import { hashPassword, isPasswordHashed } from './password-utils';
-import * as firestoreService from './firestoreService';
+import * as supabaseService from './supabaseService';
 
 /**
  * Script de migración para encriptar contraseñas existentes
@@ -8,13 +8,13 @@ import * as firestoreService from './firestoreService';
  */
 export async function migratePasswords() {
   console.log('🔐 Iniciando migración de contraseñas...');
-  
+
   try {
     // Obtener todos los usuarios
     const [patients, doctors, sellers] = await Promise.all([
-      firestoreService.getPatients(),
-      firestoreService.getDoctors(),
-      firestoreService.getSellers(),
+      supabaseService.getPatients(),
+      supabaseService.getDoctors(),
+      supabaseService.getSellers(),
     ]);
 
     let totalUsers = 0;
@@ -39,7 +39,7 @@ export async function migratePasswords() {
 
       try {
         const hashedPassword = await hashPassword(patient.password);
-        await firestoreService.updatePatient(patient.id, { password: hashedPassword });
+        await supabaseService.updatePatient(patient.id, { password: hashedPassword });
         console.log(`🔐 Paciente ${patient.name} (${patient.email}) migrado exitosamente`);
         migratedUsers++;
       } catch (error) {
@@ -65,7 +65,7 @@ export async function migratePasswords() {
 
       try {
         const hashedPassword = await hashPassword(doctor.password);
-        await firestoreService.updateDoctor(doctor.id, { password: hashedPassword });
+        await supabaseService.updateDoctor(doctor.id, { password: hashedPassword });
         console.log(`🔐 Doctor ${doctor.name} (${doctor.email}) migrado exitosamente`);
         migratedUsers++;
       } catch (error) {
@@ -91,7 +91,7 @@ export async function migratePasswords() {
 
       try {
         const hashedPassword = await hashPassword(seller.password);
-        await firestoreService.updateSeller(seller.id, { password: hashedPassword });
+        await supabaseService.updateSeller(seller.id, { password: hashedPassword });
         console.log(`🔐 Vendedor ${seller.name} (${seller.email}) migrado exitosamente`);
         migratedUsers++;
       } catch (error) {
@@ -104,7 +104,7 @@ export async function migratePasswords() {
     console.log(`Total de usuarios procesados: ${totalUsers}`);
     console.log(`Usuarios migrados: ${migratedUsers}`);
     console.log(`Usuarios omitidos (ya encriptados o sin contraseña): ${skippedUsers}`);
-    
+
     if (migratedUsers > 0) {
       console.log('\n✅ Migración completada exitosamente');
       console.log('🔒 Todas las contraseñas ahora están encriptadas de forma segura');
@@ -114,7 +114,7 @@ export async function migratePasswords() {
 
   } catch (error) {
     console.error('❌ Error durante la migración:', error);
-    throw error;
+    throw new Error(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -123,12 +123,12 @@ export async function migratePasswords() {
  */
 export async function checkPasswordEncryptionStatus() {
   console.log('🔍 Verificando estado de encriptación de contraseñas...');
-  
+
   try {
     const [patients, doctors, sellers] = await Promise.all([
-      firestoreService.getPatients(),
-      firestoreService.getDoctors(),
-      firestoreService.getSellers(),
+      supabaseService.getPatients(),
+      supabaseService.getDoctors(),
+      supabaseService.getSellers(),
     ]);
 
     let totalUsers = 0;
@@ -190,6 +190,6 @@ export async function checkPasswordEncryptionStatus() {
 
   } catch (error) {
     console.error('❌ Error verificando estado de encriptación:', error);
-    throw error;
+    throw new Error(error instanceof Error ? error.message : String(error));
   }
 } 

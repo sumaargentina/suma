@@ -9,6 +9,7 @@ import { DoctorNotificationProvider } from "@/lib/doctor-notifications";
 import { SellerNotificationProvider } from "@/lib/seller-notifications";
 import { AdminNotificationProvider } from "@/lib/admin-notifications";
 import { ChatNotificationProvider } from "@/lib/chat-notifications";
+import { ClinicNotificationProvider } from "@/lib/clinic-notifications";
 import { SettingsProvider } from "@/lib/settings";
 import "./globals.css";
 
@@ -75,21 +76,23 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body className="font-body antialiased">
+      <body className="font-body antialiased" suppressHydrationWarning>
         <AuthProvider>
           <AppointmentProvider>
             <NotificationProvider>
               <DoctorNotificationProvider>
-                <SellerNotificationProvider>
-                  <AdminNotificationProvider>
-                    <ChatNotificationProvider>
-                      <SettingsProvider>
-                        {children}
-                        <Toaster />
-                      </SettingsProvider>
-                    </ChatNotificationProvider>
-                  </AdminNotificationProvider>
-                </SellerNotificationProvider>
+                <ClinicNotificationProvider>
+                  <SellerNotificationProvider>
+                    <AdminNotificationProvider>
+                      <ChatNotificationProvider>
+                        <SettingsProvider>
+                          {children}
+                          <Toaster />
+                        </SettingsProvider>
+                      </ChatNotificationProvider>
+                    </AdminNotificationProvider>
+                  </SellerNotificationProvider>
+                </ClinicNotificationProvider>
               </DoctorNotificationProvider>
             </NotificationProvider>
           </AppointmentProvider>

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { CheckCircle, Loader2, X, Power } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 
 interface ScheduleTabProps {
   doctorData: {
@@ -60,7 +60,7 @@ export function ScheduleTab({ doctorData, onScheduleUpdate }: ScheduleTabProps) 
   
   const handleSaveSchedule = async () => {
     if(!doctorData || !tempSchedule) return;
-    await firestoreService.updateDoctor(doctorData.id, { schedule: tempSchedule });
+    await supabaseService.updateDoctor(doctorData.id, { schedule: tempSchedule });
     toast({ title: 'Horario Guardado', description: 'Tu disponibilidad ha sido actualizada.' });
     setIsScheduleSaved(true);
     onScheduleUpdate();

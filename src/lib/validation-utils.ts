@@ -2,7 +2,7 @@
 
 export const sanitizeText = (text: string): string => {
   if (!text || typeof text !== 'string') return '';
-  
+
   return text
     .replace(/[<>]/g, '') // Eliminar < y >
     .replace(/javascript:/gi, '') // Eliminar javascript:
@@ -14,7 +14,7 @@ export const sanitizeText = (text: string): string => {
 export const validateEmail = (email: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(email).toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  
+
   return {
     isValid: emailRegex.test(sanitized),
     sanitized
@@ -31,20 +31,38 @@ export const validatePhone = (phone: string): { isValid: boolean; sanitized: str
   };
 };
 
-export const validateCedula = (cedula: string): { isValid: boolean; sanitized: string } => {
+export const validateCedula = (cedula: string, documentType?: 'DNI' | 'Pasaporte' | 'Otro'): { isValid: boolean; sanitized: string } => {
   const originalCedula = cedula.trim();
-  const cedulaRegex = /^[VE]-\d{7,8}$/;
-  
-  return {
-    isValid: cedulaRegex.test(originalCedula),
-    sanitized: originalCedula
-  };
+
+  // Si no hay valor, es válido (campo opcional)
+  if (!originalCedula) {
+    return { isValid: true, sanitized: '' };
+  }
+
+  // Validar según tipo de documento
+  if (documentType === 'Pasaporte' || documentType === 'Otro') {
+    // Pasaporte u Otro: Letras, números, guiones, puntos. 4-20 caracteres
+    const genericRegex = /^[A-Z0-9.\-]{4,20}$/i;
+    return {
+      isValid: genericRegex.test(originalCedula),
+      sanitized: originalCedula.toUpperCase()
+    };
+  } else {
+    // DNI argentino: 7-8 dígitos, opcionalmente con puntos
+    // Si no se especifica tipo, asumimos DNI por compatibilidad
+    const sanitizedDNI = originalCedula.replace(/\./g, ''); // Eliminar puntos
+    const dniRegex = /^\d{7,8}$/;
+    return {
+      isValid: dniRegex.test(sanitizedDNI),
+      sanitized: sanitizedDNI
+    };
+  }
 };
 
 export const validateName = (name: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(name);
   const nameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-'0-9.]{2,50}$/;
-  
+
   return {
     isValid: nameRegex.test(sanitized) && sanitized.length >= 2,
     sanitized
@@ -54,7 +72,7 @@ export const validateName = (name: string): { isValid: boolean; sanitized: strin
 export const validateCity = (city: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(city);
   const cityRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-]{2,30}$/;
-  
+
   return {
     isValid: cityRegex.test(sanitized) && sanitized.length >= 2,
     sanitized
@@ -64,7 +82,7 @@ export const validateCity = (city: string): { isValid: boolean; sanitized: strin
 export const validateAddress = (address: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(address);
   const addressRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-.,#]{5,100}$/;
-  
+
   return {
     isValid: addressRegex.test(sanitized) && sanitized.length >= 5,
     sanitized
@@ -74,7 +92,7 @@ export const validateAddress = (address: string): { isValid: boolean; sanitized:
 export const validateSpecialty = (specialty: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(specialty);
   const specialtyRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-0-9.]{2,50}$/;
-  
+
   return {
     isValid: specialtyRegex.test(sanitized) && sanitized.length >= 2,
     sanitized
@@ -83,8 +101,8 @@ export const validateSpecialty = (specialty: string): { isValid: boolean; saniti
 
 export const validateDescription = (description: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(description);
-  const descriptionRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-.,!?()]{10,50}$/;
-  
+  const descriptionRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-.,!?()]{10,500}$/;
+
   return {
     isValid: descriptionRegex.test(sanitized) && sanitized.length >= 10,
     sanitized
@@ -94,17 +112,29 @@ export const validateDescription = (description: string): { isValid: boolean; sa
 export const validatePrice = (price: string | number): { isValid: boolean; sanitized: number } => {
   const priceStr = String(price).replace(/[^\d.]/g, '');
   const priceNum = parseFloat(priceStr);
-  
+
   return {
     isValid: !isNaN(priceNum) && priceNum >= 0 && priceNum <= 10000,
-    sanitized: priceNum
+    sanitized: roundPrice(priceNum)
   };
+};
+
+/**
+ * Redondea un precio a 2 decimales para evitar problemas de precisión de punto flotante.
+ * Por ejemplo, evita que 20.00 se convierta en 19.999999999998 o 19.99
+ * 
+ * @param price - El precio a redondear
+ * @returns El precio redondeado a 2 decimales
+ */
+export const roundPrice = (price: number): number => {
+  if (isNaN(price) || !isFinite(price)) return 0;
+  return Math.round(price * 100) / 100;
 };
 
 export const validateAge = (age: string | number): { isValid: boolean; sanitized: number } => {
   const ageStr = String(age).replace(/\D/g, '');
   const ageNum = parseInt(ageStr);
-  
+
   return {
     isValid: !isNaN(ageNum) && ageNum >= 0 && ageNum <= 120,
     sanitized: ageNum
@@ -113,7 +143,7 @@ export const validateAge = (age: string | number): { isValid: boolean; sanitized
 
 export const validateGender = (gender: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(gender).toLowerCase();
-  
+
   return {
     isValid: ['masculino', 'femenino', 'otro'].includes(sanitized),
     sanitized
@@ -136,49 +166,49 @@ export const validatePassword = (password: string): { isValid: boolean; sanitize
 
 export const sanitizeUserData = (userData: unknown): Record<string, unknown> => {
   const sanitized: Record<string, unknown> = {};
-  
+
   if (userData && typeof userData === 'object' && 'name' in userData && userData.name) {
     if (typeof userData === 'object' && userData !== null) {
       const nameValidation = validateName(String(userData.name ?? ''));
       if (nameValidation.isValid) sanitized.name = nameValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'email' in userData && userData.email) {
     if (typeof userData === 'object' && userData !== null) {
       const emailValidation = validateEmail(String(userData.email ?? ''));
       if (emailValidation.isValid) sanitized.email = emailValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'phone' in userData && userData.phone) {
     if (typeof userData === 'object' && userData !== null) {
       const phoneValidation = validatePhone(String(userData.phone ?? ''));
       if (phoneValidation.isValid) sanitized.phone = phoneValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'cedula' in userData && userData.cedula) {
     if (typeof userData === 'object' && userData !== null) {
       const cedulaValidation = validateCedula(String(userData.cedula ?? ''));
       if (cedulaValidation.isValid) sanitized.cedula = cedulaValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'city' in userData && userData.city) {
     if (typeof userData === 'object' && userData !== null) {
       const cityValidation = validateCity(String(userData.city ?? ''));
       if (cityValidation.isValid) sanitized.city = cityValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'address' in userData && userData.address) {
     if (typeof userData === 'object' && userData !== null) {
       const addressValidation = validateAddress(String(userData.address ?? ''));
       if (addressValidation.isValid) sanitized.address = addressValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'specialty' in userData && userData.specialty) {
     if (typeof userData === 'object' && userData !== null) {
       const specialtyValidation = validateSpecialty(String(userData.specialty ?? ''));
@@ -186,7 +216,7 @@ export const sanitizeUserData = (userData: unknown): Record<string, unknown> => 
         sanitized.specialty = specialtyValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'description' in userData && userData.description) {
     if (typeof userData === 'object' && userData !== null) {
       const descriptionValidation = validateDescription(String(userData.description ?? ''));
@@ -195,14 +225,14 @@ export const sanitizeUserData = (userData: unknown): Record<string, unknown> => 
       }
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'age' in userData && userData.age) {
     if (typeof userData === 'object' && userData !== null) {
       const ageValidation = validateAge(String(userData.age ?? ''));
       if (ageValidation.isValid) sanitized.age = ageValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'gender' in userData && userData.gender) {
     if (typeof userData === 'object' && userData !== null) {
       const genderValidation = validateGender(String(userData.gender ?? ''));
@@ -210,20 +240,20 @@ export const sanitizeUserData = (userData: unknown): Record<string, unknown> => 
         sanitized.gender = genderValidation.sanitized;
     }
   }
-  
+
   if (userData && typeof userData === 'object' && 'consultationFee' in userData && userData.consultationFee) {
     if (typeof userData === 'object' && userData !== null) {
       const priceValidation = validatePrice(String(userData.consultationFee ?? ''));
       if (priceValidation.isValid) sanitized.consultationFee = priceValidation.sanitized;
     }
   }
-  
+
   // Mantener campos que no necesitan sanitización
   if (userData && typeof userData === 'object' && 'password' in userData && userData.password) sanitized.password = userData.password;
   if (userData && typeof userData === 'object' && 'role' in userData && userData.role) sanitized.role = userData.role;
   if (userData && typeof userData === 'object' && 'profileImage' in userData && userData.profileImage) sanitized.profileImage = userData.profileImage;
   if (userData && typeof userData === 'object' && 'id' in userData && userData.id) sanitized.id = userData.id;
-  
+
   return sanitized;
 };
 
@@ -245,4 +275,4 @@ export const validateRequiredFields = (data: unknown, requiredFields: string[]):
     isValid: missingFields.length === 0,
     missingFields,
   };
-}; 
+};

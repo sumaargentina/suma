@@ -5,8 +5,8 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { Appointment, PatientNotification } from './types';
 import { differenceInHours } from 'date-fns';
 import { useAuth } from './auth';
-import { batchUpdatePatientAppointmentsAsRead } from './firestoreService';
-import { getCurrentDateTimeInVenezuela } from './utils';
+import { batchUpdatePatientAppointmentsAsRead } from './supabaseService';
+import { getCurrentDateTimeInArgentina } from './utils';
 
 interface NotificationContextType {
   notifications: PatientNotification[];
@@ -42,9 +42,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setUnreadCount(0);
       }
     } else if (!user) {
-        // Clear notifications on logout
-        setNotifications([]);
-        setUnreadCount(0);
+      // Clear notifications on logout
+      setNotifications([]);
+      setUnreadCount(0);
     }
   }, [user]);
 
@@ -53,8 +53,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (user?.id && user.role === 'patient') {
       // Limpiar notificaciones de otros usuarios
       const allKeys = Object.keys(localStorage);
-      const patientNotificationKeys = allKeys.filter(key => 
-        key.startsWith('suma-patient-notifications-') && 
+      const patientNotificationKeys = allKeys.filter(key =>
+        key.startsWith('suma-patient-notifications-') &&
         key !== getNotificationStorageKey(user.id)
       );
       patientNotificationKeys.forEach(key => localStorage.removeItem(key));
@@ -67,8 +67,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const storageKey = getNotificationStorageKey(user.id);
     const newNotificationsMap = new Map<string, PatientNotification>();
-    const now = getCurrentDateTimeInVenezuela();
-    
+    const now = getCurrentDateTimeInArgentina();
+
     const existingIds = new Set(notifications.map(n => n.id));
 
     appointments.forEach(appt => {
@@ -79,13 +79,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const createReminder = (timeframe: '24h' | '3h') => {
         const id = `reminder-${appt.id}-${timeframe}`;
         if (existingIds.has(id)) return;
-        
-        const title = timeframe === '24h' 
+
+        const title = timeframe === '24h'
           ? `Recordatorio: Cita Mañana`
           : `Recordatorio: Cita Pronto`;
-        
+
         const description = `Tu cita con ${appt.doctorName} es en aprox. ${timeframe === '24h' ? '24 horas' : '3 horas'}.`;
-        
+
         newNotificationsMap.set(id, {
           id,
           type: 'reminder',
@@ -103,83 +103,83 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       // --- Payment Approved Notification ---
       if (appt.paymentStatus === 'Pagado') {
-          const id = `payment-approved-${appt.id}`;
-          if (!existingIds.has(id)) {
-              newNotificationsMap.set(id, {
-                  id,
-                  type: 'payment_approved',
-                  appointmentId: appt.id,
-                  title: '¡Pago Aprobado!',
-                  description: `El Dr. ${appt.doctorName} ha confirmado tu pago para la cita.`,
-                  date: now.toISOString(),
-                  read: false,
-                  createdAt: now.toISOString(),
-                  link: '/dashboard',
-              });
-          }
+        const id = `payment-approved-${appt.id}`;
+        if (!existingIds.has(id)) {
+          newNotificationsMap.set(id, {
+            id,
+            type: 'payment_approved',
+            appointmentId: appt.id,
+            title: '¡Pago Aprobado!',
+            description: `El Dr. ${appt.doctorName} ha confirmado tu pago para la cita.`,
+            date: now.toISOString(),
+            read: false,
+            createdAt: now.toISOString(),
+            link: '/dashboard',
+          });
+        }
       }
 
       // --- New Message from Doctor ---
-      const lastMessage = appt.messages?.slice().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      const lastMessage = appt.messages?.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
       if (lastMessage?.sender === 'doctor') {
-          const id = `new-message-${lastMessage.id}`;
-          if (!existingIds.has(id)) {
-               newNotificationsMap.set(id, {
-                  id,
-                  type: 'new_message',
-                  appointmentId: appt.id,
-                  title: `Nuevo Mensaje de ${appt.doctorName}`,
-                  description: lastMessage.text.substring(0, 50) + (lastMessage.text.length > 50 ? '...' : ''),
-                  date: lastMessage.timestamp,
-                  read: false,
-                  createdAt: now.toISOString(),
-                  link: '/dashboard',
-              });
-          }
+        const id = `new-message-${lastMessage.id}`;
+        if (!existingIds.has(id)) {
+          newNotificationsMap.set(id, {
+            id,
+            type: 'new_message',
+            appointmentId: appt.id,
+            title: `Nuevo Mensaje de ${appt.doctorName}`,
+            description: lastMessage.text.substring(0, 50) + (lastMessage.text.length > 50 ? '...' : ''),
+            date: lastMessage.timestamp,
+            read: false,
+            createdAt: now.toISOString(),
+            link: '/dashboard',
+          });
+        }
       }
-      
+
       // --- Clinical Record Added ---
       if (appt.attendance === 'Atendido' && (appt.clinicalNotes || appt.prescription)) {
-          const id = `record-added-${appt.id}`;
-          if (!existingIds.has(id)) {
-              newNotificationsMap.set(id, {
-                  id,
-                  type: 'record_added',
-                  appointmentId: appt.id,
-                  title: `Resumen de Cita Disponible`,
-                  description: `El Dr. ${appt.doctorName} ha añadido notas o un récipe a tu cita pasada.`,
-                  date: now.toISOString(),
-                  read: false,
-                  createdAt: now.toISOString(),
-                  link: '/dashboard',
-              });
-          }
+        const id = `record-added-${appt.id}`;
+        if (!existingIds.has(id)) {
+          newNotificationsMap.set(id, {
+            id,
+            type: 'record_added',
+            appointmentId: appt.id,
+            title: `Resumen de Cita Disponible`,
+            description: `El Dr. ${appt.doctorName} ha añadido notas o un récipe a tu cita pasada.`,
+            date: now.toISOString(),
+            read: false,
+            createdAt: now.toISOString(),
+            link: '/dashboard',
+          });
+        }
       }
 
       // --- Attendance Marked ---
       if (appt.attendance !== 'Pendiente' && appt.readByPatient === false) {
-          const id = `attendance-marked-${appt.id}`;
-          if (!existingIds.has(id)) {
-              newNotificationsMap.set(id, {
-                  id,
-                  type: 'attendance_marked',
-                  appointmentId: appt.id,
-                  title: `Cita Finalizada`,
-                  description: `El Dr. ${appt.doctorName} ha marcado tu cita como "${appt.attendance}".`,
-                  date: now.toISOString(),
-                  read: false,
-                  createdAt: now.toISOString(),
-                  link: '/dashboard',
-              });
-          }
+        const id = `attendance-marked-${appt.id}`;
+        if (!existingIds.has(id)) {
+          newNotificationsMap.set(id, {
+            id,
+            type: 'attendance_marked',
+            appointmentId: appt.id,
+            title: `Cita Finalizada`,
+            description: `El Dr. ${appt.doctorName} ha marcado tu cita como "${appt.attendance}".`,
+            date: now.toISOString(),
+            read: false,
+            createdAt: now.toISOString(),
+            link: '/dashboard',
+          });
+        }
       }
     });
 
     if (newNotificationsMap.size > 0) {
       const uniqueNewNotifications = Array.from(newNotificationsMap.values());
       const updatedNotifications = [...uniqueNewNotifications, ...notifications]
-        .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
       localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
       setNotifications(updatedNotifications);
       setUnreadCount(prev => prev + uniqueNewNotifications.length);
@@ -194,16 +194,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(storageKey, JSON.stringify(updated));
     setNotifications(updated);
     setUnreadCount(0);
-    
+
     const appointmentIdsToUpdate = notifications
       .filter(n => n.type === 'attendance_marked' && !n.read)
       .map(n => n.appointmentId);
-      
+
     if (appointmentIdsToUpdate.length > 0) {
-        await batchUpdatePatientAppointmentsAsRead(appointmentIdsToUpdate);
+      await batchUpdatePatientAppointmentsAsRead(appointmentIdsToUpdate);
     }
   }, [notifications, user, unreadCount]);
-  
+
   const value = { notifications, unreadCount, checkAndSetNotifications, markAllAsRead };
 
 

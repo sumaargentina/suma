@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { PlusCircle, Pencil, Trash2, Coins } from 'lucide-react';
 import { z } from 'zod';
 
@@ -69,7 +69,7 @@ export function AccountsTab({ sellerData, onUpdate }: AccountsTabProps) {
       updatedBankDetails = [...sellerData.bankDetails, newBankDetail];
     }
     
-    await firestoreService.updateSeller(sellerData.id, { bankDetails: updatedBankDetails });
+    await supabaseService.updateSeller(sellerData.id, { bankDetails: updatedBankDetails });
     onUpdate();
     setIsBankDetailDialogOpen(false);
     toast({ title: "Cuenta Bancaria Guardada" });
@@ -78,7 +78,7 @@ export function AccountsTab({ sellerData, onUpdate }: AccountsTabProps) {
   const handleDeleteBankDetail = async (bankDetailId: string) => {
     if (!sellerData) return;
     const updatedBankDetails = sellerData.bankDetails.filter(bd => bd.id !== bankDetailId);
-    await firestoreService.updateSeller(sellerData.id, { bankDetails: updatedBankDetails });
+    await supabaseService.updateSeller(sellerData.id, { bankDetails: updatedBankDetails });
     onUpdate();
     toast({ title: "Cuenta Bancaria Eliminada" });
   };

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { HeaderWrapper, BottomNav } from '@/components/header';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,19 +54,7 @@ const PasswordChangeSchema = z.object({
   path: ["confirmPassword"],
 });
 
-const countryCodes = [
-  { code: '+58', name: 'Venezuela' },
-  { code: '+1', name: 'Estados Unidos/Canadá' },
-  { code: '+34', name: 'España' },
-  { code: '+57', name: 'Colombia' },
-  { code: '+54', name: 'Argentina' },
-  { code: '+55', name: 'Brasil' },
-  { code: '+51', name: 'Perú' },
-  { code: '+52', name: 'México' },
-  { code: '+56', name: 'Chile' },
-  { code: '+53', name: 'Cuba' },
-  // ...agrega más si lo deseas
-];
+import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 
 export default function ProfilePage() {
   const { user, updateUser, changePassword } = useAuth();
@@ -80,10 +68,11 @@ export default function ProfilePage() {
   const [age, setAge] = useState<string>('');
   const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
   const [cedula, setCedula] = useState('');
+  const [documentType, setDocumentType] = useState<DocumentType>('DNI');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
-  const [countryCode, setCountryCode] = useState('+58');
-  
+  const [countryCode, setCountryCode] = useState('+54');
+
   // State for password change
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -103,6 +92,7 @@ export default function ProfilePage() {
       setAge(user.age !== undefined && user.age !== null ? String(user.age) : '');
       setGender(user.gender ?? '');
       setCedula(user.cedula ?? '');
+      setDocumentType((user as { documentType?: DocumentType }).documentType ?? 'DNI');
       setCity(user.city ?? '');
       setProfileImage(user.profileImage ?? null);
       // Separar código de país y número si ya existe
@@ -112,11 +102,11 @@ export default function ProfilePage() {
           setCountryCode(match[1]);
           setPhone(match[2]);
         } else {
-          setCountryCode('+58');
+          setCountryCode('+54');
           setPhone(user.phone);
         }
       } else {
-        setCountryCode('+58');
+        setCountryCode('+54');
         setPhone(user.phone ?? '');
       }
     }
@@ -191,7 +181,7 @@ export default function ProfilePage() {
     const phoneSanitized = phone && phone.startsWith('0') ? phone.slice(1) : phone;
     const fullPhone = phoneSanitized ? `${countryCode}${phoneSanitized}` : '';
     const phoneSan = validatePhone(fullPhone);
-    const cedulaSan = validateCedula(cedula);
+    const cedulaSan = validateCedula(cedula, documentType);
     const citySan = validateCity(city);
     const ageSan = validateAge(age);
     if (!nameSan.isValid || (cedula && !cedulaSan.isValid) || (phone && !phoneSan.isValid) || (city && !citySan.isValid) || (age && !ageSan.isValid)) {
@@ -210,33 +200,55 @@ export default function ProfilePage() {
     });
 
     if (!result.success) {
-        const errorMessage = result.error.errors.map(err => err.message).join(' ');
-        toast({ variant: 'destructive', title: 'Error de Validación', description: errorMessage });
-        return;
+      const errorMessage = result.error.errors.map(err => err.message).join(' ');
+      toast({ variant: 'destructive', title: 'Error de Validación', description: errorMessage });
+      return;
     }
 
     // No permitir cambiar la cédula si ya existe
     const finalCedula = user.cedula || result.data.cedula;
+
+    // Validar cédula única si se está estableciendo por primera vez
+    if (!user.cedula && result.data.cedula) {
+      try {
+        const cedulaResponse = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'patient_cedula', value: result.data.cedula, excludeId: user.id })
+        });
+        const cedulaCheck = await cedulaResponse.json();
+
+        if (!cedulaCheck.isUnique) {
+          toast({ variant: 'destructive', title: 'DNI/Cédula ya registrado', description: cedulaCheck.message });
+          return;
+        }
+      } catch (error) {
+        console.error('Error validating cedula:', error);
+        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo validar el documento' });
+        return;
+      }
+    }
 
     await updateUser({
       name: result.data.fullName,
       age: result.data.age,
       gender: result.data.gender === '' ? null : result.data.gender,
       cedula: finalCedula, // Mantener la cédula original si ya existe
+      documentType: documentType,
       phone: fullPhone,
       city: result.data.city,
     });
 
     // Refrescar usuario desde Firestore y actualizar estado global y localStorage
-    const freshUser = await firestoreService.findUserByEmail(user.email);
+    const freshUser = await supabaseService.findUserByEmail(user.email);
     if (freshUser) {
       await updateUser(freshUser); // Actualiza el contexto
       localStorage.setItem('user', JSON.stringify(freshUser));
     }
-    
+
     toast({
-        title: "¡Perfil Actualizado!",
-        description: "Tu información personal ha sido guardada correctamente.",
+      title: "¡Perfil Actualizado!",
+      description: "Tu información personal ha sido guardada correctamente.",
     });
   };
 
@@ -244,29 +256,29 @@ export default function ProfilePage() {
     e.preventDefault();
 
     const result = PasswordChangeSchema.safeParse({
-        currentPassword,
-        newPassword,
-        confirmPassword,
+      currentPassword,
+      newPassword,
+      confirmPassword,
     });
 
     if (!result.success) {
-        const errorMessage = result.error.errors.map(err => err.message).join(' ');
-        toast({ variant: 'destructive', title: 'Error de Validación', description: errorMessage });
-        return;
+      const errorMessage = result.error.errors.map(err => err.message).join(' ');
+      toast({ variant: 'destructive', title: 'Error de Validación', description: errorMessage });
+      return;
     }
 
     const { success, message } = await changePassword(
-        result.data.currentPassword,
-        result.data.newPassword
+      result.data.currentPassword,
+      result.data.newPassword
     );
 
     if (success) {
-        toast({ title: 'Éxito', description: message });
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
+      toast({ title: 'Éxito', description: message });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
     } else {
-        toast({ variant: 'destructive', title: 'Error', description: message });
+      toast({ variant: 'destructive', title: 'Error', description: message });
     }
   };
 
@@ -277,7 +289,7 @@ export default function ProfilePage() {
       <div className="flex flex-col min-h-screen bg-background">
         <HeaderWrapper />
         <main className="flex-1 flex items-center justify-center">
-            <p>Cargando...</p>
+          <p>Cargando...</p>
         </main>
       </div>
     );
@@ -317,7 +329,7 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Botón para remover imagen */}
                   {profileImage && (
                     <Button
@@ -341,7 +353,7 @@ export default function ProfilePage() {
                     <Upload className="w-4 h-4 mr-2" />
                     Elegir Foto
                   </Button>
-                  
+
                   {profileImage && (
                     <Button
                       onClick={handleImageSave}
@@ -409,20 +421,40 @@ export default function ProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="cedula">Cédula</Label>
+                    <Label htmlFor="documentType">Tipo de Documento</Label>
+                    <Select
+                      value={documentType}
+                      onValueChange={(value) => setDocumentType(value as DocumentType)}
+                      disabled={!!user?.cedula} // Deshabilitar si ya tiene documento
+                    >
+                      <SelectTrigger id="documentType">
+                        <SelectValue placeholder="Selecciona el tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOCUMENT_TYPES.map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cedula">{documentType === 'DNI' ? 'Número de DNI' : 'Número de Pasaporte'}</Label>
                     <Input
                       id="cedula"
                       value={cedula}
                       onChange={(e) => setCedula(e.target.value)}
-                      placeholder="ej., V-12345678"
-                      disabled={!!user?.cedula} // Deshabilitar si ya tiene cédula
+                      placeholder={documentType === 'DNI' ? 'ej., 12345678' : 'ej., ABC123456'}
+                      disabled={!!user?.cedula} // Deshabilitar si ya tiene documento
                     />
                     {user?.cedula && (
                       <p className="text-xs text-muted-foreground">
-                        La cédula no se puede modificar después del registro
+                        El documento no se puede modificar después del registro
                       </p>
                     )}
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="phone">Teléfono</Label>
                     <div className="flex gap-2">
@@ -431,8 +463,8 @@ export default function ProfilePage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {countryCodes.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>{c.name} ({c.code})</SelectItem>
+                          {COUNTRY_CODES.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>{c.country} ({c.code})</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -450,7 +482,7 @@ export default function ProfilePage() {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Ingresa solo números, sin el código de país. Ejemplo para Venezuela: <span className="font-mono">4121234567</span>
+                      Ingresa solo números, sin el código de país. Ejemplo para Argentina: <span className="font-mono">1123456789</span>
                     </p>
                   </div>
                 </div>
@@ -468,31 +500,33 @@ export default function ProfilePage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="gender">Sexo</Label>
-                    <Select value={gender} onValueChange={(value) => setGender(value as 'masculino' | 'femenino' | 'otro')}>
-                      <SelectTrigger id="gender">
-                        <SelectValue placeholder="Selecciona tu sexo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="masculino">Masculino</SelectItem>
-                        <SelectItem value="femenino">Femenino</SelectItem>
-                        <SelectItem value="otro">Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select
+                      id="gender"
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | '')}
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="" disabled>Selecciona tu sexo</option>
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                      <option value="otro">Otro</option>
+                    </select>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="city">Ciudad Predeterminada</Label>
-                  <Select value={city} onValueChange={(value) => setCity(value as string)}>
-                    <SelectTrigger id="city">
-                      <SelectValue placeholder="Selecciona tu ciudad para búsquedas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cities.map((c) => (
-                        <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <select
+                    id="city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="" disabled>Selecciona tu ciudad para búsquedas</option>
+                    {cities.map((c) => (
+                      <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <Button type="submit" className="w-full">
@@ -502,7 +536,7 @@ export default function ProfilePage() {
               </form>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl font-headline">
@@ -515,17 +549,17 @@ export default function ProfilePage() {
             <CardContent>
               <form onSubmit={handlePasswordSubmit} className="space-y-6">
                 <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Contraseña Actual</Label>
-                    <Input id="currentPassword" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+                  <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                  <Input id="currentPassword" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="newPassword">Nueva Contraseña</Label>
-                    <Input id="newPassword" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
-                    <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
+                  <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                  <Input id="newPassword" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+                  <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirmar Nueva Contraseña</Label>
-                    <Input id="confirmPassword" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                  <Label htmlFor="confirmPassword">Confirmar Nueva Contraseña</Label>
+                  <Input id="confirmPassword" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
                 </div>
                 <Button type="submit" className="w-full">
                   <Save className="mr-2 h-4 w-4" />
@@ -538,8 +572,8 @@ export default function ProfilePage() {
           {/* Sección de Notificaciones */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Notificaciones</h3>
-            <NotificationSettings 
-              userId={user?.id || ''} 
+            <NotificationSettings
+              userId={user?.id || ''}
             />
           </div>
 

@@ -30,7 +30,7 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
   const filteredAndSortedTickets = useMemo(() => {
     const filtered = supportTickets.filter(ticket => {
       const matchesSearch = ticket.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
+        ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -128,7 +128,7 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
             Tickets de Soporte
           </CardTitle>
           <Button onClick={onOpenTicketDialog} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
-            <PlusCircle className="mr-2 h-4 w-4"/>
+            <PlusCircle className="mr-2 h-4 w-4" />
             Nuevo Ticket
           </Button>
         </CardHeader>
@@ -172,8 +172,8 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
           <div className="block md:hidden space-y-3">
             {filteredAndSortedTickets.length > 0 ? (
               filteredAndSortedTickets.map(ticket => (
-                <Card 
-                  key={ticket.id} 
+                <Card
+                  key={ticket.id}
                   className={cn(
                     "cursor-pointer transition-all hover:shadow-md",
                     ticket.status === "abierto" && "border-orange-200 bg-orange-50/30"
@@ -188,7 +188,7 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                           {ticket.description}
                         </p>
                       </div>
-                      <Badge 
+                      <Badge
                         className={cn(
                           "flex items-center gap-1 px-2 py-1 ml-2 flex-shrink-0",
                           getStatusColor(ticket.status)
@@ -198,21 +198,21 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                         <span className="capitalize text-xs">{ticket.status}</span>
                       </Badge>
                     </div>
-                    
+
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          <span>{format(parseISO(ticket.date), "dd MMM", { locale: es })}</span>
+                          <span>{format(parseISO(ticket.createdAt || ticket.date), "dd MMM", { locale: es })}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <MessageCircle className="h-3 w-3" />
                           <span>{ticket.messages ? ticket.messages.length : 0}</span>
                         </div>
                       </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           onViewTicket(ticket);
@@ -231,26 +231,26 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                 <div className="flex flex-col items-center gap-2">
                   <MessageCircle className="h-12 w-12 text-muted-foreground" />
                   <p className="text-lg font-medium text-muted-foreground">
-                    {searchTerm || statusFilter !== "all" 
-                      ? "No se encontraron tickets" 
+                    {searchTerm || statusFilter !== "all"
+                      ? "No se encontraron tickets"
                       : "No tienes tickets de soporte"
                     }
                   </p>
                   <p className="text-sm text-muted-foreground text-center">
-                    {searchTerm || statusFilter !== "all" 
-                      ? "Intenta ajustar los filtros de búsqueda" 
+                    {searchTerm || statusFilter !== "all"
+                      ? "Intenta ajustar los filtros de búsqueda"
                       : "Crea tu primer ticket cuando necesites ayuda"
                     }
                   </p>
                   {!searchTerm && statusFilter === "all" && (
                     <Button onClick={onOpenTicketDialog} className="mt-2">
-                      <PlusCircle className="mr-2 h-4 w-4"/>
+                      <PlusCircle className="mr-2 h-4 w-4" />
                       Crear Primer Ticket
                     </Button>
                   )}
                   {!searchTerm && statusFilter === "all" && onCreateTestTickets && (
                     <Button onClick={onCreateTestTickets} variant="outline" className="mt-2">
-                      <MessageCircle className="mr-2 h-4 w-4"/>
+                      <MessageCircle className="mr-2 h-4 w-4" />
                       Crear Tickets de Prueba
                     </Button>
                   )}
@@ -274,8 +274,8 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
               <TableBody>
                 {filteredAndSortedTickets.length > 0 ? (
                   filteredAndSortedTickets.map(ticket => (
-                    <TableRow 
-                      key={ticket.id} 
+                    <TableRow
+                      key={ticket.id}
                       className={cn(
                         "hover:bg-muted/30 transition-colors cursor-pointer",
                         ticket.status === "abierto" && "bg-orange-50/50"
@@ -284,9 +284,9 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                     >
                       <TableCell className="font-medium">
                         <div className="flex flex-col">
-                          <span>{format(parseISO(ticket.date), "dd MMM", { locale: es })}</span>
+                          <span>{format(parseISO(ticket.createdAt || ticket.date), "dd MMM", { locale: es })}</span>
                           <span className="text-xs text-muted-foreground">
-                            {format(parseISO(ticket.date), "HH:mm", { locale: es })}
+                            {format(parseISO(ticket.createdAt || ticket.date), "HH:mm", { locale: es })}
                           </span>
                         </div>
                       </TableCell>
@@ -299,7 +299,7 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           className={cn(
                             "flex items-center gap-1 px-2 py-1",
                             getStatusColor(ticket.status)
@@ -318,9 +318,9 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             onViewTicket(ticket);
@@ -339,26 +339,26 @@ export function SupportTab({ supportTickets, onOpenTicketDialog, onViewTicket, o
                       <div className="flex flex-col items-center gap-2">
                         <MessageCircle className="h-12 w-12 text-muted-foreground" />
                         <p className="text-lg font-medium text-muted-foreground">
-                          {searchTerm || statusFilter !== "all" 
-                            ? "No se encontraron tickets" 
+                          {searchTerm || statusFilter !== "all"
+                            ? "No se encontraron tickets"
                             : "No tienes tickets de soporte"
                           }
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {searchTerm || statusFilter !== "all" 
-                            ? "Intenta ajustar los filtros de búsqueda" 
+                          {searchTerm || statusFilter !== "all"
+                            ? "Intenta ajustar los filtros de búsqueda"
                             : "Crea tu primer ticket cuando necesites ayuda"
                           }
                         </p>
                         {!searchTerm && statusFilter === "all" && (
                           <Button onClick={onOpenTicketDialog} className="mt-2">
-                            <PlusCircle className="mr-2 h-4 w-4"/>
+                            <PlusCircle className="mr-2 h-4 w-4" />
                             Crear Primer Ticket
                           </Button>
                         )}
                         {!searchTerm && statusFilter === "all" && onCreateTestTickets && (
                           <Button onClick={onCreateTestTickets} variant="outline" className="mt-2">
-                            <MessageCircle className="mr-2 h-4 w-4"/>
+                            <MessageCircle className="mr-2 h-4 w-4" />
                             Crear Tickets de Prueba
                           </Button>
                         )}

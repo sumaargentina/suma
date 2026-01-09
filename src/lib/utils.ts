@@ -5,49 +5,49 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Función para obtener la fecha actual en la zona horaria de Venezuela
-export function getCurrentDateInVenezuela(): string {
+// Función para obtener la fecha actual en la zona horaria de Argentina
+export function getCurrentDateInArgentina(): string {
   const now = new Date();
-  // Venezuela está en GMT-4 (sin horario de verano)
-  // Convertir a zona horaria de Venezuela
-  const venezuelaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Caracas"}));
-  return venezuelaTime.toISOString().split('T')[0];
+  // Argentina está en GMT-3
+  // Convertir a zona horaria de Argentina
+  const argentinaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  return argentinaTime.toISOString().split('T')[0];
 }
 
-// Función para convertir una fecha UTC a fecha de Venezuela
-export function convertUTCToVenezuelaDate(utcDate: Date): string {
-  // Convertir a zona horaria de Venezuela
-  const venezuelaTime = new Date(utcDate.toLocaleString("en-US", {timeZone: "America/Caracas"}));
-  return venezuelaTime.toISOString().split('T')[0];
+// Función para convertir una fecha UTC a fecha de Argentina
+export function convertUTCToArgentinaDate(utcDate: Date): string {
+  // Convertir a zona horaria de Argentina
+  const argentinaTime = new Date(utcDate.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  return argentinaTime.toISOString().split('T')[0];
 }
 
-// Función para obtener la fecha de pago basada en la fecha de registro en Venezuela
-export function getPaymentDateInVenezuela(joinDate: Date): string {
-  // Convertir la fecha de registro a zona horaria de Venezuela
-  const venezuelaDate = new Date(joinDate.toLocaleString("en-US", {timeZone: "America/Caracas"}));
-  const dayOfMonth = venezuelaDate.getDate();
-  
-  // Calcular la fecha de pago
-  const paymentDate = new Date(venezuelaDate.getFullYear(), venezuelaDate.getMonth(), 1);
-  if (dayOfMonth < 15) {
-    // Si se registra antes del 15, paga el 1 del mes siguiente
+// Función para obtener la fecha de pago basada en la fecha de registro en Argentina
+export function getPaymentDateInArgentina(joinDate: Date): string {
+  // Convertir la fecha de registro a zona horaria de Argentina
+  const argentinaDate = new Date(joinDate.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  const dayOfMonth = argentinaDate.getDate();
+
+  // Si se registra entre el 1 y el 25, paga el 1 del mes siguiente
+  // Si se registra después del 25, paga el 1 del mes subsiguiente
+  const paymentDate = new Date(argentinaDate.getFullYear(), argentinaDate.getMonth(), 1);
+
+  if (dayOfMonth <= 25) {
     paymentDate.setMonth(paymentDate.getMonth() + 1);
   } else {
-    // Si se registra el 15 o después, paga el 1 del mes subsiguiente
     paymentDate.setMonth(paymentDate.getMonth() + 2);
   }
-  
+
   return paymentDate.toISOString().split('T')[0];
 }
 
-// Función para obtener la fecha y hora actual en Venezuela
-export function getCurrentDateTimeInVenezuela(): Date {
+// Función para obtener la fecha y hora actual en Argentina
+export function getCurrentDateTimeInArgentina(): Date {
   const now = new Date();
-  return new Date(now.toLocaleString("en-US", {timeZone: "America/Caracas"}));
+  return new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
 }
 
-// Función para formatear una fecha en zona horaria de Venezuela
-export function formatDateInVenezuela(date: Date): string {
-  const venezuelaDate = new Date(date.toLocaleString("en-US", {timeZone: "America/Caracas"}));
-  return venezuelaDate.toISOString().split('T')[0];
+// Función para formatear una fecha en zona horaria de Argentina
+export function formatDateInArgentina(date: Date): string {
+  const argentinaDate = new Date(date.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  return argentinaDate.toISOString().split('T')[0];
 }

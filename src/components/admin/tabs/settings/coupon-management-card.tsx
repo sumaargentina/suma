@@ -15,8 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PlusCircle, Pencil, Trash2, Loader2, CreditCard, Percent, DollarSign, Users, User, Stethoscope, MapPin, Globe } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { getDoctors, getSettings } from '@/lib/firestoreService';
-import { getCurrentDateTimeInVenezuela } from '@/lib/utils';
+import { getDoctors, getSettings } from '@/lib/supabaseService';
+import { getCurrentDateTimeInArgentina } from '@/lib/utils';
 
 interface CouponManagementCardProps {
     coupons: Coupon[];
@@ -49,7 +49,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
             try {
                 const doctorsData = await getDoctors();
                 setDoctors(doctorsData);
-                
+
                 // Extraer especialidades únicas
                 const uniqueSpecialties = [...new Set(doctorsData.map(d => d.specialty))].sort();
                 setSpecialties(uniqueSpecialties);
@@ -60,33 +60,33 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                 setIsLoadingData(false);
             }
         };
-        
+
         loadData();
     }, [toast]);
 
     // 3. Cargar ciudades al montar el componente
     useEffect(() => {
-      async function fetchCities() {
-        try {
-          const settings = await getSettings();
-          if (settings && settings.cities) {
-            // Extraer solo los nombres de las ciudades configuradas
-            const citiesList = settings.cities.map(city => city.name).sort();
-            setCities(citiesList);
-          } else {
-            setCities([]);
-          }
-        } catch (error) {
-          console.error('Error cargando ciudades:', error);
-          setCities([]);
+        async function fetchCities() {
+            try {
+                const settings = await getSettings();
+                if (settings && settings.cities) {
+                    // Extraer solo los nombres de las ciudades configuradas
+                    const citiesList = settings.cities.map(city => city.name).sort();
+                    setCities(citiesList);
+                } else {
+                    setCities([]);
+                }
+            } catch (error) {
+                console.error('Error cargando ciudades:', error);
+                setCities([]);
+            }
         }
-      }
-      fetchCities();
+        fetchCities();
     }, []);
 
     const openDialog = (item: Coupon | null) => {
         setEditingCoupon(item);
-        
+
         // Configurar el alcance basado en el cupón existente
         if (item) {
             setScopeType(item.scopeType);
@@ -99,7 +99,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
             setSelectedSpecialty('');
             setScopeCity('');
         }
-        
+
         setIsDialogOpen(true);
     };
 
@@ -111,7 +111,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
     const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsSaving(true);
-        
+
         const formData = new FormData(e.currentTarget);
         const data = {
             code: formData.get('code') as string,
@@ -161,11 +161,11 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                 description: `Cupón ${data.code.trim().toUpperCase()}`,
                 discountType: data.discountType,
                 discountValue: data.discountValue,
-                validFrom: getCurrentDateTimeInVenezuela().toISOString().split('T')[0],
+                validFrom: getCurrentDateTimeInArgentina().toISOString().split('T')[0],
                 validTo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 días
                 isActive: true,
-                createdAt: getCurrentDateTimeInVenezuela().toISOString(),
-                updatedAt: getCurrentDateTimeInVenezuela().toISOString(),
+                createdAt: getCurrentDateTimeInArgentina().toISOString(),
+                updatedAt: getCurrentDateTimeInArgentina().toISOString(),
                 scopeType: scopeType,
             };
 
@@ -200,7 +200,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
     const handleDelete = async () => {
         if (!itemToDelete) return;
         setIsDeleting(true);
-        
+
         try {
             await onDeleteCoupon(itemToDelete.id);
             toast({ title: 'Cupón eliminado', description: 'El cupón ha sido eliminado exitosamente.' });
@@ -223,18 +223,18 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
 
     // Cambiar getScopeIcon para que reciba el objeto coupon
     function getScopeIcon(coupon: Coupon) {
-      switch (coupon.scopeType) {
-        case 'all':
-          return <Users className="h-4 w-4" />;
-        case 'specialty':
-          return <Stethoscope className="h-4 w-4" />;
-        case 'city':
-          return <MapPin className="h-4 w-4" />;
-        case 'specific':
-          return <User className="h-4 w-4" />;
-        default:
-          return <Globe className="h-4 w-4" />;
-      }
+        switch (coupon.scopeType) {
+            case 'all':
+                return <Users className="h-4 w-4" />;
+            case 'specialty':
+                return <Stethoscope className="h-4 w-4" />;
+            case 'city':
+                return <MapPin className="h-4 w-4" />;
+            case 'specific':
+                return <User className="h-4 w-4" />;
+            default:
+                return <Globe className="h-4 w-4" />;
+        }
     }
 
     // 1. Donde se usaba 'value' en vez de 'discountValue'
@@ -242,18 +242,18 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
     // 2. Donde se usaba 'scope' en vez de 'scopeType', 'scopeCity', 'scopeSpecialty', 'scopeDoctors'
     // Reemplazar item.scope por lógica basada en item.scopeType y los campos relacionados
     function getScopeDescription(item: Coupon) {
-      switch (item.scopeType) {
-        case 'all':
-          return 'Todos los médicos';
-        case 'specialty':
-          return `Especialidad: ${item.scopeSpecialty || ''}`;
-        case 'city':
-          return `Ciudad: ${item.scopeCity || ''}`;
-        case 'specific':
-          return `Médicos específicos (${item.scopeDoctors?.length || 0})`;
-        default:
-          return 'Alcance no definido';
-      }
+        switch (item.scopeType) {
+            case 'all':
+                return 'Todos los médicos';
+            case 'specialty':
+                return `Especialidad: ${item.scopeSpecialty || ''}`;
+            case 'city':
+                return `Ciudad: ${item.scopeCity || ''}`;
+            case 'specific':
+                return `Médicos específicos (${item.scopeDoctors?.length || 0})`;
+            default:
+                return 'Alcance no definido';
+        }
     }
 
     return (
@@ -271,12 +271,12 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                             </CardDescription>
                         </div>
                         <Button onClick={() => openDialog(null)} className="shrink-0 w-full sm:w-auto">
-                            <PlusCircle className="mr-2 h-4 w-4"/>
+                            <PlusCircle className="mr-2 h-4 w-4" />
                             Añadir Cupón
                         </Button>
                     </div>
                 </CardHeader>
-                
+
                 <CardContent className="space-y-4">
                     {/* Vista móvil mejorada */}
                     <div className="md:hidden space-y-3">
@@ -311,28 +311,28 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-end gap-2 pt-2 border-t">
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => openDialog(coupon)}
                                         className="h-8 px-3"
                                     >
-                                        <Pencil className="h-3 w-3 mr-1"/>
+                                        <Pencil className="h-3 w-3 mr-1" />
                                         Editar
                                     </Button>
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => openDeleteDialog(coupon)}
                                         className="h-8 px-3 text-destructive hover:text-destructive"
                                     >
-                                        <Trash2 className="h-3 w-3 mr-1"/>
+                                        <Trash2 className="h-3 w-3 mr-1" />
                                         Eliminar
                                     </Button>
                                 </div>
                             </div>
                         ))}
-                        
+
                         {coupons.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                                 <CreditCard className="h-8 w-8 mx-auto mb-2" />
@@ -345,7 +345,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                     {/* Tabla responsiva para desktop */}
                     <div className="hidden md:block rounded-md border">
                         <div className="overflow-x-auto">
-                    <Table>
+                            <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Código</TableHead>
@@ -355,7 +355,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                                         <TableHead className="w-24 text-center">Acciones</TableHead>
                                     </TableRow>
                                 </TableHeader>
-                        <TableBody>
+                                <TableBody>
                                     {coupons.map(coupon => (
                                         <TableRow key={coupon.id} className="hover:bg-muted/50">
                                             <TableCell className="font-mono font-bold">{coupon.code}</TableCell>
@@ -376,30 +376,30 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <div className="flex items-center justify-center gap-1">
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
                                                         onClick={() => openDialog(coupon)}
                                                         className="h-8 w-8"
                                                     >
-                                                        <Pencil className="h-3 w-3"/>
+                                                        <Pencil className="h-3 w-3" />
                                                     </Button>
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
                                                         onClick={() => openDeleteDialog(coupon)}
                                                         className="h-8 w-8 text-destructive hover:text-destructive"
                                                     >
-                                                        <Trash2 className="h-3 w-3"/>
+                                                        <Trash2 className="h-3 w-3" />
                                                     </Button>
                                                 </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
                         </div>
-                        
+
                         {coupons.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                                 <CreditCard className="h-8 w-8 mx-auto mb-2" />
@@ -423,22 +423,22 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                             {editingCoupon ? 'Modifica los datos del cupón existente.' : 'Crea un nuevo cupón de descuento para pacientes.'}
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSave} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="code" className="text-sm font-medium">
                                 Código del Cupón <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="code" 
-                                name="code" 
-                                defaultValue={editingCoupon?.code} 
-                                required 
+                            <Input
+                                id="code"
+                                name="code"
+                                defaultValue={editingCoupon?.code}
+                                required
                                 placeholder="Ej: DESCUENTO20"
                                 className="h-10 font-mono"
                             />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="discountType" className="text-sm font-medium">
                                 Tipo de Descuento <span className="text-red-500">*</span>
@@ -463,22 +463,22 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                                 </SelectContent>
                             </Select>
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="discountValue" className="text-sm font-medium">
                                 Valor del Descuento <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="discountValue" 
-                                name="discountValue" 
-                                type="number" 
-                                defaultValue={editingCoupon?.discountValue} 
-                                required 
+                            <Input
+                                id="discountValue"
+                                name="discountValue"
+                                type="number"
+                                defaultValue={editingCoupon?.discountValue}
+                                required
                                 placeholder="0.00"
                                 className="h-10"
                             />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label className="text-sm font-medium">
                                 Alcance <span className="text-red-500">*</span>
@@ -594,7 +594,7 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                                 </Select>
                             </div>
                         )}
-                        
+
                         <DialogFooter className="flex flex-col sm:flex-row gap-2">
                             <DialogClose asChild>
                                 <Button type="button" variant="outline" className="w-full sm:w-auto">
@@ -622,14 +622,14 @@ export function CouponManagementCard({ coupons, onAddCoupon, onUpdateCoupon, onD
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
                         <AlertDialogDescription>
-                            ¿Estás seguro de que quieres eliminar este cupón? 
+                            ¿Estás seguro de que quieres eliminar este cupón?
                             Esta acción no se puede deshacer.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
                         <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={handleDelete} 
+                        <AlertDialogAction
+                            onClick={handleDelete}
                             disabled={isDeleting}
                             className="w-full sm:w-auto bg-destructive hover:bg-destructive/90"
                         >

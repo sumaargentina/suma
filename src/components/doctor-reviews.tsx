@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import type { DoctorReview, Doctor } from '@/lib/types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -41,7 +41,7 @@ export function DoctorReviews({ doctor, onReviewAdded }: DoctorReviewsProps) {
     if (!doctor?.id) return;
     setIsLoading(true);
     try {
-      const reviewsData = await firestoreService.getDoctorReviews(doctor.id);
+      const reviewsData = await supabaseService.getDoctorReviews(doctor.id);
       setReviews(reviewsData);
     } catch (error) {
       console.error('Error fetching reviews:', error);
@@ -111,7 +111,7 @@ export function DoctorReviews({ doctor, onReviewAdded }: DoctorReviewsProps) {
       };
 
       if (isEditing && currentReview) {
-        await firestoreService.updateDoctorReview(currentReview.id, {
+        await supabaseService.updateDoctorReview(currentReview.id, {
           rating,
           comment: comment.trim(),
           date: new Date().toISOString(),
@@ -121,7 +121,7 @@ export function DoctorReviews({ doctor, onReviewAdded }: DoctorReviewsProps) {
           description: 'Tu valoración ha sido actualizada exitosamente.',
         });
       } else {
-        await firestoreService.addDoctorReview(reviewData);
+        await supabaseService.addDoctorReview(reviewData);
         toast({
           title: 'Valoración Enviada',
           description: 'Gracias por tu valoración. Ha sido enviada exitosamente.',
@@ -153,7 +153,7 @@ export function DoctorReviews({ doctor, onReviewAdded }: DoctorReviewsProps) {
 
   const handleDeleteReview = async (reviewId: string) => {
     try {
-      await firestoreService.deleteDoctorReview(reviewId);
+      await supabaseService.deleteDoctorReview(reviewId);
       toast({
         title: 'Valoración Eliminada',
         description: 'Tu valoración ha sido eliminada exitosamente.',

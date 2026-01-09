@@ -15,9 +15,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from '@/lib/auth';
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { MessageSquarePlus, Loader2, Send, Eye, Clock, CheckCircle } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,7 @@ interface SupportTabProps {
 export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  
+
   const [isSupportDialogOpen, setIsSupportDialogOpen] = useState(false);
   const [isSupportDetailDialogOpen, setIsSupportDetailDialogOpen] = useState(false);
   const [selectedSupportTicket, setSelectedTicket] = useState<AdminSupportTicket | null>(null);
@@ -50,7 +50,7 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
       // Primero por estado (abiertos primero)
       if (a.status === 'abierto' && b.status !== 'abierto') return -1;
       if (a.status !== 'abierto' && b.status === 'abierto') return 1;
-      
+
       // Luego por fecha (más recientes primero)
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
@@ -81,18 +81,18 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
     }
 
     const newTicket: Omit<AdminSupportTicket, 'id' | 'messages'> = {
-        userId: user.email, userName: user.name, userRole: 'seller', status: 'abierto',
-        date: new Date().toISOString().split('T')[0], subject: result.data.subject, description: result.data.description,
+      userId: user.email, userName: user.name, userRole: 'seller', status: 'abierto',
+      date: new Date().toISOString(), subject: result.data.subject, description: result.data.description,
     };
-    
+
     try {
-      await firestoreService.addSupportTicket(newTicket);
+      await supabaseService.addSupportTicket(newTicket);
       onUpdate();
       setIsSupportDialogOpen(false);
       (e.target as HTMLFormElement).reset();
       toast({ title: "Ticket Enviado", description: "Tu solicitud ha sido enviada al equipo de soporte de SUMA." });
     } catch {
-      toast({ variant: 'destructive', title: "Error", description: "No se pudo enviar el ticket."});
+      toast({ variant: 'destructive', title: "Error", description: "No se pudo enviar el ticket." });
     } finally {
       setIsSubmittingTicket(false);
     }
@@ -106,13 +106,32 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
   const handleSendSellerReply = async () => {
     if (!selectedSupportTicket || !replyMessage.trim() || !user) return;
 
-    const newMessage: Omit<ChatMessage, 'id' | 'timestamp'> = { sender: 'user', text: replyMessage.trim() };
-    await firestoreService.addMessageToSupportTicket(selectedSupportTicket.id, newMessage);
+    const messageText = replyMessage.trim();
     setReplyMessage("");
-    onUpdate();
-    // Optimistically update dialog
-    const updatedTicket = { ...selectedSupportTicket, messages: [...(selectedSupportTicket.messages || []), { ...newMessage, id: `temp-${Date.now()}`, timestamp: new Date().toISOString() }]};
-    setSelectedTicket(updatedTicket);
+
+    // Optimistic update - mostrar mensaje inmediatamente
+    const newMessage = {
+      id: `msg-${Date.now()}`,
+      sender: 'user' as const,
+      text: messageText,
+      timestamp: new Date().toISOString()
+    };
+    setSelectedTicket({
+      ...selectedSupportTicket,
+      messages: [...(selectedSupportTicket.messages || []), newMessage]
+    });
+
+    // Enviar al servidor
+    try {
+      await supabaseService.addMessageToSupportTicket(selectedSupportTicket.id, {
+        sender: 'user',
+        text: messageText
+      });
+      onUpdate();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo enviar el mensaje' });
+    }
   };
 
   const openTicketsCount = sortedTickets.filter(t => t.status === 'abierto').length;
@@ -134,7 +153,7 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
               <CardDescription>Gestiona tus tickets de soporte con el equipo de SUMA.</CardDescription>
             </div>
             <Button onClick={() => setIsSupportDialogOpen(true)} className="w-full sm:w-auto">
-              <MessageSquarePlus className="mr-2 h-4 w-4"/> Crear Nuevo Ticket
+              <MessageSquarePlus className="mr-2 h-4 w-4" /> Crear Nuevo Ticket
             </Button>
           </div>
         </CardHeader>
@@ -166,15 +185,15 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
               </TableHeader>
               <TableBody>
                 {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-                  <TableRow 
-                    key={ticket.id} 
+                  <TableRow
+                    key={ticket.id}
                     className={cn(
                       ticket.status === 'abierto' && "bg-blue-50 border-l-4 border-l-blue-500",
                       "hover:bg-muted/50 transition-colors"
                     )}
                   >
                     <TableCell className="font-medium">
-                      {format(new Date(ticket.date + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es })}
+                      {format(parseISO(ticket.createdAt || ticket.date), "d 'de' LLLL, yyyy 'a las' HH:mm", { locale: es })}
                     </TableCell>
                     <TableCell className="font-medium max-w-xs truncate">{ticket.subject}</TableCell>
                     <TableCell>
@@ -215,8 +234,8 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
           {/* Vista móvil */}
           <div className="space-y-3 md:hidden">
             {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-              <div 
-                key={ticket.id} 
+              <div
+                key={ticket.id}
                 className={cn(
                   "p-4 border rounded-lg space-y-3 transition-colors",
                   ticket.status === 'abierto' && "bg-blue-50 border-l-4 border-l-blue-500",
@@ -227,7 +246,7 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm truncate">{ticket.subject}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(ticket.date + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es })}
+                      {format(parseISO(ticket.createdAt || ticket.date), "d 'de' LLLL, yyyy 'a las' HH:mm", { locale: es })}
                     </p>
                   </div>
                   <Badge className={cn(
@@ -247,10 +266,10 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
                     )}
                   </Badge>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full" 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
                   onClick={() => handleViewTicket(ticket)}
                 >
                   <Eye className="mr-2 h-4 w-4" /> Ver Detalles
@@ -264,7 +283,7 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
           </div>
         </CardContent>
       </Card>
-      
+
       <Dialog open={isSupportDialogOpen} onOpenChange={setIsSupportDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -275,23 +294,23 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="subject" className="text-right">Asunto</Label>
-                <Input 
-                  id="subject" 
-                  name="subject" 
-                  placeholder="ej., Problema con un referido" 
-                  className="col-span-3" 
-                  required 
+                <Input
+                  id="subject"
+                  name="subject"
+                  placeholder="ej., Problema con un referido"
+                  className="col-span-3"
+                  required
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="description" className="text-right">Descripción</Label>
-                <Textarea 
-                  id="description" 
-                  name="description" 
-                  placeholder="Detalla tu inconveniente aquí..." 
-                  className="col-span-3" 
-                  rows={5} 
-                  required 
+                <Textarea
+                  id="description"
+                  name="description"
+                  placeholder="Detalla tu inconveniente aquí..."
+                  className="col-span-3"
+                  rows={5}
+                  required
                 />
               </div>
             </div>
@@ -306,7 +325,7 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
           </form>
         </DialogContent>
       </Dialog>
-      
+
       <Dialog open={isSupportDetailDialogOpen} onOpenChange={setIsSupportDetailDialogOpen}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col">
           <DialogHeader>
@@ -320,14 +339,14 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
                   {selectedSupportTicket.status}
                 </Badge>
                 <span>•</span>
-                <span>{format(new Date(selectedSupportTicket.date + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es })}</span>
+                <span>{format(parseISO(selectedSupportTicket.createdAt || selectedSupportTicket.date), "d 'de' LLLL, yyyy 'a las' HH:mm", { locale: es })}</span>
               </div>
             )}
           </DialogHeader>
           {selectedSupportTicket && (
             <>
               <div className="flex-1 space-y-4 py-4 max-h-[50vh] overflow-y-auto pr-4">
-                {(selectedSupportTicket.messages || []).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((msg) => (
+                {(selectedSupportTicket.messages || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((msg) => (
                   <div key={msg.id} className={cn("flex items-end gap-2", msg.sender === 'user' && 'justify-end')}>
                     {msg.sender === 'admin' && (
                       <Avatar className="h-8 w-8">
@@ -336,13 +355,13 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
                     )}
                     <div className={cn(
                       "p-3 rounded-lg max-w-xs shadow-sm",
-                      msg.sender === 'user' 
-                        ? 'bg-primary text-primary-foreground rounded-br-none' 
+                      msg.sender === 'user'
+                        ? 'bg-primary text-primary-foreground rounded-br-none'
                         : 'bg-muted rounded-bl-none'
                     )}>
                       <p className="text-sm">{msg.text}</p>
                       <p className="text-xs text-right mt-1 opacity-70">
-                        {/* Removed parseISO and formatDistanceToNow as they are no longer imported */}
+                        {formatDistanceToNow(parseISO(msg.timestamp), { locale: es, addSuffix: true })}
                       </p>
                     </div>
                     {msg.sender === 'user' && (
@@ -355,22 +374,33 @@ export function SupportTab({ supportTickets, sellerData, onUpdate }: SupportTabP
                 ))}
               </div>
               {selectedSupportTicket.status === 'abierto' && (
-                <div className="flex items-end gap-2 border-t pt-4">
-                  <Textarea 
-                    placeholder="Escribe tu respuesta..." 
-                    value={replyMessage} 
-                    onChange={(e) => setReplyMessage(e.target.value)} 
-                    rows={2}
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleSendSellerReply} 
-                    disabled={!replyMessage.trim()} 
-                    size="icon"
-                    className="shrink-0"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2 border-t pt-4">
+                  <div className="flex items-end gap-2">
+                    <Textarea
+                      placeholder="Escribe tu respuesta..."
+                      value={replyMessage}
+                      onChange={(e) => setReplyMessage(e.target.value)}
+                      rows={2}
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendSellerReply();
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={handleSendSellerReply}
+                      disabled={!replyMessage.trim()}
+                      size="icon"
+                      className="shrink-0"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Presiona Enter para enviar, Shift+Enter para nueva línea
+                  </p>
                 </div>
               )}
               <DialogFooter className="pt-4">

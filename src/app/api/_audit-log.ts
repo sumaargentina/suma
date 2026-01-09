@@ -1,4 +1,5 @@
-import { getFirestore } from 'firebase-admin/firestore';
+// Audit log desactivado temporalmente por migración a Supabase
+// TODO: Implementar logs de auditoría en Supabase
 
 export async function saveAuditLog({ userId, email, role, ip, action, details, result, message }: {
   userId: string;
@@ -10,20 +11,6 @@ export async function saveAuditLog({ userId, email, role, ip, action, details, r
   result: 'success' | 'error';
   message?: string;
 }) {
-  try {
-    const db = getFirestore();
-    await db.collection('auditLogs').add({
-      userId,
-      email: email || null,
-      role: role || null,
-      ip: ip || null,
-      action,
-      details: details || null,
-      result,
-      message: message || null,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.error('Error guardando log de auditoría:', e);
-  }
-} 
+  // No-op
+  console.log('Audit log (skipped):', { action, userId, result });
+}

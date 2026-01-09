@@ -23,7 +23,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from "@/lib/firestoreService";
+import * as supabaseService from "@/lib/supabaseService";
 import type { DoctorPayment, Doctor } from "@/lib/types";
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -61,8 +61,8 @@ export function FinancesTab() {
     try {
       // Obtener datos reales de la base de datos
       const [doctorPayments, doctors] = await Promise.all([
-        firestoreService.getDoctorPayments(),
-            firestoreService.getDoctors()
+        supabaseService.getDoctorPayments(),
+            supabaseService.getDoctors()
       ]);
 
       // Filtrar pagos pendientes
@@ -137,10 +137,10 @@ export function FinancesTab() {
 
     setIsProcessingPayment(true);
     try {
-      await firestoreService.updateDoctorPaymentStatus(selectedPayment.id, status);
+      await supabaseService.updateDoctorPaymentStatus(selectedPayment.id, status);
       // Si el pago es aprobado, actualizar el doctor a subscriptionStatus: 'active'
       if (status === 'Paid') {
-        await firestoreService.updateDoctor(selectedPayment.doctorId, { subscriptionStatus: 'active' });
+        await supabaseService.updateDoctor(selectedPayment.doctorId, { subscriptionStatus: 'active' });
       }
       toast({
         title: status === 'Paid' ? "Pago Aprobado" : "Pago Rechazado",

@@ -1,98 +1,131 @@
-
 "use client";
 export const dynamic = 'force-dynamic';
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { HeaderWrapper, BottomNav } from "@/components/header";
-import * as firestoreService from '@/lib/firestoreService';
-import { type Doctor, type Service, type BankDetail, type Coupon, type Appointment } from "@/lib/types";
+import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import Link from "next/link";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import {
+  Calendar as CalendarIcon,
+  Clock,
+  MapPin,
+  Star,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Banknote,
+  Landmark,
+  Loader2,
+  AlertCircle,
+  ClipboardCheck,
+  Video,
+  Building2,
+  ShieldCheck
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import * as supabaseService from "@/lib/supabaseService";
+// import { notificationService } from '@/lib/notifications/notification-service';
+import { Doctor, Appointment, Service, BankDetail, Clinic, PaymentSettings, FamilyMember, FamilyRelationship } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import { HeaderWrapper, BottomNav } from "@/components/header";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
-import { Clock, MapPin, Star, CheckCircle, Banknote, Landmark, ClipboardCheck, Tag, Loader2, XCircle, Copy } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useAppointments } from "@/lib/appointments";
-import { useAuth } from "@/lib/auth";
-import { useSettings } from "@/lib/settings";
-import Link from "next/link";
 import { DoctorReviews } from "@/components/doctor-reviews";
 import { CalendarNotification } from "@/components/calendar-notification";
 
-const dayKeyMapping = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+// Definido localmente para evitar problemas de importación
+const FAMILY_RELATIONSHIP_LABELS: Record<FamilyRelationship, string> = {
+  hijo: 'Hijo',
+  hija: 'Hija',
+  padre: 'Padre',
+  madre: 'Madre',
+  abuelo: 'Abuelo',
+  abuela: 'Abuela',
+  nieto: 'Nieto',
+  nieta: 'Nieta',
+  conyuge: 'Cónyuge',
+  hermano: 'Hermano',
+  hermana: 'Hermana',
+  otro: 'Otro',
+};
 
-function generateTimeSlots(startTime: string, endTime: string, duration: number): string[] {
-    const slots: string[] = [];
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
+// Utility functions
+const capitalizeWords = (str: string) => {
+  return str.replace(/\b\w/g, l => l.toUpperCase());
+};
 
-    let currentHour = startHour;
-    let currentMinute = startMinute;
+const getScheduleForDay = (schedule: any, dayIndex: number) => {
+  if (!schedule) return null;
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayName = days[dayIndex];
+  return schedule[dayName];
+};
 
-    while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
-        slots.push(`${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`);
-        currentMinute += duration;
-        if (currentMinute >= 60) {
-            currentHour += Math.floor(currentMinute / 60);
-            currentMinute %= 60;
-        }
-    }
-    return slots;
-}
+const generateTimeSlots = (start: string, end: string, duration: number) => {
+  const slots = [];
+  let current = new Date(`2000-01-01T${start}`);
+  const endTime = new Date(`2000-01-01T${end}`);
 
-function capitalizeWords(str: string) {
-  return str.replace(/\b\w+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-}
+  while (current < endTime) {
+    slots.push(current.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    current.setMinutes(current.getMinutes() + duration);
+  }
+  return slots;
+};
 
-export default function DoctorProfilePage() {
+export default function DoctorProfile() {
   const params = useParams();
+  const id = params?.id as string;
   const router = useRouter();
-  const id = params.id as string;
   const { toast } = useToast();
-  const { user } = useAuth();
-  const { addAppointment } = useAppointments();
-  const { coupons } = useSettings();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<string>('');
-  
-  const [step, setStep] = useState<'selectDateTime' | 'selectServices' | 'selectPayment' | 'confirmation'>('selectDateTime');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [step, setStep] = useState<'selectPatient' | 'selectDateTime' | 'selectServices' | 'selectPayment' | 'confirmation'>('selectPatient');
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'mercadopago' | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBankDetail, setSelectedBankDetail] = useState<BankDetail | null>(null);
   const [paymentProof, setPaymentProof] = useState<File | null>(null);
-  
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [coupons, setCoupons] = useState<any[]>([]);
   const [couponInput, setCouponInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [showCalendarNotification, setShowCalendarNotification] = useState(false);
-  const [lastCreatedAppointment, setLastCreatedAppointment] = useState<{
-    doctorName: string;
-    date: string;
-    time: string;
-    services: { name: string }[];
-    totalPrice: number;
-    doctorAddress?: string;
-  } | null>(null);
+  const [lastCreatedAppointment, setLastCreatedAppointment] = useState<any>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [consultationType, setConsultationType] = useState<'presencial' | 'online'>('presencial');
+  const [clinic, setClinic] = useState<Clinic | null>(null); // Clínica asociada al médico (si aplica)
+
+  // Núcleo Familiar - Estado para selección de paciente
+  const [bookingFor, setBookingFor] = useState<'myself' | 'family'>('myself');
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [selectedFamilyMember, setSelectedFamilyMember] = useState<FamilyMember | null>(null);
+  const [isLoadingFamily, setIsLoadingFamily] = useState(false);
 
   const fetchAppointments = useCallback(async () => {
     if (id) {
       try {
-        // No aplicar ningún filtro, mapeo o transformación aquí:
-        const docAppointments = await firestoreService.getDoctorAppointments(id);
-        setAppointments(docAppointments); // <-- SIN ningún filtro, mapeo ni transformación
+        const docAppointments = await supabaseService.getDoctorAppointments(id);
+        setAppointments(docAppointments);
       } catch (error) {
         console.error('Error fetching appointments:', error);
       }
@@ -101,78 +134,254 @@ export default function DoctorProfilePage() {
 
   useEffect(() => {
     if (id) {
-        const fetchDoctorAndAppointments = async () => {
-            setIsLoading(true);
-            try {
-                const [docData, docAppointments] = await Promise.all([
-                    firestoreService.getDoctor(id),
-                    firestoreService.getDoctorAppointments(id),
-                ]);
+      // Validar que el ID sea un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        toast({
+          variant: "destructive",
+          title: "ID inválido",
+          description: "El identificador del médico no es válido.",
+        });
+        router.push('/find-a-doctor');
+        return;
+      }
 
-                            if (docData) {
-                console.log('🏥 Datos del doctor cargados en página de perfil:', {
-                    doctorId: docData.id,
-                    doctorName: docData.name,
-                    cupones: docData.coupons || [],
-                    cantidadCupones: (docData.coupons || []).length
-                });
-                setDoctor(docData);
-                setAppointments(docAppointments);
-            } else {
-                    toast({
-                        variant: "destructive",
-                        title: "Médico no encontrado",
-                        description: "No se pudo encontrar el perfil de este médico.",
-                    });
-                    router.push('/find-a-doctor');
-                }
-            } catch {
-                 toast({
-                    variant: "destructive",
-                    title: "Error de Carga",
-                    description: "No se pudieron cargar los datos del médico.",
-                });
-            } finally {
-                setIsLoading(false);
+      const fetchDoctorAndAppointments = async () => {
+        setIsLoading(true);
+        try {
+          const [docData, docAppointments] = await Promise.all([
+            supabaseService.getDoctor(id),
+            supabaseService.getDoctorAppointments(id),
+          ]);
+
+          if (docData) {
+            setDoctor(docData);
+            if (docData.addresses && docData.addresses.length > 0) {
+              setSelectedAddressId(docData.addresses[0].id);
             }
+            setAppointments(docAppointments);
+
+            // Cargar cupones: Plataforma + Clínica (si aplica)
+            try {
+              const settings = await supabaseService.getSettings();
+              let allCoupons = settings?.coupons || [];
+
+              // Si es médico de clínica, agregar cupones de la clínica
+              if (docData.clinicId) {
+                const clinicData = await supabaseService.getClinic(docData.clinicId);
+                if (clinicData && clinicData.coupons) {
+                  allCoupons = [...allCoupons, ...clinicData.coupons];
+                }
+                if (clinicData) setClinic(clinicData); // Ensure clinic is set
+              }
+
+              setCoupons(allCoupons.filter(c => c.isActive !== false));
+            } catch (couponError) {
+              console.error('Error loading coupons:', couponError);
+            }
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Médico no encontrado",
+              description: "No se pudo encontrar el perfil de este médico.",
+            });
+            router.push('/find-a-doctor');
+          }
+        } catch {
+          toast({
+            variant: "destructive",
+            title: "Error de Carga",
+            description: "No se pudieron cargar los datos del médico.",
+          });
+        } finally {
+          setIsLoading(false);
         }
-        fetchDoctorAndAppointments();
+      }
+      fetchDoctorAndAppointments();
     }
   }, [id, router, toast]);
+
+  // Cargar familiares cuando el usuario está autenticado
+  useEffect(() => {
+    const loadFamilyMembers = async () => {
+      if (user && user.role === 'patient') {
+        setIsLoadingFamily(true);
+        try {
+          const members = await supabaseService.getFamilyMembersForBooking(user.id);
+          setFamilyMembers(members);
+        } catch (error) {
+          console.error('Error loading family members:', error);
+        } finally {
+          setIsLoadingFamily(false);
+        }
+      }
+    };
+    loadFamilyMembers();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && user.role === 'patient' && doctor) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const shouldRestore = urlParams.get('restoreAppointment') === 'true';
+
+      if (shouldRestore) {
+        const pendingAppointmentStr = sessionStorage.getItem('pendingAppointment');
+        if (pendingAppointmentStr) {
+          try {
+            const pendingData = JSON.parse(pendingAppointmentStr);
+            if (pendingData.doctorId === id) {
+              if (pendingData.selectedDate) setSelectedDate(new Date(pendingData.selectedDate));
+              if (pendingData.selectedTime) setSelectedTime(pendingData.selectedTime);
+              if (pendingData.selectedServices) setSelectedServices(pendingData.selectedServices);
+              if (pendingData.paymentMethod) setPaymentMethod(pendingData.paymentMethod);
+              if (pendingData.selectedBankDetail) setSelectedBankDetail(pendingData.selectedBankDetail);
+              if (pendingData.appliedCoupon) {
+                setAppliedCoupon(pendingData.appliedCoupon);
+                setDiscountAmount(pendingData.discountAmount || 0);
+              }
+              if (pendingData.couponInput) setCouponInput(pendingData.couponInput);
+              if (pendingData.selectedAddressId) setSelectedAddressId(pendingData.selectedAddressId);
+
+              if (pendingData.selectedDate && pendingData.selectedTime) {
+                setStep('selectServices');
+              } else if (pendingData.step) {
+                setStep(pendingData.step);
+              }
+
+              sessionStorage.removeItem('pendingAppointment');
+              window.history.replaceState({}, '', `/doctors/${id}`);
+              toast({
+                title: "Datos restaurados",
+                description: "Hemos restaurado los datos de tu cita. Puedes continuar con el proceso.",
+              });
+            } else {
+              sessionStorage.removeItem('pendingAppointment');
+            }
+          } catch (error) {
+            console.error('❌ Error restaurando datos de cita:', error);
+            sessionStorage.removeItem('pendingAppointment');
+          }
+        }
+      }
+    }
+  }, [user, id, doctor, toast]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if ((!user || user.role !== 'patient') && (step === 'selectServices' || step === 'selectPayment')) {
+      if (selectedDate && selectedTime) {
+        try {
+          const pendingAppointmentData = {
+            doctorId: id,
+            selectedDate: selectedDate.toISOString(),
+            selectedTime: selectedTime,
+            selectedServices: [],
+            paymentMethod: null,
+            selectedBankDetail: null,
+            appliedCoupon: null,
+            discountAmount: 0,
+            couponInput: "",
+            step: 'selectDateTime',
+            selectedAddressId,
+          };
+          sessionStorage.setItem('pendingAppointment', JSON.stringify(pendingAppointmentData));
+        } catch (error) {
+          console.error('Error guardando datos pendientes:', error);
+        }
+      }
+      setStep('selectDateTime');
+      toast({
+        title: "Debes iniciar sesión",
+        description: "Necesitas estar registrado o iniciar sesión para continuar con tu cita.",
+      });
+      router.push(`/auth/login?redirect=/doctors/${id}`);
+    }
+  }, [user, authLoading, step, id, router, toast, selectedDate, selectedTime, selectedAddressId]);
 
   const subtotal = useMemo(() => {
     return selectedServices.reduce((total, service) => total + service.price, 0);
   }, [selectedServices]);
 
+  const currentAddress = useMemo(() => {
+    if (!doctor) return null;
+
+    // Si es consulta online, retornar configuración online
+    if (consultationType === 'online' && doctor.onlineConsultation?.enabled) {
+      return {
+        id: 'online',
+        name: 'Consulta Online',
+        address: 'Videollamada',
+        city: doctor.city,
+        schedule: doctor.onlineConsultation.schedule,
+        consultationFee: doctor.onlineConsultation.consultationFee,
+        services: doctor.onlineConsultation.services || doctor.services
+      };
+    }
+
+    // Consulta presencial
+    if (doctor.addresses && doctor.addresses.length > 0 && selectedAddressId) {
+      return doctor.addresses.find(a => a.id === selectedAddressId) || doctor.addresses[0];
+    }
+    return {
+      id: 'legacy',
+      name: 'Consultorio Principal',
+      address: doctor.address,
+      city: doctor.city,
+      schedule: doctor.schedule,
+      consultationFee: doctor.consultationFee,
+      services: doctor.services
+    };
+  }, [doctor, selectedAddressId, consultationType]);
+
   const finalPrice = useMemo(() => {
     if (!doctor) return 0;
-    const priceAfterDiscount = (doctor.consultationFee || 0) + subtotal - discountAmount;
+    const baseFee = (currentAddress && currentAddress.consultationFee !== undefined)
+      ? currentAddress.consultationFee
+      : (doctor.consultationFee || 0);
+    const priceAfterDiscount = baseFee + subtotal - discountAmount;
     return priceAfterDiscount < 0 ? 0 : priceAfterDiscount;
-  }, [doctor, subtotal, discountAmount]);
+  }, [doctor, subtotal, discountAmount, currentAddress]);
 
   const availableSlots = useMemo(() => {
-    if (!doctor || !selectedDate) return [];
+    if (!selectedDate || !doctor || !appointments || !currentAddress) {
+      return [];
+    }
+    try {
+      const dayIndex = selectedDate.getDay();
+      const daySchedule = getScheduleForDay(currentAddress.schedule, dayIndex);
 
-    const dayKey = dayKeyMapping[selectedDate.getDay()];
-    const daySchedule = doctor.schedule[dayKey];
+      if (!daySchedule || !daySchedule.active || !Array.isArray(daySchedule.slots)) {
+        return [];
+      }
 
-    if (!daySchedule.active) return [];
+      const allSlotsSet = new Set<string>();
+      // Usar la duración del consultorio actual, o la del doctor como fallback
+      const slotDuration = currentAddress.slotDuration || doctor.slotDuration || 30;
 
-    const allSlotsSet = new Set<string>();
-    daySchedule.slots.forEach(slot => {
-        const generated = generateTimeSlots(slot.start, slot.end, doctor.slotDuration);
+      daySchedule.slots.forEach((slot: any) => {
+        const generated = generateTimeSlots(slot.start, slot.end, slotDuration);
         generated.forEach(s => allSlotsSet.add(s));
-    });
+      });
 
-    const allSlots = Array.from(allSlotsSet).sort();
+      const allSlots = Array.from(allSlotsSet).sort();
+      const selectedDateString = selectedDate.toISOString().split('T')[0];
 
-    const selectedDateString = selectedDate.toISOString().split('T')[0];
-    const bookedSlots = appointments
-      .filter(appt => appt.date === selectedDateString)
-      .map(appt => appt.time);
+      const bookedSlots = appointments
+        .filter(appt => {
+          if (appt.date !== selectedDateString) return false;
+          if (appt.addressId) {
+            return appt.addressId === currentAddress.id;
+          }
+          return true;
+        })
+        .map(appt => appt.time);
 
-    return allSlots.filter(slot => !bookedSlots.includes(slot));
-  }, [selectedDate, doctor, appointments]);
+      return allSlots.filter(slot => !bookedSlots.includes(slot));
+    } catch (error) {
+      console.error('Error calculando availableSlots:', error);
+      return [];
+    }
+  }, [selectedDate, doctor, appointments, currentAddress]);
 
   const handleServiceToggle = (service: Service) => {
     setSelectedServices((prev) =>
@@ -181,73 +390,87 @@ export default function DoctorProfilePage() {
         : [...prev, service]
     );
   };
-  
+
   const handleApplyCoupon = () => {
     if (!id || !couponInput || !doctor) return;
-    
-    // Combinar cupones globales y específicos del doctor
-    const globalCoupons = coupons.filter(
-      c =>
-        c.scope === 'general' ||
-        c.scope === id ||
-        (c.scopeType === 'all') ||
-        (c.scopeType === 'specific' && Array.isArray(c.scopeDoctors) && c.scopeDoctors.includes(id)) ||
-        (c.scopeType === 'specialty' && doctor.specialty && c.scopeSpecialty === doctor.specialty) ||
-        (c.scopeType === 'city' && doctor.city && c.scopeCity === doctor.city)
-    );
-    const doctorCoupons = doctor.coupons || [];
-    const allApplicableCoupons = [...globalCoupons, ...doctorCoupons];
-    
-    const coupon = allApplicableCoupons.find(
-      c => c.code.toUpperCase() === couponInput.toUpperCase() && c.isActive !== false
-    );
-    const totalBeforeDiscount = (doctor.consultationFee || 0) + subtotal;
 
-    // Validar fechas de validez
-    const now = new Date();
-    const isValidDate = (c: Coupon) => {
-      const from = c.validFrom && typeof c.validFrom === "object" && "toDate" in c.validFrom
-        ? c.validFrom.toDate()
-        : c.validFrom
-          ? new Date(c.validFrom)
-          : null;
-      const to = c.validTo && typeof c.validTo === "object" && "toDate" in c.validTo
-        ? c.validTo.toDate()
-        : c.validTo
-          ? new Date(c.validTo)
-          : null;
-      return (!from || now >= from) && (!to || now <= to);
-    };
+    // Filtrar cupones que aplican a este médico
+    const applicableCoupons = coupons.filter(c => {
+      // Verificar si el cupón está activo
+      if (c.isActive === false) return false;
 
-    if (coupon && isValidDate(coupon)) {
-      let discount = 0;
-      // Unificar campo de valor de descuento
-      const discountValue = coupon.discountValue ?? coupon.value ?? 0;
-      if (coupon.discountType === 'percentage') {
-        discount = (totalBeforeDiscount * discountValue) / 100;
-      } else {
-        discount = discountValue;
+      // Verificar fecha de validez
+      const now = new Date();
+      if (c.validFrom && new Date(c.validFrom) > now) return false;
+      if (c.validTo && new Date(c.validTo) < now) return false;
+
+      // Verificar alcance del cupón
+      switch (c.scopeType) {
+        case 'all':
+          return true;
+        case 'specialty':
+          return c.scopeSpecialty === doctor.specialty;
+        case 'city':
+          return c.scopeCity === doctor.city;
+        case 'specific':
+          return c.scopeDoctors?.includes(doctor.id);
+        default:
+          // Compatibilidad con formato antiguo
+          return c.scope === 'general' || c.scope === id ||
+            (c.scope === 'specialty' && c.specialty === doctor.specialty);
       }
-      
-      // Aplicar máximo descuento si existe
-      let finalDiscount = Math.min(discount, totalBeforeDiscount);
-      if (coupon.maxDiscount) {
-        finalDiscount = Math.min(finalDiscount, coupon.maxDiscount);
-      }
+    });
 
-      setDiscountAmount(finalDiscount);
-      setAppliedCoupon(coupon);
-      toast({
-        title: "¡Cupón aplicado!",
-        description: `Se ha aplicado un descuento de ${coupon.discountType === 'percentage' ? `${discountValue}%` : `$${discountValue}`}.`
-      });
-    } else {
+    const coupon = applicableCoupons.find(c => c.code.toUpperCase() === couponInput.toUpperCase());
+
+    if (!coupon) {
       toast({
         variant: "destructive",
-        title: "Cupón no válido",
-        description: "El código de cupón ingresado no es válido, ha expirado o no aplica para este médico.",
+        title: "Cupón Inválido",
+        description: "El código ingresado no es válido o no aplica para este médico.",
       });
+      return;
     }
+
+    // Verificar límite de usos
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+      toast({
+        variant: "destructive",
+        title: "Cupón Agotado",
+        description: "Este cupón ha alcanzado su límite de usos.",
+      });
+      return;
+    }
+
+    setAppliedCoupon(coupon);
+
+    let discount = 0;
+    const basePrice = (currentAddress && currentAddress.consultationFee !== undefined)
+      ? currentAddress.consultationFee
+      : (doctor.consultationFee || 0);
+
+    // Usar los campos correctos: discountType y discountValue
+    if (coupon.discountType === 'percentage') {
+      discount = (basePrice * coupon.discountValue) / 100;
+      // Aplicar límite máximo de descuento si existe
+      if (coupon.maxDiscount && discount > coupon.maxDiscount) {
+        discount = coupon.maxDiscount;
+      }
+    } else {
+      discount = coupon.discountValue;
+    }
+
+    // No permitir descuento mayor al precio base
+    if (discount > basePrice) {
+      discount = basePrice;
+    }
+
+    setDiscountAmount(discount);
+
+    toast({
+      title: "Cupón Aplicado",
+      description: `Se ha aplicado un descuento de $${discount.toFixed(2)}.`,
+    });
   };
 
   const handleRemoveCoupon = () => {
@@ -258,69 +481,60 @@ export default function DoctorProfilePage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // Validar tipo de archivo
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-      if (!allowedTypes.includes(file.type)) {
-        toast({
-          variant: "destructive",
-          title: "Tipo de archivo no válido",
-          description: "Por favor, sube una imagen (JPG, PNG, GIF) o un PDF.",
-        });
-        e.target.value = '';
-        return;
-      }
-      
-      // Validar tamaño (máximo 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast({
-          variant: "destructive",
-          title: "Archivo demasiado grande",
-          description: `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(2)}MB). Máximo permitido: 5MB.`,
-        });
-        e.target.value = '';
-        return;
-      }
-      
-      setPaymentProof(file);
-      toast({
-        title: "Archivo seleccionado",
-        description: `${file.name} ha sido seleccionado correctamente.`,
-      });
+      setPaymentProof(e.target.files[0]);
     }
   };
 
   const handleDateTimeSubmit = () => {
-    if (selectedDate && selectedTime) {
-      setStep('selectServices');
+    if (!selectedDate || !selectedTime) {
+      toast({
+        variant: "destructive",
+        title: "Selección incompleta",
+        description: "Por favor, selecciona una fecha y hora.",
+      });
+      return;
     }
-  };
 
-  const handleServicesSubmit = () => {
-    setStep('selectPayment');
+    if (!authLoading) {
+      if (user && user.role !== 'patient') {
+        toast({
+          variant: "destructive",
+          title: "Acceso Restringido",
+          description: `Estás conectado como ${user.role === 'doctor' ? 'Médico' : user.role}. Debes iniciar sesión como Paciente para agendar.`,
+        });
+        return;
+      }
+
+      if (!user) {
+        const pendingAppointmentData = {
+          doctorId: id,
+          selectedDate: selectedDate.toISOString(),
+          selectedTime,
+          selectedServices: [],
+          paymentMethod: null,
+          selectedBankDetail: null,
+          appliedCoupon: null,
+          discountAmount: 0,
+          couponInput: "",
+          step: 'selectDateTime',
+          selectedAddressId,
+        };
+        sessionStorage.setItem('pendingAppointment', JSON.stringify(pendingAppointmentData));
+
+        toast({
+          title: "Debes iniciar sesión",
+          description: "Necesitas estar registrado o iniciar sesión para continuar con tu cita.",
+        });
+        router.push(`/auth/login?redirect=/doctors/${id}`);
+        return;
+      }
+    }
+    setStep('selectServices');
   };
 
   const handlePaymentSubmit = async () => {
-    if (!doctor || !selectedDate || !selectedTime || !paymentMethod) {
-      toast({
-        variant: "destructive",
-        title: "Información Faltante",
-        description: "Por favor, completa todos los campos requeridos.",
-      });
-      return;
-    }
+    if (!user || !doctor || !selectedDate || !selectedTime || !paymentMethod) return;
 
-    if (!user) {
-      toast({
-        title: "Debes iniciar sesión",
-        description: "Redirigiendo a la página de inicio de sesión...",
-      });
-      router.push(`/auth/login?redirect=/doctors/${id}`);
-      return;
-    }
-    
-    // Validar transferencia solo si es el método seleccionado
     if (paymentMethod === 'transferencia') {
       if (!selectedBankDetail) {
         toast({
@@ -330,7 +544,7 @@ export default function DoctorProfilePage() {
         });
         return;
       }
-      
+
       if (!paymentProof) {
         toast({
           variant: "destructive",
@@ -340,48 +554,24 @@ export default function DoctorProfilePage() {
         return;
       }
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       let proofUrl: string | null = null;
-      
+
       if (paymentMethod === 'transferencia' && paymentProof) {
-        console.log('Iniciando subida de comprobante de pago...', {
-          fileName: paymentProof.name,
-          fileSize: paymentProof.size,
-          fileType: paymentProof.type
-        });
-        
         try {
           setUploadProgress('Subiendo comprobante de pago...');
-          
-          // Subir archivo a Firebase Storage usando la función específica para comprobantes de pago
           const fileName = `payment-proofs/${doctor.id}/${Date.now()}-${paymentProof.name}`;
-          console.log('Ruta de archivo:', fileName);
-          
-          proofUrl = await firestoreService.uploadPaymentProof(paymentProof, fileName);
-          console.log('Comprobante subido exitosamente:', proofUrl);
-          
+          proofUrl = await supabaseService.uploadPaymentProof(paymentProof, fileName);
           setUploadProgress('Comprobante subido exitosamente');
         } catch (uploadError) {
           console.error('Error al subir comprobante:', uploadError);
           let errorMessage = "No se pudo subir el comprobante de pago.";
-          
           if (uploadError instanceof Error) {
-            if (uploadError.message.includes('storage/unauthorized')) {
-              errorMessage = "No tienes permisos para subir archivos. Contacta al administrador.";
-            } else if (uploadError.message.includes('storage/quota-exceeded')) {
-              errorMessage = "Se ha excedido la cuota de almacenamiento. Intenta con un archivo más pequeño.";
-            } else if (uploadError.message.includes('storage/unauthenticated')) {
-              errorMessage = "Debes estar autenticado para subir archivos. Inicia sesión nuevamente.";
-            } else if (uploadError.message.includes('Timeout')) {
-              errorMessage = "La subida tardó demasiado. Intenta con un archivo más pequeño (<1MB).";
-            } else {
-              errorMessage = uploadError.message;
-            }
+            errorMessage = uploadError.message;
           }
-          
           toast({
             variant: "destructive",
             title: "Error al Subir Comprobante",
@@ -393,21 +583,16 @@ export default function DoctorProfilePage() {
       }
 
       setUploadProgress('Creando cita...');
-      
-      console.log('Creando cita con datos:', {
-        doctorId: doctor.id,
-        date: selectedDate.toISOString().split('T')[0],
-        time: selectedTime,
-        paymentMethod,
-        proofUrl
-      });
 
       const appointmentData = {
         patientId: user.id,
-        patientName: user.name,
+        // Si es para un familiar, usar su nombre; si no, usar el del usuario
+        patientName: selectedFamilyMember
+          ? `${selectedFamilyMember.firstName} ${selectedFamilyMember.lastName}`
+          : user.name,
         doctorId: doctor.id,
         doctorName: doctor.name,
-        consultationFee: doctor.consultationFee || 0,
+        consultationFee: (currentAddress && currentAddress.consultationFee !== undefined) ? currentAddress.consultationFee : (doctor.consultationFee || 0),
         date: selectedDate.toISOString().split('T')[0],
         time: selectedTime,
         services: selectedServices,
@@ -419,26 +604,64 @@ export default function DoctorProfilePage() {
         patientConfirmationStatus: 'Pendiente' as const,
         discountAmount: discountAmount > 0 ? discountAmount : 0,
         appliedCoupon: appliedCoupon?.code || undefined,
-        patientPhone: user.phone ?? undefined,
-        doctorAddress: doctor.address ?? '',
+        patientPhone: selectedFamilyMember?.phone || (user.phone ?? undefined),
+        doctorAddress: currentAddress?.address || doctor.address,
+        addressId: currentAddress?.id,
+        consultationType: consultationType,
+        // Núcleo Familiar
+        familyMemberId: selectedFamilyMember?.id || undefined,
+        bookedByPatientId: user.id, // Siempre es quien está haciendo la reserva
       };
 
-      console.log('🔍 About to create appointment with data:', appointmentData);
-
-      // Eliminar appliedCoupon si es undefined para evitar error de Firestore
       if (appointmentData.appliedCoupon === undefined) {
         delete appointmentData.appliedCoupon;
       }
-      await addAppointment(appointmentData);
+      const newAppointment = await supabaseService.addAppointment(appointmentData);
 
-      console.log('Cita creada exitosamente');
+      // Si es MercadoPago, redirigir al checkout
+      if (paymentMethod === 'mercadopago') {
+        const response = await fetch('/api/payments/create-preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appointmentId: newAppointment.id,
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              phone: user.phone
+            }
+          })
+        });
 
+        const data = await response.json();
+
+        if (data.initPoint) {
+          // Redirigir a MercadoPago
+          window.location.href = data.initPoint;
+          return;
+        } else {
+          throw new Error('No se pudo iniciar el pago con MercadoPago');
+        }
+      }
+
+      // Flujo normal (efectivo/transferencia)
+      // Enviar notificaciones
+      try {
+        // Llamar a API para notificaciones (Bypass Cliente)
+        await fetch('/api/notifications/confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appointmentId: newAppointment.id })
+        });
+      } catch (notifError) {
+        console.error('❌ Error sending confirmation:', notifError);
+      }
+
+      sessionStorage.removeItem('pendingAppointment');
       setUploadProgress('Finalizando...');
-      
-      // Refrescar las citas para actualizar los horarios disponibles
       await fetchAppointments();
 
-      // Guardar los datos de la cita para la notificación de calendario
       setLastCreatedAppointment({
         ...appointmentData,
         doctorName: doctor.name,
@@ -451,26 +674,19 @@ export default function DoctorProfilePage() {
       });
 
       setStep('confirmation');
-      
-      // Mostrar notificación de calendario después de 2 segundos
+
       setTimeout(() => {
         setShowCalendarNotification(true);
       }, 2000);
     } catch (error) {
       console.error('Error al agendar cita:', error);
-      
-      // Manejar error específico de cita duplicada
       if (error instanceof Error && error.message.includes('Ya existe una cita agendada')) {
         toast({
           variant: "destructive",
           title: "Horario No Disponible",
           description: error.message,
         });
-        
-        // Refrescar las citas para mostrar el horario como ocupado
         await fetchAppointments();
-        
-        // Volver al paso de selección de fecha/hora
         setStep('selectDateTime');
         setSelectedTime(null);
       } else {
@@ -487,7 +703,7 @@ export default function DoctorProfilePage() {
   };
 
   const resetBookingFlow = () => {
-    setStep('selectDateTime');
+    setStep('selectPatient');
     setSelectedDate(new Date());
     setSelectedTime(null);
     setSelectedServices([]);
@@ -495,169 +711,360 @@ export default function DoctorProfilePage() {
     setSelectedBankDetail(null);
     setPaymentProof(null);
     handleRemoveCoupon();
+    // Reset de Núcleo Familiar
+    setBookingFor('myself');
+    setSelectedFamilyMember(null);
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <HeaderWrapper />
-        <main className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </main>
-      </div>
-    );
-  }
-
-  if (!doctor) {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <HeaderWrapper />
-        <main className="flex-1 flex items-center justify-center">
-          <p>Médico no encontrado.</p>
-        </main>
-      </div>
-    );
-  }
-
-  if (doctor.status !== 'active') {
-    return (
-        <div className="flex flex-col min-h-screen bg-background">
-            <HeaderWrapper />
-            <main className="flex-1 py-8 md:py-12 bg-muted/40 pb-20 md:pb-0">
-                <div className="container max-w-4xl mx-auto">
-                     <Card className="mb-8 overflow-hidden">
-                        <div className="relative">
-                            <Image
-                                src={doctor.bannerImage}
-                                alt={`Consultorio de ${doctor.name}`}
-                                width={1200}
-                                height={400}
-                                className="w-full h-48 object-cover filter grayscale"
-                                data-ai-hint="medical office"
-                            />
-                            <div className="absolute -bottom-16 left-8">
-                                <Avatar className="h-32 w-32 border-4 border-background bg-muted">
-                                    <AvatarImage src={doctor.profileImage} alt={doctor.name} className="filter grayscale" />
-                                    <AvatarFallback>{doctor.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                            </div>
-                        </div>
-                        <div className="pt-20 px-8 pb-6">
-                            <h2 className="text-base md:text-2xl font-bold font-headline">Dr@: {capitalizeWords(doctor.name)}</h2>
-                            <p className="text-muted-foreground font-medium text-xl">{doctor.specialty}</p>
-                        </div>
-                    </Card>
-                    <Card>
-                        <CardHeader className="items-center text-center">
-                          <XCircle className="h-16 w-16 text-destructive mb-4" />
-                          <CardTitle className="text-2xl">Médico no disponible</CardTitle>
-                          <CardDescription>
-                            Este especialista no se encuentra disponible para agendar citas en este momento.
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex justify-center">
-                            <Button asChild>
-                                <Link href="/find-a-doctor">
-                                    Buscar otros especialistas
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-                        </div>
-      </main>
-      <BottomNav />
-      
-      {/* Notificación de calendario */}
-      {showCalendarNotification && lastCreatedAppointment && (
-        <CalendarNotification
-          appointment={lastCreatedAppointment}
-          onClose={() => setShowCalendarNotification(false)}
-        />
-      )}
-    </div>
-  );
-}
 
   const isDayDisabled = (date: Date) => {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) {
-        return true;
+      return true;
     }
-    const dayKey = dayKeyMapping[date.getDay()];
-    return !doctor.schedule[dayKey].active;
+    if (!currentAddress?.schedule && !doctor?.schedule) return true;
+    const scheduleToUse = currentAddress?.schedule || doctor?.schedule;
+    const daySchedule = getScheduleForDay(scheduleToUse, date.getDay());
+    return !daySchedule?.active;
   }
 
+  // Verificar si el médico puede recibir citas
+  const canAcceptAppointments = useMemo(() => {
+    if (!doctor) return { canBook: false, hasPresencial: false, hasOnline: false, message: '' };
+
+    // Verificar si tiene consulta online activa
+    const hasOnline = doctor.onlineConsultation?.enabled === true &&
+      doctor.onlineConsultation?.schedule !== undefined;
+
+    // Verificar si tiene consultorios con horarios
+    const hasPresencial = (() => {
+      // Si tiene addresses con schedule
+      if (doctor.addresses && doctor.addresses.length > 0) {
+        return doctor.addresses.some(addr => addr.schedule !== undefined);
+      }
+      // O si tiene schedule general
+      return doctor.schedule !== undefined;
+    })();
+
+    const canBook = hasPresencial || hasOnline;
+
+    let message = '';
+    if (!canBook) {
+      message = 'Este médico aún no ha configurado sus horarios de atención. Por favor, contacte directamente para consultar disponibilidad.';
+    } else if (!hasPresencial && hasOnline) {
+      message = 'Este médico solo atiende consultas online.';
+    } else if (hasPresencial && !hasOnline) {
+      message = 'Este médico solo atiende consultas presenciales.';
+    }
+
+    return { canBook, hasPresencial, hasOnline, message };
+  }, [doctor]);
+
   const renderStepContent = () => {
-    switch (step) {
+    if (!doctor) return null;
+    let currentStep = step;
+    // Redirigir a selectPatient si no está autenticado y está en pasos que requieren auth
+    if (!authLoading && (step === 'selectServices' || step === 'selectPayment') && (!user || user.role !== 'patient')) {
+      currentStep = 'selectPatient';
+    }
+
+    switch (currentStep) {
+      case 'selectPatient':
+        return (
+          <>
+            <CardHeader>
+              <CardTitle className="text-base md:text-2xl">¿Para quién es la cita?</CardTitle>
+              <CardDescription className="text-xs md:text-base">Selecciona si la cita es para ti o para un familiar.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Opción: Para mí */}
+              <div
+                onClick={() => {
+                  setBookingFor('myself');
+                  setSelectedFamilyMember(null);
+                }}
+                className={`p-4 border rounded-lg cursor-pointer transition-all ${bookingFor === 'myself'
+                  ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                  : 'border-border hover:border-primary/50'
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bookingFor === 'myself' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                    }`}>
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Para mí</p>
+                    <p className="text-sm text-muted-foreground">
+                      {user ? user.name : 'Inicia sesión para continuar'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Opción: Para un familiar */}
+              {user && familyMembers.length > 0 && (
+                <div className="space-y-3">
+                  <p className="font-medium text-sm">O selecciona a un familiar:</p>
+                  {isLoadingFamily ? (
+                    <div className="flex justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {familyMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          onClick={() => {
+                            setBookingFor('family');
+                            setSelectedFamilyMember(member);
+                          }}
+                          className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedFamilyMember?.id === member.id
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                            : 'border-border hover:border-primary/50'
+                            }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback className="bg-primary/10 text-primary">
+                                {member.firstName.charAt(0)}{member.lastName.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="font-semibold">{member.firstName} {member.lastName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {FAMILY_RELATIONSHIP_LABELS[member.relationship]} • {member.age} años
+                              </p>
+                            </div>
+                            {selectedFamilyMember?.id === member.id && (
+                              <CheckCircle className="h-5 w-5 text-primary" />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Link para agregar familiares */}
+              {user && familyMembers.length === 0 && !isLoadingFamily && (
+                <div className="text-center py-4 border border-dashed rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    ¿Tienes familiares que quieras agregar?
+                  </p>
+                  <Button variant="link" asChild className="text-primary">
+                    <Link href="/dashboard/family">Gestionar Núcleo Familiar</Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="flex justify-end">
+              <Button
+                onClick={() => setStep('selectDateTime')}
+                disabled={!user || (bookingFor === 'family' && !selectedFamilyMember)}
+              >
+                Continuar
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </>
+        );
+
       case 'selectDateTime':
         return (
           <>
             <CardHeader>
               <CardTitle className="text-base md:text-2xl">Paso 1: Selecciona Fecha y Hora</CardTitle>
-              <CardDescription className="text-xs md:text-base">Elige un horario disponible para tu cita.</CardDescription>
+              <CardDescription className="text-xs md:text-base">
+                {selectedFamilyMember
+                  ? `Cita para ${selectedFamilyMember.firstName} ${selectedFamilyMember.lastName}`
+                  : 'Elige un horario disponible para tu cita.'
+                }
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-2 gap-3 md:gap-8 items-start">
-                <div className="flex flex-col items-center">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                        setSelectedDate(date);
-                        setSelectedTime(null); // Reset time when date changes
-                    }}
-                    className="rounded-md border bg-card"
-                    disabled={isDayDisabled}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  {/* En móvil, solo mostrar los horarios si hay un día seleccionado */}
-                  <div className="hidden md:block">
-                    {selectedDate ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {availableSlots.length > 0 ? availableSlots.map((time) => (
-                          <Button
-                            key={time}
-                            variant={selectedTime === time ? "default" : "outline"}
-                            onClick={() => setSelectedTime(time)}
-                            className="flex items-center gap-2"
-                          >
-                            <Clock className="h-4 w-4" />
-                            {time}
-                          </Button>
-                        )) : <p className="col-span-full text-center text-muted-foreground">No hay horarios disponibles este día.</p>}
-                      </div>
-                    ) : (
-                       <p className="text-muted-foreground text-center md:text-left mt-4">Por favor, selecciona una fecha primero.</p>
+              {/* Si el médico no puede recibir citas, mostrar mensaje */}
+              {!canAcceptAppointments.canBook ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No disponible para agendar</h3>
+                  <p className="text-muted-foreground max-w-md">
+                    {canAcceptAppointments.message}
+                  </p>
+                  <div className="mt-4 flex gap-2">
+                    {doctor.phone && (
+                      <Button asChild variant="outline">
+                        <a href={`tel:${doctor.phone}`}>
+                          📞 Llamar
+                        </a>
+                      </Button>
+                    )}
+                    {doctor.email && (
+                      <Button asChild variant="outline">
+                        <a href={`mailto:${doctor.email}`}>
+                          ✉️ Email
+                        </a>
+                      </Button>
                     )}
                   </div>
-                  {/* En móvil, mostrar horarios solo si hay un día seleccionado */}
-                  <div className="block md:hidden">
-                    {selectedDate !== undefined ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {availableSlots.length > 0 ? availableSlots.map((time) => (
-                          <Button
-                            key={time}
-                            variant={selectedTime === time ? "default" : "outline"}
-                            onClick={() => setSelectedTime(time)}
-                            className="flex items-center gap-2"
-                          >
-                            <Clock className="h-4 w-4" />
-                            {time}
-                          </Button>
-                        )) : <p className="col-span-full text-center text-muted-foreground">No hay horarios disponibles este día.</p>}
-                      </div>
-                    ) : null}
-                  </div>
-                  <Button
-                    onClick={handleDateTimeSubmit}
-                    disabled={!selectedDate || !selectedTime}
-                    className="w-full mt-3 md:mt-8"
-                    size="lg"
-                  >
-                    Continuar al Paso 2
-                  </Button>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Selector de tipo de consulta */}
+                  <div className="mb-6">
+                    <Label className="mb-2 block font-medium">Tipo de Consulta:</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {canAcceptAppointments.hasPresencial && (
+                        <Button
+                          variant={consultationType === 'presencial' ? "default" : "outline"}
+                          onClick={() => {
+                            setConsultationType('presencial');
+                            setSelectedTime(null);
+                            if (doctor.addresses && doctor.addresses.length > 0) {
+                              setSelectedAddressId(doctor.addresses[0].id);
+                            }
+                          }}
+                          className="flex-1 min-w-[150px]"
+                        >
+                          <Building2 className="w-4 h-4 mr-2" />
+                          Presencial
+                        </Button>
+                      )}
+                      {canAcceptAppointments.hasOnline && (
+                        <Button
+                          variant={consultationType === 'online' ? "default" : "outline"}
+                          onClick={() => {
+                            setConsultationType('online');
+                            setSelectedTime(null);
+                          }}
+                          className="flex-1 min-w-[150px]"
+                        >
+                          <Video className="w-4 h-4 mr-2" />
+                          Online
+                        </Button>
+                      )}
+                    </div>
+                    {canAcceptAppointments.message && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        ℹ️ {canAcceptAppointments.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Selector de consultorio (solo para presencial) */}
+                  {consultationType === 'presencial' && doctor.addresses && doctor.addresses.length > 1 && (
+                    <div className="mb-6">
+                      <Label className="mb-2 block font-medium">Selecciona el Consultorio:</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {doctor.addresses.map(addr => (
+                          <Button
+                            key={addr.id}
+                            variant={selectedAddressId === addr.id ? "default" : "outline"}
+                            onClick={() => setSelectedAddressId(addr.id)}
+                            className="text-sm"
+                          >
+                            <MapPin className="w-4 h-4 mr-2" />
+                            {addr.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Información de ubicación o plataforma */}
+                  <div className="flex items-start gap-2 text-muted-foreground mt-2 text-sm mb-4">
+                    {consultationType === 'online' ? (
+                      <>
+                        <Video className="h-4 w-4 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium text-foreground">Consulta por Videollamada</p>
+                          <p>{doctor.onlineConsultation?.platform || 'Plataforma a confirmar'}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium text-foreground">{currentAddress?.address || doctor.address}</p>
+                          <p>{currentAddress?.city || doctor.city}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-3 md:gap-8 items-start">
+                    <div className="flex flex-col items-center">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={(date) => {
+                          setSelectedDate(date);
+                          setSelectedTime(null);
+                        }}
+                        className="rounded-md border bg-card"
+                        disabled={isDayDisabled}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="hidden md:block">
+                        {selectedDate ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {availableSlots.length > 0 ? availableSlots.map((time) => (
+                              <Button
+                                key={time}
+                                variant={selectedTime === time ? "default" : "outline"}
+                                onClick={() => {
+                                  setSelectedTime(time);
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <Clock className="h-4 w-4" />
+                                {time}
+                              </Button>
+                            )) : <p className="col-span-full text-center text-muted-foreground">No hay horarios disponibles este día.</p>}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-center md:text-left mt-4">Por favor, selecciona una fecha primero.</p>
+                        )}
+                      </div>
+                      <div className="block md:hidden">
+                        {selectedDate !== undefined ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            {availableSlots.length > 0 ? availableSlots.map((time) => (
+                              <Button
+                                key={time}
+                                variant={selectedTime === time ? "default" : "outline"}
+                                onClick={() => {
+                                  setSelectedTime(time);
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <Clock className="h-4 w-4" />
+                                {time}
+                              </Button>
+                            )) : <p className="col-span-full text-center text-muted-foreground">No hay horarios disponibles este día.</p>}
+                          </div>
+                        ) : null}
+                      </div>
+                      <Button
+                        onClick={handleDateTimeSubmit}
+                        disabled={!selectedDate || !selectedTime || authLoading}
+                        className="w-full mt-3 md:mt-8"
+                        size="lg"
+                      >
+                        Continuar al Paso 2
+                      </Button>
+                      {(() => {
+                        const shouldShow = selectedDate && selectedTime && !authLoading && (!user || (user && user.role !== 'patient'));
+                        return shouldShow;
+                      })() && (
+                          <p className="text-xs text-center text-muted-foreground mt-2">
+                            * Debes iniciar sesión para continuar
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </>
         );
@@ -666,73 +1073,49 @@ export default function DoctorProfilePage() {
         return (
           <>
             <CardHeader>
-              <CardTitle className="text-base md:text-2xl">Paso 2: Elige los Servicios</CardTitle>
-              <CardDescription className="text-xs md:text-base">La tarifa de consulta se añade automáticamente. Selecciona los servicios adicionales que necesites.</CardDescription>
+              <CardTitle className="text-base md:text-2xl">Paso 2: Servicios Adicionales</CardTitle>
+              <CardDescription className="text-xs md:text-base">Selecciona los servicios que deseas agregar a tu consulta.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3 rounded-md border p-2 md:p-4">
-                {doctor.services.length > 0 ? doctor.services.map((service) => (
-                  <div key={service.id} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
+            <CardContent>
+              <div className="space-y-4">
+                {currentAddress?.services && currentAddress.services.length > 0 ? (
+                  currentAddress.services.map((service: Service) => (
+                    <div key={service.id} className="flex items-center space-x-2 border p-4 rounded-lg">
                       <Checkbox
-                        id={`service-${service.id}`}
+                        id={service.id}
                         checked={selectedServices.some((s) => s.id === service.id)}
                         onCheckedChange={() => handleServiceToggle(service)}
                       />
-                      <Label htmlFor={`service-${service.id}`} className="text-base font-normal">
-                        {service.name}
+                      <Label htmlFor={service.id} className="flex-1 cursor-pointer">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{service.name}</span>
+                          <span className="font-bold text-primary">${service.price}</span>
+                        </div>
+                        {service.description && (
+                          <p className="text-sm text-muted-foreground">{service.description}</p>
+                        )}
                       </Label>
                     </div>
-                    <span className="font-semibold text-primary">${service.price}</span>
-                  </div>
-                )) : <p className="text-sm text-muted-foreground text-center">El Dr. no tiene servicios adicionales registrados.</p>}
-              </div>
-              
-              <div className="space-y-2">
-                 <Label>¿Tienes un cupón de descuento?</Label>
-                 <div className="flex gap-2">
-                    <Input
-                      placeholder="CÓDIGO"
-                      value={couponInput}
-                      onChange={(e) => setCouponInput(e.target.value)}
-                      disabled={!!appliedCoupon}
-                    />
-                    {appliedCoupon ? (
-                      <Button variant="outline" onClick={handleRemoveCoupon}>Quitar</Button>
-                    ) : (
-                      <Button onClick={handleApplyCoupon} disabled={!couponInput || ((doctor.consultationFee || 0) + subtotal) === 0}>Aplicar</Button>
-                    )}
-                 </div>
-              </div>
-
-              <div className="text-lg font-semibold p-2 md:p-4 bg-muted/50 rounded-lg space-y-3">
-                 <div className="w-full flex justify-between items-center text-base font-normal text-muted-foreground">
-                    <span>Tarifa de Consulta:</span>
-                    <span>${(doctor.consultationFee || 0).toFixed(2)}</span>
-                </div>
-                <div className="w-full flex justify-between items-center">
-                    <span>Subtotal Servicios:</span>
-                    <span>${subtotal.toFixed(2)}</span>
-                </div>
-                {appliedCoupon && (
-                    <div className="w-full flex justify-between items-center text-green-600">
-                        <div className="flex items-center gap-1.5"><Tag className="h-4 w-4"/> Cupón ({appliedCoupon.code})</div>
-                        <span>-${discountAmount.toFixed(2)}</span>
-                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No hay servicios adicionales disponibles.</p>
                 )}
-                 <Separator/>
-                <div className="w-full flex justify-between items-center text-xl font-bold">
-                    <span>Total a Pagar:</span>
-                    <span className="text-primary">${finalPrice.toFixed(2)}</span>
+
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-lg font-bold">Subtotal:</div>
+                  <div className="text-2xl font-bold text-primary">
+                    ${(currentAddress?.consultationFee || doctor.consultationFee || 0) + subtotal}
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-4">
-                 <Button variant="outline" onClick={() => setStep('selectDateTime')} className="w-full">
+
+                <div className="flex gap-4">
+                  <Button variant="outline" onClick={() => setStep('selectDateTime')} className="w-full">
                     Atrás
                   </Button>
-                  <Button onClick={handleServicesSubmit} className="w-full" size="lg">
-                    Continuar al Paso 3
+                  <Button onClick={() => setStep('selectPayment')} className="w-full">
+                    Continuar al Pago
                   </Button>
+                </div>
               </div>
             </CardContent>
           </>
@@ -742,211 +1125,229 @@ export default function DoctorProfilePage() {
         return (
           <>
             <CardHeader>
-              <CardTitle className="text-base md:text-2xl">Paso 3: Método de Pago</CardTitle>
-              <CardDescription className="text-xs md:text-base">Elige cómo deseas pagar tu cita.</CardDescription>
+              <CardTitle className="text-base md:text-2xl">Paso 3: Pago y Confirmación</CardTitle>
+              <CardDescription className="text-xs md:text-base">Selecciona tu método de pago y confirma la cita.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <RadioGroup value={paymentMethod || ''} onValueChange={(value) => setPaymentMethod(value as 'efectivo' | 'transferencia')}>
-                <div className="flex items-center space-x-3 p-3 sm:p-4 border rounded-md hover:bg-muted/50 transition-colors">
-                  <RadioGroupItem value="efectivo" id="efectivo" />
-                  <Label htmlFor="efectivo" className="flex items-center space-x-2 sm:space-x-3 cursor-pointer w-full">
-                    <Banknote className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <span className="font-semibold text-sm sm:text-base">Efectivo</span>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Paga el monto total el día de tu cita.</p>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="bg-muted p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Consulta Base</span>
+                    <span>${currentAddress?.consultationFee || doctor.consultationFee || 0}</span>
+                  </div>
+                  {selectedServices.map(service => (
+                    <div key={service.id} className="flex justify-between text-sm">
+                      <span>{service.name}</span>
+                      <span>${service.price}</span>
                     </div>
-                  </Label>
+                  ))}
+                  <Separator />
+                  <div className="flex justify-between font-bold">
+                    <span>Total</span>
+                    <span>${(currentAddress?.consultationFee || doctor.consultationFee || 0) + subtotal}</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-3 p-3 sm:p-4 border rounded-md hover:bg-muted/50 transition-colors">
-                  <RadioGroupItem value="transferencia" id="transferencia" />
-                  <Label htmlFor="transferencia" className="flex items-center space-x-2 sm:space-x-3 cursor-pointer w-full">
-                    <Landmark className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <span className="font-semibold text-sm sm:text-base">Transferencia Bancaria</span>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Realiza el pago y sube el comprobante.</p>
-                    </div>
-                  </Label>
-                </div>
-              </RadioGroup>
 
-              {paymentMethod === 'transferencia' && (
-                <Card className="bg-muted/30">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Selecciona una Cuenta y Sube el Comprobante</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                     {doctor.bankDetails.length > 0 ? (
+                <div className="space-y-2">
+                  <Label>Cupón de Descuento</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        placeholder="Ingresa tu código"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                        disabled={!!appliedCoupon}
+                      />
+                    </div>
+                    {appliedCoupon ? (
+                      <Button variant="destructive" onClick={handleRemoveCoupon}>
+                        Quitar
+                      </Button>
+                    ) : (
+                      <Button variant="outline" onClick={handleApplyCoupon} disabled={!couponInput}>
+                        Aplicar
+                      </Button>
+                    )}
+                  </div>
+                  {appliedCoupon && (
+                    <p className="text-sm text-green-600 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      Cupón aplicado: -${discountAmount}
+                    </p>
+                  )}
+                </div>
+
+                {/* Payment Methods - Solo mostrar los habilitados */}
+                {(() => {
+                  // Si el médico pertenece a una clínica, usar paymentSettings de la clínica
+                  // De lo contrario, usar los del médico (o defaults)
+                  const isClinicDoctor = !!doctor.clinicId && !!clinic;
+                  const ps = isClinicDoctor
+                    ? (clinic!.paymentSettings || { cash: { enabled: true }, transfer: { enabled: false }, mercadopago: { enabled: false } })
+                    : (doctor.paymentSettings || { cash: { enabled: true }, transfer: { enabled: false }, mercadopago: { enabled: false } });
+
+                  const showCash = ps.cash?.enabled !== false;
+                  const showMercadoPago = ps.mercadopago?.enabled === true;
+                  // Para transferencia: si es médico de clínica, usar datos de la clínica; si es independiente, del médico
+                  const hasBankDetails = isClinicDoctor
+                    ? (ps.transfer?.cbu || ps.transfer?.alias)
+                    : (doctor.bankDetails && doctor.bankDetails.length > 0);
+                  const showTransfer = ps.transfer?.enabled !== false && hasBankDetails;
+
+                  if (!showCash && !showMercadoPago && !showTransfer) {
+                    return (
+                      <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded border border-amber-200">
+                        Este médico no tiene métodos de pago configurados. Por favor, contactalo directamente.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <RadioGroup value={paymentMethod || ""} onValueChange={(value) => setPaymentMethod(value as any)}>
+                      {/* Efectivo */}
+                      {showCash && (
+                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                          <RadioGroupItem value="efectivo" id="efectivo" />
+                          <Label htmlFor="efectivo" className="flex items-center gap-2 cursor-pointer flex-1">
+                            <Banknote className="h-5 w-5 text-green-600" />
+                            <div>
+                              <span className="font-medium block">Pago en Efectivo / Consultorio</span>
+                              <span className="text-xs text-muted-foreground">Pagas directamente al médico el día de la cita.</span>
+                            </div>
+                          </Label>
+                        </div>
+                      )}
+
+                      {/* MercadoPago */}
+                      {showMercadoPago && (
+                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors bg-blue-50/50 border-blue-200">
+                          <RadioGroupItem value="mercadopago" id="mercadopago" />
+                          <Label htmlFor="mercadopago" className="flex items-center gap-2 cursor-pointer flex-1">
+                            <CreditCard className="h-5 w-5 text-blue-500" />
+                            <div>
+                              <span className="font-medium block">MercadoPago (Tarjetas / Débito)</span>
+                              <span className="text-xs text-muted-foreground">Pago online seguro e instantáneo.</span>
+                            </div>
+                          </Label>
+                        </div>
+                      )}
+
+                      {/* Transferencia */}
+                      {showTransfer && (
+                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                          <RadioGroupItem value="transferencia" id="transferencia" />
+                          <Label htmlFor="transferencia" className="flex items-center gap-2 cursor-pointer flex-1">
+                            <Landmark className="h-5 w-5 text-blue-600" />
+                            <div>
+                              <span className="font-medium block">Transferencia Bancaria</span>
+                              <span className="text-xs text-muted-foreground">Debes subir el comprobante ahora.</span>
+                            </div>
+                          </Label>
+                        </div>
+                      )}
+                    </RadioGroup>
+                  );
+                })()}
+
+                {paymentMethod === 'transferencia' && (
+                  <div className="space-y-4 border-l-2 border-blue-600 pl-4 ml-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-2">
+                      <Label>Datos para transferir:</Label>
+                      {/* Si es médico de clínica, mostrar datos de la clínica */}
+                      {doctor.clinicId && clinic?.paymentSettings?.transfer ? (
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 text-sm space-y-2">
+                          <div className="font-medium text-blue-700 mb-2">Cuenta de {clinic.name}</div>
+                          {clinic.paymentSettings.transfer.cbu && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">CBU:</span>
+                              <span className="font-mono">{clinic.paymentSettings.transfer.cbu}</span>
+                            </div>
+                          )}
+                          {clinic.paymentSettings.transfer.alias && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Alias:</span>
+                              <span className="font-mono font-semibold">{clinic.paymentSettings.transfer.alias}</span>
+                            </div>
+                          )}
+                          {clinic.paymentSettings.transfer.bank && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Banco:</span>
+                              <span>{clinic.paymentSettings.transfer.bank}</span>
+                            </div>
+                          )}
+                          {clinic.paymentSettings.transfer.holder && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Titular:</span>
+                              <span>{clinic.paymentSettings.transfer.holder}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : doctor.bankDetails && doctor.bankDetails.length > 0 ? (
                         <RadioGroup
-                            value={selectedBankDetail?.id || ''}
-                            onValueChange={(value) => {
-                                const bankId = value;
-                                setSelectedBankDetail(doctor.bankDetails.find(bd => bd.id === bankId) || null);
-                            }}
-                            className="space-y-2"
+                          value={selectedBankDetail?.id || ""}
+                          onValueChange={(id) => {
+                            const bank = doctor.bankDetails.find(b => b.id === id);
+                            setSelectedBankDetail(bank || null);
+                          }}
                         >
-                            {doctor.bankDetails.map((bd) => (
-                                <div key={bd.id} className="flex items-center space-x-2 sm:space-x-3 rounded-md border bg-background p-2 sm:p-3 hover:bg-muted/30 transition-colors">
-                                    <RadioGroupItem value={bd.id} id={`bank-${bd.id}`} />
-                                    <Label
-                                        htmlFor={`bank-${bd.id}`}
-                                        className="flex w-full cursor-pointer items-center gap-2 font-normal"
-                                    >
-                                        <Landmark className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground flex-shrink-0" />
-                                        <div className="min-w-0 flex-1">
-                                            <span className="font-semibold text-sm sm:text-base">{bd.bank}</span>
-                                            <p className="text-xs text-muted-foreground truncate">{bd.accountHolder}</p>
-                                        </div>
-                                    </Label>
-                                </div>
-                            ))}
+                          {doctor.bankDetails.map((bank) => (
+                            <div key={bank.id} className="flex items-start space-x-2 mb-2">
+                              <RadioGroupItem value={bank.id} id={bank.id} className="mt-1" />
+                              <Label htmlFor={bank.id} className="text-sm cursor-pointer">
+                                <div className="font-medium">{bank.bank}</div>
+                                <div>CBU/CVU: {bank.accountNumber}</div>
+                                <div>Titular: {bank.accountHolder}</div>
+                                {bank.alias && <div>Alias: {bank.alias}</div>}
+                              </Label>
+                            </div>
+                          ))}
                         </RadioGroup>
                       ) : (
-                        <p className="text-sm text-center text-muted-foreground p-4 bg-background rounded-md">
-                          Este médico no ha registrado cuentas bancarias para transferencias.
-                        </p>
-                      )}
-
-                    {selectedBankDetail && (
-                      <div className="space-y-3 border-t pt-4 mt-4">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5 text-green-600" />
-                          <h4 className="font-semibold text-green-800">Cuenta Seleccionada</h4>
-                        </div>
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 space-y-2">
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                            <span className="font-medium text-xs sm:text-sm text-green-800">Banco:</span>
-                            <span className="text-xs sm:text-sm text-green-700 break-words">{selectedBankDetail.bank}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                            <span className="font-medium text-xs sm:text-sm text-green-800">Titular:</span>
-                            <span className="text-xs sm:text-sm text-green-700 break-words">{selectedBankDetail.accountHolder}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                            <span className="font-medium text-xs sm:text-sm text-green-800">C.I./R.I.F.:</span>
-                            <span className="text-xs sm:text-sm text-green-700 break-words">{selectedBankDetail.idNumber}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-                            <span className="font-medium text-xs sm:text-sm text-green-800">Nro. Cuenta:</span>
-                            <span className="text-xs sm:text-sm font-mono text-green-700 break-all">{selectedBankDetail.accountNumber}</span>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground text-center">
-                            Realiza la transferencia a esta cuenta y luego sube el comprobante
-                          </p>
-                          <Button 
-                            type="button"
-                            variant="outline" 
-                            size="sm" 
-                            className="w-full text-xs"
-                            onClick={async () => {
-                              const accountInfo = `Banco: ${selectedBankDetail.bank}\nTitular: ${selectedBankDetail.accountHolder}\nC.I./R.I.F.: ${selectedBankDetail.idNumber}\nNro. Cuenta: ${selectedBankDetail.accountNumber}`;
-                              try {
-                                await navigator.clipboard.writeText(accountInfo);
-                                toast({
-                                  title: "Datos copiados",
-                                  description: "La información de la cuenta ha sido copiada al portapapeles.",
-                                });
-                              } catch {
-                                toast({
-                                  variant: "destructive",
-                                  title: "No se pudo copiar",
-                                  description: "Tu navegador no permite copiar al portapapeles. Copia manualmente los datos.",
-                                });
-                              }
-                            }}
-                          >
-                            <Copy className="h-3 w-3 mr-1" />
-                            Copiar datos de la cuenta
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <Separator className="my-4"/>
-                    <div className="space-y-2">
-                      <Label htmlFor="paymentProof" className="text-sm font-medium">
-                        Sube tu comprobante de pago:
-                      </Label>
-                      <div className="space-y-2">
-                        <Input 
-                          id="paymentProof" 
-                          type="file" 
-                          onChange={handleFileChange}
-                          accept="image/*,.pdf"
-                          className="cursor-pointer"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Formatos permitidos: JPG, PNG, GIF, PDF. Máximo 5MB.
-                        </p>
-                      </div>
-                      {paymentProof && (
-                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-green-800">
-                              Archivo seleccionado: {paymentProof.name}
-                            </p>
-                            <p className="text-xs text-green-600">
-                              Tamaño: {(paymentProof.size / 1024 / 1024).toFixed(2)}MB
-                            </p>
-                          </div>
-                        </div>
+                        <p className="text-sm text-destructive">No hay cuentas bancarias configuradas.</p>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
 
-              <div className="text-base sm:text-lg font-semibold p-2 md:p-4 bg-muted/50 rounded-lg">
-                <div className="w-full flex justify-between items-center text-lg sm:text-xl font-bold">
-                    <span>Total a Pagar:</span>
-                    <span className="text-primary">${finalPrice.toFixed(2)}</span>
+                    {/* Solo mostrar upload de comprobante si NO es médico de clínica (para clínicas se maneja diferente) */}
+                    {!doctor.clinicId && (
+                      <div className="space-y-2">
+                        <Label htmlFor="proof">Subir Comprobante de Pago</Label>
+                        <Input id="proof" type="file" accept="image/*,application/pdf" onChange={handleFileChange} />
+                        <p className="text-xs text-muted-foreground">Formatos: JPG, PNG, PDF. Máx 5MB.</p>
+                      </div>
+                    )}
+
+                    {doctor.clinicId && (
+                      <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
+                        * Envía el comprobante por WhatsApp a la clínica tras confirmar tu cita.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-lg font-bold">Total a Pagar:</div>
+                  <div className="text-2xl font-bold text-primary">${finalPrice}</div>
                 </div>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                 <Button variant="outline" onClick={() => setStep('selectServices')} className="w-full sm:w-auto">
+
+                <div className="flex gap-4">
+                  <Button variant="outline" onClick={() => setStep('selectServices')} className="w-full" disabled={isSubmitting}>
                     Atrás
                   </Button>
-                  <Button 
-                    onClick={handlePaymentSubmit} 
-                    disabled={isSubmitting || !paymentMethod || (paymentMethod === 'transferencia' && (!paymentProof || !selectedBankDetail))} 
-                    className="w-full sm:flex-1" 
-                    size="lg"
+                  <Button
+                    onClick={handlePaymentSubmit}
+                    className="w-full"
+                    disabled={isSubmitting || (paymentMethod === 'transferencia' && !doctor.clinicId && (!selectedBankDetail || !paymentProof))}
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="animate-spin h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                        <span className="text-sm sm:text-base">{uploadProgress || 'Procesando...'}</span>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {uploadProgress || 'Procesando...'}
                       </>
                     ) : (
                       'Confirmar Cita'
                     )}
                   </Button>
-                  
-                  {/* Mensaje de ayuda cuando el botón está deshabilitado */}
-                  {paymentMethod === 'transferencia' && (!paymentProof || !selectedBankDetail) && !isSubmitting && (
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">
-                        {!selectedBankDetail && !paymentProof && "Selecciona una cuenta bancaria y sube el comprobante de pago."}
-                        {!selectedBankDetail && paymentProof && "Selecciona una cuenta bancaria."}
-                        {selectedBankDetail && !paymentProof && "Sube el comprobante de pago."}
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* Indicador de progreso durante el procesamiento */}
-                  {isSubmitting && (
-                    <div className="text-center space-y-2">
-                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>{uploadProgress || 'Procesando tu solicitud...'}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Por favor, no cierres esta página mientras se procesa tu cita.
-                      </p>
-                    </div>
-                  )}
+                </div>
               </div>
             </CardContent>
           </>
@@ -954,61 +1355,221 @@ export default function DoctorProfilePage() {
 
       case 'confirmation':
         return (
-          <>
-            <CardHeader className="items-center text-center">
-              <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-              <CardTitle className="text-2xl">¡Cita Agendada con Éxito!</CardTitle>
-              <CardDescription>
-                Tu cita está confirmada. Aquí tienes los detalles.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="border rounded-lg p-4 space-y-4">
-                    <h4 className="font-semibold text-lg">Resumen de la Cita</h4>
-                    <p><strong>Médico:</strong> Dr@: {capitalizeWords(doctor.name)}</p>
-                    <p><strong>Fecha:</strong> {selectedDate?.toLocaleDateString("es-ES", { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                    <p><strong>Hora:</strong> {selectedTime}</p>
-                    <div>
-                        <p><strong>Tarifa de Consulta:</strong> ${(doctor.consultationFee || 0).toFixed(2)}</p>
-                        <p><strong>Servicios Adicionales:</strong></p>
-                        <ul className="list-disc list-inside text-muted-foreground">
-                            {selectedServices.map(s => <li key={s.id}>{s.name} (${s.price})</li>)}
-                        </ul>
-                    </div>
-                    <Separator/>
-                     <div className="flex justify-between items-center font-bold">
-                        <span>Total Pagado:</span>
-                        <span>${finalPrice.toFixed(2)}</span>
-                    </div>
-                </div>
+          <div className="py-6 px-4 space-y-6">
+            {/* Success Header */}
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-green-700">¡Cita Confirmada!</h2>
+              <p className="text-muted-foreground mt-1">Tu reserva ha sido registrada exitosamente</p>
 
-                 <div className="border rounded-lg p-4 space-y-2">
-                    <h4 className="font-semibold text-lg">Detalles del Pago</h4>
-                    <div className="flex items-center gap-2">
-                        <p><strong>Método:</strong> <span className="capitalize">{paymentMethod}</span></p>
-                    </div>
-                    <div className="flex items-center gap-2 text-amber-600 font-semibold">
-                         <ClipboardCheck className="h-5 w-5"/>
-                        <p><strong>Estado:</strong> Pendiente</p>
-                    </div>
-                     {appliedCoupon && (
-                      <p className="text-sm text-green-600">Cupón &apos;{appliedCoupon.code}&apos; aplicado (-${discountAmount.toFixed(2)}).</p>
-                    )}
-                    {paymentMethod === 'transferencia' && (
-                        <p className="text-sm text-muted-foreground">El comprobante ha sido enviado y está pendiente de revisión por el doctor.</p>
-                    )}
-                     {paymentMethod === 'efectivo' && (
-                        <p className="text-sm text-muted-foreground">Recuerda llevar el monto exacto el día de tu cita.</p>
-                    )}
+              {/* Indicador de para quién es la cita */}
+              {selectedFamilyMember && (
+                <div className="mt-3 inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <span className="font-medium">
+                    Cita para: {selectedFamilyMember.firstName} {selectedFamilyMember.lastName}
+                  </span>
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-600 text-xs">
+                    {FAMILY_RELATIONSHIP_LABELS[selectedFamilyMember.relationship]}
+                  </Badge>
                 </div>
+              )}
+            </div>
 
-              <Button onClick={resetBookingFlow} className="w-full" size="lg">
-                Reservar Otra Cita
+            {/* Appointment Details Card */}
+            <div className="bg-slate-50 border rounded-lg p-5 space-y-4 max-w-md mx-auto">
+              <h3 className="font-semibold text-slate-700 border-b pb-2">Detalles de tu Cita</h3>
+
+              {/* Doctor Info */}
+              <div className="flex items-start gap-3">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={doctor.profileImage} alt={doctor.name} />
+                  <AvatarFallback>{doctor.name[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium">{doctor.name}</p>
+                  <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
+                  {doctor.clinicId && clinic && (
+                    <Badge variant="outline" className="mt-1 text-xs">{clinic.name}</Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Date & Time */}
+              <div className="flex items-start gap-3">
+                <CalendarIcon className="h-5 w-5 text-primary mt-0.5" />
+                <div>
+                  <p className="font-medium">{selectedDate && format(selectedDate, "EEEE d 'de' MMMM, yyyy", { locale: es })}</p>
+                  <p className="text-sm text-muted-foreground">Hora: {selectedTime}</p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="flex items-start gap-3">
+                <MapPin className="h-5 w-5 text-primary mt-0.5" />
+                <div>
+                  <p className="font-medium">{currentAddress?.name || 'Consultorio Principal'}</p>
+                  <p className="text-sm text-muted-foreground">{currentAddress?.address || doctor.address}</p>
+                  <p className="text-xs text-muted-foreground">{currentAddress?.city || doctor.city}</p>
+                </div>
+              </div>
+
+              {/* Consultation Type */}
+              {consultationType === 'online' && (
+                <div className="flex items-start gap-3">
+                  <Video className="h-5 w-5 text-primary mt-0.5" />
+                  <div>
+                    <p className="font-medium">Consulta Online</p>
+                    <p className="text-sm text-muted-foreground">Recibirás el link antes de la cita</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Services */}
+              {selectedServices.length > 0 && (
+                <div className="flex items-start gap-3">
+                  <ClipboardCheck className="h-5 w-5 text-primary mt-0.5" />
+                  <div>
+                    <p className="font-medium">Servicios adicionales:</p>
+                    <ul className="text-sm text-muted-foreground">
+                      {selectedServices.map(s => (
+                        <li key={s.id}>• {s.name} - ${s.price}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div className="flex items-start gap-3 pt-3 border-t">
+                {paymentMethod === 'efectivo' && <Banknote className="h-5 w-5 text-green-600 mt-0.5" />}
+                {paymentMethod === 'transferencia' && <Landmark className="h-5 w-5 text-blue-600 mt-0.5" />}
+                {paymentMethod === 'mercadopago' && <CreditCard className="h-5 w-5 text-sky-600 mt-0.5" />}
+                <div>
+                  <p className="font-medium">
+                    {paymentMethod === 'efectivo' && 'Pago en Efectivo'}
+                    {paymentMethod === 'transferencia' && 'Transferencia Bancaria'}
+                    {paymentMethod === 'mercadopago' && 'Mercado Pago'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {paymentMethod === 'efectivo' && 'Pagarás al momento de la consulta'}
+                    {paymentMethod === 'transferencia' && 'Comprobante enviado'}
+                    {paymentMethod === 'mercadopago' && 'Pago procesado online'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Coupon if applied */}
+              {appliedCoupon && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Descuento aplicado ({appliedCoupon.code}):</span>
+                  <span>-${discountAmount}</span>
+                </div>
+              )}
+
+              {/* Total */}
+              <div className="flex justify-between items-center pt-3 border-t bg-green-50 -mx-5 -mb-5 px-5 py-4 rounded-b-lg">
+                <span className="font-semibold text-green-800">Total a Pagar:</span>
+                <span className="text-2xl font-bold text-green-700">${finalPrice}</span>
+              </div>
+            </div>
+
+            {/* Next Steps */}
+            <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg max-w-md mx-auto text-sm">
+              <p className="font-semibold text-amber-800 mb-2">📋 Próximos Pasos:</p>
+              <ul className="list-disc pl-5 space-y-1 text-amber-700">
+                <li>Recibirás un email con los detalles de tu cita.</li>
+                {paymentMethod === 'efectivo' && (
+                  <li>Recuerda llevar el monto exacto en efectivo a tu cita.</li>
+                )}
+                {paymentMethod === 'transferencia' && !doctor.clinicId && (
+                  <li>Tu comprobante de pago ha sido enviado para verificación.</li>
+                )}
+                {paymentMethod === 'transferencia' && doctor.clinicId && (
+                  <li><strong>Importante:</strong> Envía tu comprobante por WhatsApp a la clínica.</li>
+                )}
+                <li>Puedes ver y gestionar tu cita desde tu panel de paciente.</li>
+              </ul>
+            </div>
+
+            {/* Doctor/Clinic Contact */}
+            <div className="text-center text-sm text-muted-foreground">
+              <p>¿Alguna consulta?</p>
+              <p className="font-medium text-foreground">
+                📞 {doctor.whatsapp || 'WhatsApp del médico'}
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button onClick={() => router.push('/dashboard')}>
+                Ir a Mis Citas
               </Button>
-            </CardContent>
-          </>
+              <Button variant="outline" onClick={resetBookingFlow}>
+                Agendar Otra Cita
+              </Button>
+            </div>
+          </div>
         );
     }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        <HeaderWrapper />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-4" />
+            <p className="text-muted-foreground">Cargando perfil del médico...</p>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  if (!doctor) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        <HeaderWrapper />
+        <main className="flex-1 py-8 md:py-12 bg-muted/40 pb-20 md:pb-0">
+          <div className="container max-w-4xl mx-auto">
+            <Card className="mb-8 overflow-hidden">
+              <div className="relative">
+                <Image
+                  src='https://placehold.co/1200x400.png'
+                  alt="Doctor no encontrado"
+                  width={1200}
+                  height={400}
+                  className="w-full h-48 object-cover filter grayscale"
+                />
+              </div>
+              <div className="pt-20 px-8 pb-6 text-center">
+                <h2 className="text-2xl font-bold">Médico no encontrado</h2>
+              </div>
+            </Card>
+            <Card>
+              <CardContent className="flex justify-center py-8">
+                <Button asChild>
+                  <Link href="/find-a-doctor">
+                    Buscar otros especialistas
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    );
   }
 
   return (
@@ -1016,63 +1577,111 @@ export default function DoctorProfilePage() {
       <HeaderWrapper />
       <main className="flex-1 py-8 md:py-12 bg-muted/40 pb-20 md:pb-0">
         <div className="container max-w-4xl mx-auto">
-          
+
           <Card className="mb-8 overflow-hidden">
             <div className="relative">
-                <Image
-                    src={doctor.bannerImage}
-                    alt={`Consultorio de ${doctor.name}`}
-                    width={1200}
-                    height={400}
-                    className="w-full h-48 object-cover"
-                    data-ai-hint="medical office"
-                />
-                <div className="absolute -bottom-16 left-8">
-                    <Avatar className="h-32 w-32 border-4 border-background bg-muted">
-                        <AvatarImage src={doctor.profileImage} alt={doctor.name} />
-                        <AvatarFallback>{doctor.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                </div>
+              <Image
+                src={doctor.bannerImage || 'https://placehold.co/1200x400.png'}
+                alt={`Consultorio de ${doctor.name}`}
+                width={1200}
+                height={400}
+                className="w-full h-48 object-cover"
+                data-ai-hint="medical office"
+              />
+              <div className="absolute -bottom-16 left-8">
+                <Avatar className="h-32 w-32 border-4 border-background bg-muted">
+                  <AvatarImage src={doctor.profileImage || undefined} alt={doctor.name} />
+                  <AvatarFallback>{doctor.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+              </div>
             </div>
             <div className="pt-20 px-8 pb-6">
-                 <h2 className="text-base md:text-2xl font-bold font-headline">Dr@: {capitalizeWords(doctor.name)}</h2>
-                 <p className="text-primary font-medium text-xl">{doctor.specialty}</p>
-                  <div className="flex items-center gap-1.5 mt-2 text-sm">
-                    <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
-                    <span className="font-bold">{doctor.rating}</span>
-                    <span className="text-muted-foreground">({doctor.reviewCount} reseñas)</span>
-                </div>
-            </div>
-             <Separator/>
-              <div className="p-8 space-y-4">
-                  <p className="text-sm text-muted-foreground">{doctor.description}</p>
-                   <div className="flex items-start gap-2 text-muted-foreground mt-2 text-sm">
-                        <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
-                        <div>
-                            <p className="font-medium text-foreground">{doctor.address}</p>
-                            <p>{doctor.sector}, {doctor.city}</p>
-                        </div>
-                    </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-base md:text-2xl font-bold font-headline">Dr@: {capitalizeWords(doctor.name)}</h2>
+                {doctor.verificationStatus === 'verified' && (
+                  <div className="flex items-center gap-1.5 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span className="text-sm font-semibold">Verificado</span>
+                  </div>
+                )}
+                {doctor.clinicId && (
+                  <div className="flex items-center gap-1.5 bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full">
+                    <Building2 className="h-4 w-4" />
+                    <span className="text-sm font-semibold">Clínica</span>
+                  </div>
+                )}
               </div>
-          </Card>
-          
-          <Card className="mb-8">
-              {renderStepContent()}
+              <p className="text-primary font-medium text-xl">{doctor.specialty}</p>
+              <div className="flex items-center gap-1.5 mt-2 text-sm">
+                <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
+                <span className="font-bold">{doctor.rating}</span>
+                <span className="text-muted-foreground">({doctor.reviewCount} reseñas)</span>
+              </div>
+            </div>
+            <Separator />
+            <div className="p-8 space-y-4">
+              <p className="text-sm text-muted-foreground">{doctor.description}</p>
+              <div className="flex items-start gap-2 text-muted-foreground mt-2 text-sm">
+                <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-foreground">{currentAddress?.address || doctor.address}</p>
+                  <p>{currentAddress?.city || doctor.city}</p>
+                </div>
+              </div>
+
+              {doctor.acceptedInsurances && doctor.acceptedInsurances.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-primary" /> Coberturas Médicas Aceptadas
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {doctor.acceptedInsurances.map(ins => (
+                      <span key={ins} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium border border-green-200 shadow-sm">
+                        {ins}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </Card>
 
-          {/* Sección de Valoraciones al final */}
+          {(!user || user.role === 'patient') ? (
+            <Card className="mb-8">
+              {renderStepContent()}
+            </Card>
+          ) : (
+            <Card className="mb-8 border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-900/50">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-4 dark:bg-yellow-900/40">
+                  <ClipboardCheck className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Modo de Vista Previa</h3>
+                <p className="text-muted-foreground mb-4">
+                  Estás viendo este perfil como <strong>{capitalizeWords(user.role === 'doctor' ? 'Médico' : user.role)}</strong>.
+                  <br />
+                  Para agendar una cita, debes cerrar sesión e ingresar como <strong>Paciente</strong>.
+                </p>
+                {user.role === 'doctor' && user.id === id && (
+                  <Button variant="outline" onClick={() => router.push('/doctor/dashboard')}>
+                    Ir a mi Panel de Control
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="mb-8">
             <CardHeader>
               <CardTitle className="text-xl">Valoraciones de Pacientes</CardTitle>
             </CardHeader>
             <CardContent>
-              <DoctorReviews 
-                doctor={doctor} 
+              <DoctorReviews
+                doctor={doctor}
                 onReviewAdded={() => {
-                  // Recargar los datos del médico para actualizar rating y reviewCount
                   const fetchDoctorData = async () => {
                     try {
-                      const updatedDoctor = await firestoreService.getDoctor(doctor.id);
+                      const updatedDoctor = await supabaseService.getDoctor(doctor.id);
                       if (updatedDoctor) {
                         setDoctor(updatedDoctor);
                       }
@@ -1089,8 +1698,7 @@ export default function DoctorProfilePage() {
         </div>
       </main>
       <BottomNav />
-      
-      {/* Notificación de calendario */}
+
       {showCalendarNotification && lastCreatedAppointment && (
         <CalendarNotification
           appointment={lastCreatedAppointment}

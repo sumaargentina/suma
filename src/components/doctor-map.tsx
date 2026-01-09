@@ -24,12 +24,13 @@ const DoctorMapComponent = ({ doctors }: { doctors: Doctor[] }) => {
   if (typeof window === "undefined") {
     return null;
   }
-  
-  const venezuelaPosition: [number, number] = [9.0, -66.0];
+
+  // Coordenadas de Argentina (centrado en Buenos Aires)
+  const argentinaPosition: [number, number] = [-34.6037, -58.3816];
 
   return (
     <MapContainer
-      center={venezuelaPosition}
+      center={argentinaPosition}
       zoom={6}
       scrollWheelZoom={true}
       className="h-[600px] w-full rounded-lg"
@@ -40,7 +41,7 @@ const DoctorMapComponent = ({ doctors }: { doctors: Doctor[] }) => {
       />
       {doctors.map((doctor) => {
         const icon = L.divIcon({
-          html: `<div class="bg-background rounded-full p-1 shadow-md border-2 border-primary"><img src="${doctor.profileImage}" alt="${doctor.name}" class="rounded-full w-10 h-10 object-cover"></div>`,
+          html: `<div class="bg-background rounded-full p-1 shadow-md border-2 border-primary"><img src="${doctor.profileImage || 'https://placehold.co/400x400.png'}" alt="${doctor.name}" class="rounded-full w-10 h-10 object-cover"></div>`,
           className: '',
           iconSize: [48, 48],
           iconAnchor: [24, 48],
@@ -56,31 +57,31 @@ const DoctorMapComponent = ({ doctors }: { doctors: Doctor[] }) => {
             <Popup>
               <div className="w-64">
                 <div className="flex items-center gap-3">
-                   <div className="relative w-16 h-16 flex-shrink-0">
-                      <Image
-                        src={doctor.profileImage}
-                        alt={`Dr. ${doctor.name}`}
-                        fill
-                        sizes="64px"
-                        className="rounded-lg object-cover"
-                      />
-                   </div>
-                   <div className="flex-grow">
-                      <h3 className="text-md font-bold leading-tight">{doctor.name}</h3>
-                      <p className="text-primary font-medium text-sm">{doctor.specialty}</p>
-                      <div className="flex items-center gap-1 text-xs mt-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                        <span className="font-bold">{doctor.rating}</span>
-                      </div>
-                   </div>
+                  <div className="relative w-16 h-16 flex-shrink-0">
+                    <Image
+                      src={doctor.profileImage || 'https://placehold.co/400x400.png'}
+                      alt={`Dr. ${doctor.name}`}
+                      fill
+                      sizes="64px"
+                      className="rounded-lg object-cover"
+                    />
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className="text-md font-bold leading-tight">{doctor.name}</h3>
+                    <p className="text-primary font-medium text-sm">{doctor.specialty}</p>
+                    <div className="flex items-center gap-1 text-xs mt-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                      <span className="font-bold">{doctor.rating}</span>
+                    </div>
+                  </div>
                 </div>
-                 <div className="flex items-start gap-2 text-muted-foreground mt-2 text-xs">
-                    <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <p>{doctor.address}, {doctor.city}</p>
+                <div className="flex items-start gap-2 text-muted-foreground mt-2 text-xs">
+                  <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <p>{doctor.address}, {doctor.city}</p>
                 </div>
-                 <Button className="w-full mt-3" size="sm" asChild>
-                    <Link href={`/doctors/${doctor.id}`}>Reservar Cita</Link>
-                  </Button>
+                <Button className="w-full mt-3" size="sm" asChild>
+                  <Link href={`/doctors/${doctor.id}`}>Reservar Cita</Link>
+                </Button>
               </div>
             </Popup>
           </Marker>

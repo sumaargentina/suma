@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Stethoscope, UserCheck, BarChart as BarChartIcon, Loader2 } from 'lucide-react';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { useToast } from '@/hooks/use-toast';
 import type { Doctor } from '@/lib/types';
 import type { DoctorPayment, SellerPayment } from '@/lib/types';
@@ -27,11 +27,11 @@ export function OverviewTab() {
         
         // Obtener datos reales de la base de datos
         const [doctors, sellers, patients, doctorPayments, sellerPayments] = await Promise.all([
-          firestoreService.getDoctors(),
-          firestoreService.getSellers(),
-          firestoreService.getPatients(),
-          firestoreService.getDoctorPayments(),
-          firestoreService.getSellerPayments(),
+          supabaseService.getDoctors(),
+          supabaseService.getSellers(),
+          supabaseService.getPatients(),
+          supabaseService.getDoctorPayments(),
+          supabaseService.getSellerPayments(),
         ]);
 
         // Calcular estadísticas reales

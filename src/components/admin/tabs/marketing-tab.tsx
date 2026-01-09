@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 import { PlusCircle, ShoppingBag, ImageIcon, Video, FileText, Link as LinkIcon, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { MarketingMaterialCard } from './marketing-card';
@@ -52,7 +52,7 @@ export function MarketingTab() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const materials = await firestoreService.getMarketingMaterials();
+        const materials = await supabaseService.getMarketingMaterials();
         setMarketingMaterials(materials);
     } catch {
         toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los materiales de marketing.' });
@@ -73,7 +73,7 @@ export function MarketingTab() {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     try {
-      await firestoreService.deleteMarketingMaterial(itemToDelete.id);
+      await supabaseService.deleteMarketingMaterial(itemToDelete.id);
       toast({ title: "Material Eliminado" });
       fetchData();
     } catch {
@@ -113,10 +113,10 @@ export function MarketingTab() {
           }
           
           if (editingMaterial) {
-              await firestoreService.updateMarketingMaterial(editingMaterial.id, result.data);
+              await supabaseService.updateMarketingMaterial(editingMaterial.id, result.data);
               toast({ title: "Material Actualizado" });
           } else {
-              await firestoreService.addMarketingMaterial(result.data);
+              await supabaseService.addMarketingMaterial(result.data);
               toast({ title: "Material Agregado" });
           }
           

@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js';
 
-if (!getApps().length) {
-  let adminConfig;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    adminConfig = {
-      credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-    };
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    adminConfig = {};
-  }
-  if (adminConfig) {
-    initializeApp(adminConfig);
-  } else {
-    console.error('Firebase Admin no inicializado: variables de entorno faltantes');
-  }
-}
-const db = getFirestore();
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,19 +12,27 @@ export async function POST(req: NextRequest) {
     if (!email || !token) {
       return NextResponse.json({ valid: false, error: 'Datos incompletos' }, { status: 400 });
     }
-    const doc = await db.collection('passwordResets').doc(email).get();
-    if (!doc.exists) {
+
+    const { data, error } = await supabase
+      .from('password_resets')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (error || !data) {
       return NextResponse.json({ valid: false, error: 'Token inválido' }, { status: 400 });
     }
-    const data = doc.data();
-    if (!data || data.token !== token) {
+
+    if (data.token !== token) {
       return NextResponse.json({ valid: false, error: 'Token incorrecto' }, { status: 400 });
     }
-    if (Date.now() > data.expiresAt) {
+
+    if (Date.now() > new Date(data.expires_at).getTime()) {
       return NextResponse.json({ valid: false, error: 'Token expirado' }, { status: 400 });
     }
+
     return NextResponse.json({ valid: true });
   } catch {
     return NextResponse.json({ valid: false, error: 'Error validando token' }, { status: 500 });
   }
-} 
+}

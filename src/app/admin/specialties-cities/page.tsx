@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import * as supabaseService from '@/lib/supabaseService';
 import { Doctor, AppSettings } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,21 +17,16 @@ export default function SpecialtiesCitiesPage() {
   const fetchData = async () => {
     try {
       setRefreshing(true);
-      
+
       // Obtener doctores
-      const doctorsSnapshot = await getDocs(collection(db, 'doctors'));
-      const doctors = doctorsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Doctor[];
-      
+      const doctors = await supabaseService.getAllDoctors();
+
       // Obtener configuración
-      const settingsDoc = await getDoc(doc(db, 'settings', 'main'));
-      const settings = settingsDoc.exists() ? settingsDoc.data() as AppSettings : null;
-      
+      const settings = await supabaseService.getSettings();
+
       setDoctorsData(doctors);
       setSettingsData(settings);
-      
+
     } catch (error) {
       console.error('Error al obtener datos:', error);
     } finally {
@@ -48,10 +42,10 @@ export default function SpecialtiesCitiesPage() {
   // Obtener especialidades y ciudades únicas
   const doctorSpecialties = [...new Set(doctorsData.map(d => d.specialty).filter(Boolean))].sort();
   const doctorCities = [...new Set(doctorsData.map(d => d.city).filter(Boolean))].sort();
-  
+
   const configSpecialties = settingsData?.specialties || [];
   const configCities = settingsData?.cities?.map(c => c.name) || [];
-  
+
   const allSpecialties = [...new Set([...doctorSpecialties, ...configSpecialties])].sort();
   const allCities = [...new Set([...doctorCities, ...configCities])].sort();
 
@@ -176,7 +170,7 @@ export default function SpecialtiesCitiesPage() {
               Configuración del Sistema
             </CardTitle>
             <CardDescription>
-              Datos configurados en settings/main
+              Datos configurados en la tabla settings
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -195,7 +189,7 @@ export default function SpecialtiesCitiesPage() {
                   <p className="text-sm text-muted-foreground">No hay especialidades configuradas</p>
                 )}
               </div>
-              
+
               <div>
                 <h4 className="font-semibold mb-2">Ciudades Configuradas ({configCities.length})</h4>
                 {configCities.length > 0 ? (

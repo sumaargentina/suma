@@ -85,7 +85,7 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
     async function fetchAndCheck() {
       if (user?.id && user.role === 'admin') {
         // Importación dinámica para evitar ciclo circular
-        const { getAdminNotifications } = await import('./firestoreService');
+        const { getAdminNotifications } = await import('./supabaseService');
         const notifications = await getAdminNotifications();
         checkAndSetAdminNotifications(notifications);
       }

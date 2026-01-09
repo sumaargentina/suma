@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
-import * as firestoreService from './firestoreService';
+import * as supabaseService from './supabaseService';
 import type { Appointment } from './types';
 import { useAuth } from './auth';
 
@@ -21,7 +21,7 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
 
   const fetchAppointments = useCallback(async () => {
     if (user?.role === 'patient' && user.id) {
-      const patientAppointments = await firestoreService.getPatientAppointments(user.id);
+      const patientAppointments = await supabaseService.getPatientAppointments(user.id);
       setAppointments(patientAppointments);
     } else {
       setAppointments([]);
@@ -54,7 +54,7 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
       patientName: user.name,
     };
     
-    await firestoreService.addAppointment(newAppointment);
+    await supabaseService.addAppointment(newAppointment);
     // Enviar correo de confirmación al paciente
     try {
       const safeEmail = user.email || 'sin-correo@ejemplo.com';
@@ -108,7 +108,7 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
   }, [user, fetchAppointments]);
 
   const updateAppointmentConfirmation = useCallback(async (appointmentId: string, status: 'Confirmada' | 'Cancelada') => {
-    await firestoreService.updateAppointment(appointmentId, { patientConfirmationStatus: status });
+    await supabaseService.updateAppointment(appointmentId, { patientConfirmationStatus: status });
     await fetchAppointments();
   }, [fetchAppointments]);
 

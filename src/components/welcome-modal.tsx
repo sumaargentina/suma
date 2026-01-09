@@ -12,18 +12,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
-import { 
-  User, 
-  Phone, 
-  MapPin, 
-  Calendar, 
+import {
+  User,
+  Phone,
+  MapPin,
+  Calendar,
   CheckCircle,
   ArrowRight,
   Sparkles
 } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
-import * as firestoreService from '@/lib/firestoreService';
+import * as supabaseService from '@/lib/supabaseService';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -96,29 +96,29 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       return;
     }
 
-    // Validar formato de cédula (formato venezolano: V-12345678)
-    const cedulaRegex = /^[VE]-?\d{6,8}$/i;
-    if (!cedulaRegex.test(cedula)) {
+    // Validar formato de DNI argentino (7-8 dígitos)
+    const dniRegex = /^\d{7,8}$/;
+    if (!dniRegex.test(cedula)) {
       toast({
         variant: 'destructive',
-        title: 'Cédula inválida',
-        description: 'Por favor ingresa una cédula válida (ej: V-12345678 o E-12345678)'
+        title: 'DNI inválido',
+        description: 'Por favor ingresa un DNI válido (7-8 dígitos)'
       });
       return;
     }
 
     try {
-      // Verificar que la cédula sea única
-      const allPatients = await firestoreService.getPatients();
-      const existingPatient = allPatients.find(p => 
+      // Verificar que el DNI sea único
+      const allPatients = await supabaseService.getPatients();
+      const existingPatient = allPatients.find(p =>
         p.cedula && p.cedula.toLowerCase() === cedula.toLowerCase() && p.id !== user.id
       );
-      
+
       if (existingPatient) {
         toast({
           variant: 'destructive',
-          title: 'Cédula ya registrada',
-          description: 'Esta cédula ya está registrada por otro paciente.'
+          title: 'DNI ya registrado',
+          description: 'Este DNI ya está registrado por otro paciente.'
         });
         return;
       }
@@ -126,20 +126,14 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       const updateData = {
         age: age ? parseInt(age, 10) : null,
         gender: gender || null,
-        cedula: cedula.toUpperCase(),
+        cedula: cedula, // DNI sin transformación
         phone: phone || null,
         city: city || null,
         profileCompleted: true
       };
 
+      console.log('Guardando perfil con datos:', updateData);
       await updateUser(updateData);
-
-      // Refrescar usuario desde Firestore y actualizar estado global y localStorage
-      const freshUser = await firestoreService.findUserByEmail(user.email);
-      if (freshUser) {
-        await updateUser({ ...freshUser }); // Actualiza el contexto
-        localStorage.setItem('user', JSON.stringify(freshUser));
-      }
 
       toast({
         title: "¡Perfil Completado!",
@@ -171,7 +165,6 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       case 0:
         return (
           <div className="text-center space-y-6">
-            {/* Ícono Sparkles eliminado para evitar duplicidad visual */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
               <Card className="text-center p-4">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -212,7 +205,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 Cuéntanos un poco más sobre ti para personalizar tu experiencia.
               </p>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -227,7 +220,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <User className="w-4 h-4" />
@@ -249,34 +242,23 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                 <User className="w-4 h-4" />
-                Cédula de Identidad *
+                DNI (Documento Nacional de Identidad) *
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-medium">
-                  V-
-                </span>
-                <input
-                  type="text"
-                  placeholder="12345678"
-                  value={cedula.replace('V-', '')}
-                  onChange={(e) => {
-                    // Solo permitir números
-                    const numbersOnly = e.target.value.replace(/[^0-9]/g, '');
-                    // Limitar a 8 dígitos
-                    const limitedNumbers = numbersOnly.slice(0, 8);
-                    setCedula(`V-${limitedNumbers}`);
-                  }}
-                  onFocus={() => {
-                    // Si el campo está vacío, agregar el prefijo automáticamente
-                    if (!cedula) {
-                      setCedula('V-');
-                    }
-                  }}
-                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+              <input
+                type="text"
+                placeholder="12345678"
+                value={cedula}
+                onChange={(e) => {
+                  // Solo permitir números
+                  const numbersOnly = e.target.value.replace(/[^0-9]/g, '');
+                  // Limitar a 8 dígitos
+                  const limitedNumbers = numbersOnly.slice(0, 8);
+                  setCedula(limitedNumbers);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
               <p className="text-xs text-gray-500">
-                Solo números (máximo 8 dígitos) - no se podrá modificar después
+                Solo números (7-8 dígitos) - no se podrá modificar después
               </p>
             </div>
           </div>
@@ -296,7 +278,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 Ayúdanos a mantenerte informado sobre tus citas y servicios.
               </p>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -305,13 +287,13 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </label>
                 <input
                   type="tel"
-                  placeholder="Ej: 0412-1234567"
+                  placeholder="Ej: 1123456789"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
@@ -343,11 +325,11 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 ¡Perfil Completado! 🎉
               </h3>
               <p className="text-gray-600">
-                Tu perfil está completo. Ya puedes explorar todos los servicios de SUMA y 
+                Tu perfil está completo. Ya puedes explorar todos los servicios de SUMA y
                 comenzar a buscar médicos especialistas.
               </p>
             </div>
-            
+
             <div className="bg-blue-50 rounded-lg p-4 mt-6">
               <h4 className="font-medium text-blue-900 mb-2">¿Qué puedes hacer ahora?</h4>
               <ul className="text-sm text-blue-800 space-y-1 text-left">
@@ -401,34 +383,33 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
             {steps.map((_, index) => (
               <div
                 key={index}
-                className={`w-2 h-2 rounded-full ${
-                  index <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
+                className={`w-2 h-2 rounded-full ${index <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
               />
             ))}
           </div>
-          
+
           <div className="flex gap-2">
             {currentStep > 0 && currentStep < 3 && (
               <Button variant="outline" onClick={handleBack}>
                 Atrás
               </Button>
             )}
-            
+
             {currentStep < 2 && (
               <Button onClick={handleNext} className="flex items-center gap-2">
                 Continuar
                 <ArrowRight className="w-4 h-4" />
               </Button>
             )}
-            
+
             {currentStep === 2 && (
               <Button onClick={handleCompleteProfile} className="flex items-center gap-2">
                 Completar Perfil
                 <CheckCircle className="w-4 h-4" />
               </Button>
             )}
-            
+
             {currentStep === 3 && (
               <Button onClick={handleFinish} className="flex items-center gap-2">
                 ¡Empezar!
@@ -440,4 +421,4 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       </DialogContent>
     </Dialog>
   );
-} 
+}

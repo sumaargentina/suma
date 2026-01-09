@@ -37,7 +37,7 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
     const [itemToDelete, setItemToDelete] = useState<BankDetail | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
-    
+
     const openDialog = (item: BankDetail | null) => {
         setEditingBankDetail(item);
         setIsDialogOpen(true);
@@ -47,11 +47,11 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
         setItemToDelete(item);
         setIsDeleteDialogOpen(true);
     };
-    
+
     const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsSaving(true);
-        
+
         const formData = new FormData(e.currentTarget);
         const data = {
             bank: formData.get('bankName') as string,
@@ -61,8 +61,8 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
             description: formData.get('description') as string,
         };
         const result = BankDetailFormSchema.safeParse(data);
-        if(!result.success) {
-            toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e=>e.message).join(' ') });
+        if (!result.success) {
+            toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e => e.message).join(' ') });
             setIsSaving(false);
             return;
         }
@@ -83,11 +83,11 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
             setIsSaving(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!itemToDelete) return;
         setIsDeleting(true);
-        
+
         try {
             await onDeleteBankDetail(itemToDelete.id);
             toast({ title: 'Cuenta eliminada', description: 'La cuenta bancaria ha sido eliminada exitosamente.' });
@@ -104,7 +104,7 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
         // Formatear número de cuenta para mejor legibilidad
         return number.replace(/(\d{4})(?=\d)/g, '$1 ');
     };
-    
+
     return (
         <>
             <Card className="border-primary/10">
@@ -120,12 +120,12 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                             </CardDescription>
                         </div>
                         <Button onClick={() => openDialog(null)} className="shrink-0 w-full sm:w-auto">
-                            <Landmark className="mr-2 h-4 w-4"/>
+                            <Landmark className="mr-2 h-4 w-4" />
                             Añadir Cuenta
                         </Button>
                     </div>
                 </CardHeader>
-                
+
                 <CardContent className="space-y-4">
                     {/* Vista móvil mejorada */}
                     <div className="md:hidden space-y-3">
@@ -158,28 +158,28 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-end gap-2 pt-2 border-t">
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => openDialog(bank)}
                                         className="h-8 px-3"
                                     >
-                                        <Pencil className="h-3 w-3 mr-1"/>
+                                        <Pencil className="h-3 w-3 mr-1" />
                                         Editar
                                     </Button>
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => openDeleteDialog(bank)}
                                         className="h-8 px-3 text-destructive hover:text-destructive"
                                     >
-                                        <Trash2 className="h-3 w-3 mr-1"/>
+                                        <Trash2 className="h-3 w-3 mr-1" />
                                         Eliminar
                                     </Button>
                                 </div>
                             </div>
                         ))}
-                        
+
                         {bankDetails.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                                 <Landmark className="h-8 w-8 mx-auto mb-2" />
@@ -192,7 +192,7 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                     {/* Tabla responsiva para desktop */}
                     <div className="hidden md:block rounded-md border">
                         <div className="overflow-x-auto">
-                    <Table>
+                            <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Banco</TableHead>
@@ -203,7 +203,7 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                                         <TableHead className="w-24 text-center">Acciones</TableHead>
                                     </TableRow>
                                 </TableHeader>
-                        <TableBody>
+                                <TableBody>
                                     {bankDetails.map(bank => (
                                         <TableRow key={bank.id} className="hover:bg-muted/50">
                                             <TableCell className="font-bold">{bank.bank}</TableCell>
@@ -217,30 +217,30 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <div className="flex items-center justify-center gap-1">
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
                                                         onClick={() => openDialog(bank)}
                                                         className="h-8 w-8"
                                                     >
-                                                        <Pencil className="h-3 w-3"/>
+                                                        <Pencil className="h-3 w-3" />
                                                     </Button>
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
                                                         onClick={() => openDeleteDialog(bank)}
                                                         className="h-8 w-8 text-destructive hover:text-destructive"
                                                     >
-                                                        <Trash2 className="h-3 w-3"/>
+                                                        <Trash2 className="h-3 w-3" />
                                                     </Button>
                                                 </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
                         </div>
-                        
+
                         {bankDetails.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                                 <Landmark className="h-8 w-8 mx-auto mb-2" />
@@ -261,57 +261,57 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                             {editingBankDetail ? 'Editar Cuenta' : 'Nueva Cuenta'}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSave} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="bankName" className="text-sm font-medium">
                                 Nombre del Banco <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="bankName" 
-                                name="bankName" 
+                            <Input
+                                id="bankName"
+                                name="bankName"
                                 defaultValue={editingBankDetail?.bank}
                                 required
-                                placeholder="Ej: Banco de Venezuela"
+                                placeholder="Ej: Banco Galicia"
                                 className="h-10"
                             />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="holderName" className="text-sm font-medium">
                                 Nombre del Titular <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="holderName" 
-                                name="holderName" 
+                            <Input
+                                id="holderName"
+                                name="holderName"
                                 defaultValue={editingBankDetail?.accountHolder}
                                 required
                                 placeholder="Nombre completo del titular"
                                 className="h-10"
                             />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="idNumber" className="text-sm font-medium">
                                 C.I./R.I.F. <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="idNumber" 
-                                name="idNumber" 
+                            <Input
+                                id="idNumber"
+                                name="idNumber"
                                 defaultValue={editingBankDetail?.idNumber}
                                 required
                                 placeholder="Ej: V-12345678"
                                 className="h-10"
                             />
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="accountNumber" className="text-sm font-medium">
                                 Número de Cuenta <span className="text-red-500">*</span>
                             </Label>
-                            <Input 
-                                id="accountNumber" 
-                                name="accountNumber" 
+                            <Input
+                                id="accountNumber"
+                                name="accountNumber"
                                 defaultValue={editingBankDetail?.accountNumber}
                                 required
                                 placeholder="20 dígitos"
@@ -322,20 +322,20 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                                 Ingresa solo los números, sin espacios ni guiones
                             </p>
                         </div>
-                        
+
                         <div className="space-y-2">
                             <Label htmlFor="description" className="text-sm font-medium">
                                 Descripción (Opcional)
                             </Label>
-                            <Textarea 
-                                id="description" 
-                                name="description" 
+                            <Textarea
+                                id="description"
+                                name="description"
                                 defaultValue={editingBankDetail?.description || ''}
                                 placeholder="Descripción adicional de la cuenta"
                                 className="min-h-20"
                             />
                         </div>
-                        
+
                         <DialogFooter className="flex flex-col sm:flex-row gap-2">
                             <DialogClose asChild>
                                 <Button type="button" variant="outline" className="w-full sm:w-auto">
@@ -356,21 +356,21 @@ export function BankManagementCard({ bankDetails, onAddBankDetail, onUpdateBankD
                     </form>
                 </DialogContent>
             </Dialog>
-            
+
             {/* Diálogo de confirmación de eliminación mejorado */}
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent className="max-w-[95vw] sm:max-w-md">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
                         <AlertDialogDescription>
-                            ¿Estás seguro de que quieres eliminar esta cuenta bancaria? 
+                            ¿Estás seguro de que quieres eliminar esta cuenta bancaria?
                             Esta acción no se puede deshacer.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
                         <AlertDialogCancel className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={handleDelete} 
+                        <AlertDialogAction
+                            onClick={handleDelete}
                             disabled={isDeleting}
                             className="w-full sm:w-auto bg-destructive hover:bg-destructive/90"
                         >
