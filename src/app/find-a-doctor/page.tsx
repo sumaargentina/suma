@@ -62,13 +62,14 @@ export default async function FindDoctorPage({
   });
 
   const filteredClinics = clinics.filter(clinic => {
+    const matchesStatus = clinic.verificationStatus === 'verified' && clinic.status === 'active';
     const matchesQuery = query === "" ||
       clinic.name.toLowerCase().includes(query.toLowerCase());
 
     // Clinics filter logic by city
     const matchesCity = cityFilter === "all" || clinic.city === cityFilter;
 
-    return matchesQuery && matchesCity;
+    return matchesStatus && matchesQuery && matchesCity;
   });
 
   return (
