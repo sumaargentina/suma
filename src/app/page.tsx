@@ -41,13 +41,13 @@ export default function Home() {
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300">
-              <Button size="xl" className="h-14 px-8 text-lg rounded-full bg-secondary hover:bg-secondary/90 text-white shadow-xl shadow-secondary/20 transition-all hover:scale-105" asChild>
+              <Button size="lg" className="h-14 px-8 text-lg rounded-full bg-secondary hover:bg-secondary/90 text-white shadow-xl shadow-secondary/20 transition-all hover:scale-105" asChild>
                 <Link href="/find-a-doctor">
                   <Search className="mr-2 h-5 w-5" />
                   Buscar Médico
                 </Link>
               </Button>
-              <Button size="xl" variant="outline" className="h-14 px-8 text-lg rounded-full border-2 hover:bg-muted transition-all hover:scale-105" asChild>
+              <Button size="lg" variant="outline" className="h-14 px-8 text-lg rounded-full border-2 hover:bg-muted transition-all hover:scale-105" asChild>
                 <Link href="/login">
                   Ingresar al Portal
                   <ArrowRight className="ml-2 h-5 w-5" />

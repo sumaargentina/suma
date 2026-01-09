@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ interface AuthFormProps {
 
 export function AuthForm({ defaultView = 'login', showSocial = false }: AuthFormProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
+    // const searchParams = useSearchParams(); // Unused and causes missing Suspense error
     const { login, register, loading: authLoading } = useAuth();
 
     const [view, setView] = useState<'login' | 'register'>(defaultView);
@@ -65,7 +65,7 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
         }
 
         try {
-            await register({ email, password, name });
+            await register(name, email, password);
             setSuccessMessage('¡Cuenta creada exitosamente! Redirigiendo...');
             setTimeout(() => {
                 router.push('/dashboard');

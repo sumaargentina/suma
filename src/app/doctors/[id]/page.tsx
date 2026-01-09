@@ -91,7 +91,7 @@ export default function DoctorProfile() {
   const id = params?.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -314,7 +314,8 @@ export default function DoctorProfile() {
         city: doctor.city,
         schedule: doctor.onlineConsultation.schedule,
         consultationFee: doctor.onlineConsultation.consultationFee,
-        services: doctor.onlineConsultation.services || doctor.services
+        services: doctor.onlineConsultation.services || doctor.services,
+        slotDuration: doctor.onlineConsultation.slotDuration || 30
       };
     }
 
@@ -329,7 +330,8 @@ export default function DoctorProfile() {
       city: doctor.city,
       schedule: doctor.schedule,
       consultationFee: doctor.consultationFee,
-      services: doctor.services
+      services: doctor.services,
+      slotDuration: doctor.slotDuration || 30
     };
   }, [doctor, selectedAddressId, consultationType]);
 
@@ -891,10 +893,10 @@ export default function DoctorProfile() {
                     {canAcceptAppointments.message}
                   </p>
                   <div className="mt-4 flex gap-2">
-                    {doctor.phone && (
+                    {doctor.whatsapp && (
                       <Button asChild variant="outline">
-                        <a href={`tel:${doctor.phone}`}>
-                          📞 Llamar
+                        <a href={`https://wa.me/${doctor.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                          💬 WhatsApp
                         </a>
                       </Button>
                     )}

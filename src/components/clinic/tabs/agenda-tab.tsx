@@ -201,6 +201,9 @@ export function AgendaTab() {
         const patientEmail = formData.get('patientEmail') as string;
         const patientPhone = (formData.get('patientPhone') as string) || undefined;
         const patientDNI = (formData.get('patientDNI') as string) || undefined;
+        const doctorId = formData.get('doctorId') as string;
+        const paymentMethod = formData.get('paymentMethod') as string;
+        const totalPrice = parseFloat(formData.get('totalPrice') as string) || 0;
 
         // Validations
         if (!patientName || patientName.length < 2) {
@@ -462,7 +465,7 @@ export function AgendaTab() {
                         id: `${service.id}-item-${idx}`,
                         name: item.name,
                         price: item.price,
-                        duration: item.duration || 0
+                        duration: 0
                     }));
                     setAvailableAddonServices(itemsAsServices);
                 }

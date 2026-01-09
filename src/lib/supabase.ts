@@ -15,9 +15,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-console.log('✅ Supabase configurado (Cliente):', {
-  url: supabaseUrl,
-  usingFallback: !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-});
+// console.log('✅ Supabase configurado (Cliente):', {
+//   url: supabaseUrl,
+//   usingFallback: !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// });
 
 export { supabaseUrl, supabaseAnonKey };

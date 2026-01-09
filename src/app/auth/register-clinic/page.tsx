@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from "next/link";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -19,7 +19,7 @@ import { ArrowLeft, Loader2, Building2, CheckCircle2 } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
-export default function RegisterClinicPage() {
+function RegisterClinicContent() {
     const { registerClinic } = useAuth();
     const { toast } = useToast();
     const searchParams = useSearchParams();
@@ -248,5 +248,13 @@ export default function RegisterClinicPage() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+export default function RegisterClinicPage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
+            <RegisterClinicContent />
+        </Suspense>
     );
 }

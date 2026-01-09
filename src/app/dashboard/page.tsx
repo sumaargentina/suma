@@ -542,6 +542,10 @@ export default function DashboardPage() {
     );
   }
 
+  if (!user) {
+    return null;
+  }
+
   if (isDoctorsLoading) {
     return (
       <div className="flex flex-col min-h-screen bg-background">

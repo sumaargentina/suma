@@ -59,9 +59,7 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
   const [countryCode, setCountryCode] = useState(initialPhone.code);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone.number);
 
-  const initialPhone = getInitialPhoneData(doctorData.whatsapp);
-  const [countryCode, setCountryCode] = useState(initialPhone.code);
-  const [phoneNumber, setPhoneNumber] = useState(initialPhone.number);
+
 
   const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

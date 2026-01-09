@@ -26,7 +26,7 @@ export const supabaseAdmin = createClient(
     });
 
 if (typeof window === 'undefined') {
-    console.log('✅ Supabase Admin configurado (Servidor)');
+    // console.log('✅ Supabase Admin configurado (Servidor)');
 }
 
 export { supabaseUrl };

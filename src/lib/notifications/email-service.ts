@@ -15,27 +15,27 @@ import { Resend } from 'resend';
 // =====================================================
 
 export interface EmailMessage {
-    to: string | string[];
-    subject: string;
-    text?: string;
-    html?: string;
-    from?: string;
-    replyTo?: string;
-    cc?: string[];
-    bcc?: string[];
-    attachments?: EmailAttachment[];
+  to: string | string[];
+  subject: string;
+  text?: string;
+  html?: string;
+  from?: string;
+  replyTo?: string;
+  cc?: string[];
+  bcc?: string[];
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailAttachment {
-    filename: string;
-    content: Buffer | string;
-    contentType?: string;
+  filename: string;
+  content: Buffer | string;
+  contentType?: string;
 }
 
 export interface EmailResult {
-    success: boolean;
-    messageId?: string;
-    error?: string;
+  success: boolean;
+  messageId?: string;
+  error?: string;
 }
 
 // =====================================================
@@ -49,9 +49,9 @@ const DEFAULT_FROM = process.env.EMAIL_FROM || 'SUMA <noreply@suma.com.ar>';
 let resendClient: Resend | null = null;
 
 if (RESEND_API_KEY) {
-    resendClient = new Resend(RESEND_API_KEY);
+  resendClient = new Resend(RESEND_API_KEY);
 } else {
-    console.warn('⚠️ Resend API key not configured. Email notifications will not work.');
+  console.warn('⚠️ Resend API key not configured. Email notifications will not work.');
 }
 
 // =====================================================
@@ -59,65 +59,65 @@ if (RESEND_API_KEY) {
 // =====================================================
 
 class EmailService {
-    /**
-     * Send email
-     */
-    async send(message: EmailMessage): Promise<EmailResult> {
-        try {
-            if (!resendClient) {
-                return {
-                    success: false,
-                    error: 'Resend client not initialized. Check API key.',
-                };
-            }
+  /**
+   * Send email
+   */
+  async send(message: EmailMessage): Promise<EmailResult> {
+    try {
+      if (!resendClient) {
+        return {
+          success: false,
+          error: 'Resend client not initialized. Check API key.',
+        };
+      }
 
-            console.log('📧 Sending email to:', message.to);
+      console.log('📧 Sending email to:', message.to);
 
-            const result = await resendClient.emails.send({
-                from: message.from || DEFAULT_FROM,
-                to: Array.isArray(message.to) ? message.to : [message.to],
-                subject: message.subject,
-                text: message.text,
-                html: message.html,
-                reply_to: message.replyTo,
-                cc: message.cc,
-                bcc: message.bcc,
-                attachments: message.attachments as any,
-            });
+      const result = await resendClient.emails.send({
+        from: message.from || DEFAULT_FROM,
+        to: Array.isArray(message.to) ? message.to : [message.to],
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+        reply_to: message.replyTo,
+        cc: message.cc,
+        bcc: message.bcc,
+        attachments: message.attachments as any,
+      } as any);
 
-            if (result.error) {
-                throw new Error(result.error.message);
-            }
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
 
-            console.log('✅ Email sent successfully:', result.data?.id);
+      console.log('✅ Email sent successfully:', result.data?.id);
 
-            return {
-                success: true,
-                messageId: result.data?.id,
-            };
-        } catch (error) {
-            console.error('❌ Email send error:', error);
+      return {
+        success: true,
+        messageId: result.data?.id,
+      };
+    } catch (error) {
+      console.error('❌ Email send error:', error);
 
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error',
-            };
-        }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
+  }
 
-    /**
-     * Send appointment confirmation email
-     */
-    async sendAppointmentConfirmation(data: {
-        to: string;
-        patientName: string;
-        doctorName: string;
-        date: string;
-        time: string;
-        location: string;
-        totalPrice: number;
-    }): Promise<EmailResult> {
-        const html = `
+  /**
+   * Send appointment confirmation email
+   */
+  async sendAppointmentConfirmation(data: {
+    to: string;
+    patientName: string;
+    doctorName: string;
+    date: string;
+    time: string;
+    location: string;
+    totalPrice: number;
+  }): Promise<EmailResult> {
+    const html = `
 <!DOCTYPE html>
 <html>
   <head>
@@ -203,23 +203,23 @@ class EmailService {
 </html>
     `;
 
-        return this.send({
-            to: data.to,
-            subject: `Cita Confirmada con Dr. ${data.doctorName} - SUMA`,
-            html,
-            text: `¡Cita Confirmada!\n\nMédico: ${data.doctorName}\nFecha: ${data.date}\nHora: ${data.time}\nLugar: ${data.location}\nMonto: $${data.totalPrice}`,
-        });
-    }
+    return this.send({
+      to: data.to,
+      subject: `Cita Confirmada con Dr. ${data.doctorName} - SUMA`,
+      html,
+      text: `¡Cita Confirmada!\n\nMédico: ${data.doctorName}\nFecha: ${data.date}\nHora: ${data.time}\nLugar: ${data.location}\nMonto: $${data.totalPrice}`,
+    });
+  }
 
-    /**
-     * Send password reset email
-     */
-    async sendPasswordReset(data: {
-        to: string;
-        name: string;
-        resetLink: string;
-    }): Promise<EmailResult> {
-        const html = `
+  /**
+   * Send password reset email
+   */
+  async sendPasswordReset(data: {
+    to: string;
+    name: string;
+    resetLink: string;
+  }): Promise<EmailResult> {
+    const html = `
 <!DOCTYPE html>
 <html>
   <head>
@@ -254,21 +254,21 @@ class EmailService {
 </html>
     `;
 
-        return this.send({
-            to: data.to,
-            subject: 'Restablecer Contraseña - SUMA',
-            html,
-            text: `Hola ${data.name},\n\nRecibimos una solicitud para restablecer tu contraseña.\n\nHaz clic aquí: ${data.resetLink}\n\nEste link expira en 1 hora.`,
-        });
-    }
+    return this.send({
+      to: data.to,
+      subject: 'Restablecer Contraseña - SUMA',
+      html,
+      text: `Hola ${data.name},\n\nRecibimos una solicitud para restablecer tu contraseña.\n\nHaz clic aquí: ${data.resetLink}\n\nEste link expira en 1 hora.`,
+    });
+  }
 
-    /**
-     * Validate email format
-     */
-    validateEmail(email: string): boolean {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
-    }
+  /**
+   * Validate email format
+   */
+  validateEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
 }
 
 // Export singleton instance

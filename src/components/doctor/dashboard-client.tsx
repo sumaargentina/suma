@@ -595,7 +595,6 @@ ID Transacción: ${transactionId}`;
                                 doctorData={doctorData}
                                 onProfileUpdate={fetchData}
                                 onOpenPasswordDialog={() => setIsPasswordDialogOpen(true)}
-                                isClinicEmployee={isClinicDoctor}
                             />
                         )}
 

@@ -19,7 +19,7 @@ export default function SpecialtiesCitiesPage() {
       setRefreshing(true);
 
       // Obtener doctores
-      const doctors = await supabaseService.getAllDoctors();
+      const doctors = await supabaseService.getDoctors();
 
       // Obtener configuración
       const settings = await supabaseService.getSettings();

@@ -89,6 +89,7 @@ export type BankDetail = {
   accountHolder: string;
   idNumber: string;
   description?: string | null;
+  alias?: string;
 };
 
 export type Service = {
@@ -96,6 +97,7 @@ export type Service = {
   name: string;
   price: number;
   duration?: number; // In minutes
+  description?: string;
 };
 
 export type Coupon = {

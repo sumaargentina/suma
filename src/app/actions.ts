@@ -8,7 +8,7 @@ import { sendWalkInWelcomeEmail } from '@/lib/email';
 import { roundPrice } from '@/lib/validation-utils';
 
 export async function createWalkInAppointmentAction(data: {
-    doctorId: string;
+    doctorId?: string;
     doctorName: string;
     patientName: string;
     patientEmail: string;
@@ -17,7 +17,7 @@ export async function createWalkInAppointmentAction(data: {
     services: Service[];
     totalPrice: number;
     consultationFee: number;
-    paymentMethod: 'efectivo' | 'transferencia';
+    paymentMethod: 'efectivo' | 'transferencia' | 'mercadopago';
     office?: string;
     consultationType?: 'presencial' | 'online';
     clinicServiceId?: string;

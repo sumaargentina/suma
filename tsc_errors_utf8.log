@@ -1,0 +1,72 @@
+﻿.next/types/app/api/family-members/[id]/link/route.ts(166,7): error TS2344: Type '{ __tag__: "POST"; __param_position__: "second"; __param_type__: { params: { id: string; }; }; }' does not satisfy the constraint 'ParamCheck<RouteContext>'.
+  The types of '__param_type__.params' are incompatible between these types.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+.next/types/app/api/family-members/[id]/route.ts(49,7): error TS2344: Type '{ __tag__: "GET"; __param_position__: "second"; __param_type__: { params: { id: string; }; }; }' does not satisfy the constraint 'ParamCheck<RouteContext>'.
+  The types of '__param_type__.params' are incompatible between these types.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+.next/types/app/api/family-members/[id]/route.ts(244,7): error TS2344: Type '{ __tag__: "DELETE"; __param_position__: "second"; __param_type__: { params: { id: string; }; }; }' does not satisfy the constraint 'ParamCheck<RouteContext>'.
+  The types of '__param_type__.params' are incompatible between these types.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+.next/types/app/api/family-members/[id]/route.ts(283,7): error TS2344: Type '{ __tag__: "PATCH"; __param_position__: "second"; __param_type__: { params: { id: string; }; }; }' does not satisfy the constraint 'ParamCheck<RouteContext>'.
+  The types of '__param_type__.params' are incompatible between these types.
+    Type '{ id: string; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+.next/types/app/find-a-doctor/page.ts(34,29): error TS2344: Type '{ searchParams: { q?: string | undefined; specialty?: string | undefined; city?: string | undefined; }; }' does not satisfy the constraint 'PageProps'.
+  Types of property 'searchParams' are incompatible.
+    Type '{ q?: string | undefined; specialty?: string | undefined; city?: string | undefined; }' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+scripts/check-api-response.ts(7,16): error TS2300: Duplicate identifier 'test'.
+scripts/check-api-response.ts(22,42): error TS18046: 'e' is of type 'unknown'.
+scripts/check-api-response.ts(26,1): error TS2554: Expected 1-3 arguments, but got 0.
+scripts/clean_firestore_and_auth.ts(2,46): error TS2307: Cannot find module 'firebase-admin/app' or its corresponding type declarations.
+scripts/clean_firestore_and_auth.ts(3,30): error TS2307: Cannot find module 'firebase-admin/firestore' or its corresponding type declarations.
+scripts/clean_firestore_and_auth.ts(4,25): error TS2307: Cannot find module 'firebase-admin/auth' or its corresponding type declarations.
+scripts/clean_firestore_and_auth.ts(41,11): error TS7022: 'listUsersResult' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+src/app/admin/specialties-cities/page.tsx(22,45): error TS2551: Property 'getAllDoctors' does not exist on type 'typeof import("C:/Users/peroz/OneDrive/Escritorio/suma - argentina/src/lib/supabaseService")'. Did you mean 'getDoctors'?
+src/app/auth/callback/route.ts(1,10): error TS2305: Module '"@supabase/auth-helpers-nextjs"' has no exported member 'createRouteHandlerClient'.
+src/app/dashboard/page.tsx(565,111): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(701,87): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(702,73): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(708,61): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(712,61): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(835,46): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/dashboard/page.tsx(865,44): error TS18049: 'user' is possibly 'null' or 'undefined'.
+src/app/doctors/[id]/page.tsx(94,17): error TS2339: Property 'isLoading' does not exist on type 'AuthContextType'.
+src/app/doctors/[id]/page.tsx(359,43): error TS2339: Property 'slotDuration' does not exist on type 'DoctorAddress | { id: string; name: string; address: string; city: string; schedule: Schedule; consultationFee: number; services: Service[]; }'.
+  Property 'slotDuration' does not exist on type '{ id: string; name: string; address: string; city: string; schedule: Schedule; consultationFee: number; services: Service[]; }'.
+src/app/doctors/[id]/page.tsx(894,29): error TS2339: Property 'phone' does not exist on type 'Doctor'.
+src/app/doctors/[id]/page.tsx(896,48): error TS2339: Property 'phone' does not exist on type 'Doctor'.
+src/app/doctors/[id]/page.tsx(1094,34): error TS2339: Property 'description' does not exist on type 'Service'.
+src/app/doctors/[id]/page.tsx(1095,81): error TS2339: Property 'description' does not exist on type 'Service'.
+src/app/doctors/[id]/page.tsx(1300,39): error TS2339: Property 'alias' does not exist on type 'BankDetail'.
+src/app/doctors/[id]/page.tsx(1300,66): error TS2339: Property 'alias' does not exist on type 'BankDetail'.
+src/app/page.tsx(44,23): error TS2322: Type '"xl"' is not assignable to type '"default" | "icon" | "sm" | "lg" | null | undefined'.
+src/app/page.tsx(50,23): error TS2322: Type '"xl"' is not assignable to type '"default" | "icon" | "sm" | "lg" | null | undefined'.
+src/components/auth/auth-form.tsx(68,19): error TS2554: Expected 3 arguments, but got 1.
+src/components/clinic/tabs/agenda-tab.tsx(244,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/clinic/tabs/agenda-tab.tsx(468,40): error TS2339: Property 'duration' does not exist on type '{ name: string; price: number; }'.
+src/components/clinic/tabs/finances-tab.tsx(93,58): error TS7006: Parameter 'exp' implicitly has an 'any' type.
+src/components/doctor/dashboard-client.tsx(598,33): error TS2322: Type '{ doctorData: Doctor; onProfileUpdate: () => Promise<void>; onOpenPasswordDialog: () => void; isClinicEmployee: boolean | undefined; }' is not assignable to type 'IntrinsicAttributes & ProfileTabProps'.
+  Property 'isClinicEmployee' does not exist on type 'IntrinsicAttributes & ProfileTabProps'.
+src/components/doctor/dashboard/tabs/finances-tab.tsx(472,30): error TS2551: Property 'appointments' does not exist on type 'OfficeStats | { totalRevenue: number; totalExpenses: number; netProfit: number; totalAppointments: number; paidAppointments: number; uniquePatients: number; pendingPayments: number; } | { ...; }'. Did you mean 'paidAppointments'?
+  Property 'appointments' does not exist on type '{ totalRevenue: number; totalExpenses: number; netProfit: number; totalAppointments: number; paidAppointments: number; uniquePatients: number; pendingPayments: number; }'.
+src/components/doctor/dashboard/tabs/finances-tab.tsx(506,36): error TS2551: Property 'appointments' does not exist on type 'OfficeStats | { totalRevenue: number; totalExpenses: number; netProfit: number; totalAppointments: number; paidAppointments: number; uniquePatients: number; pendingPayments: number; } | { ...; }'. Did you mean 'paidAppointments'?
+  Property 'appointments' does not exist on type '{ totalRevenue: number; totalExpenses: number; netProfit: number; totalAppointments: number; paidAppointments: number; uniquePatients: number; pendingPayments: number; }'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(58,9): error TS2451: Cannot redeclare block-scoped variable 'initialPhone'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(59,10): error TS2451: Cannot redeclare block-scoped variable 'countryCode'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(59,23): error TS2451: Cannot redeclare block-scoped variable 'setCountryCode'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(60,10): error TS2451: Cannot redeclare block-scoped variable 'phoneNumber'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(60,23): error TS2451: Cannot redeclare block-scoped variable 'setPhoneNumber'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(62,9): error TS2451: Cannot redeclare block-scoped variable 'initialPhone'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(63,10): error TS2451: Cannot redeclare block-scoped variable 'countryCode'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(63,23): error TS2451: Cannot redeclare block-scoped variable 'setCountryCode'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(64,10): error TS2451: Cannot redeclare block-scoped variable 'phoneNumber'.
+src/components/doctor/dashboard/tabs/profile-tab.tsx(64,23): error TS2451: Cannot redeclare block-scoped variable 'setPhoneNumber'.
+src/lib/auth-service.ts(376,62): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '{ factorId: string; code: string; }' is not assignable to parameter of type 'MFAVerifyParams'.
+      Property 'challengeId' is missing in type '{ factorId: string; code: string; }' but required in type '{ factorId: string; challengeId: string; code: string; }'.
+src/lib/auth.tsx(361,63): error TS2345: Argument of type '{ profileCompleted: false; id: string; name: string; email: string; password: string; age: number | null; gender: "otro" | "masculino" | "femenino" | null; phone: string | null; cedula: string | null; ... 4 more ...; role: "patient" | ... 2 more ... | "seller"; } | { ...; } | { ...; } | { ...; }' is not assignable to parameter of type '(Patient | Clinic | Doctor | Seller) & { role: "patient" | "doctor" | "clinic" | "seller"; }'.
+  Object literal may only specify known properties, and 'profileCompleted' does not exist in type '(Clinic & { role: "patient" | "doctor" | "clinic" | "seller"; }) | (Doctor & { role: "patient" | "doctor" | "clinic" | "seller"; })'.
+src/lib/notifications/email-service.ts(76,53): error TS2345: Argument of type '{ from: string; to: string[]; subject: string; text: string | undefined; html: string | undefined; replyTo: string | undefined; cc: string[] | undefined; bcc: string[] | undefined; attachments: any; }' is not assignable to parameter of type 'CreateEmailOptions'.
+  Type '{ from: string; to: string[]; subject: string; text: string | undefined; html: string | undefined; replyTo: string | undefined; cc: string[] | undefined; bcc: string[] | undefined; attachments: any; }' is not assignable to type 'EmailTemplateOptions & CreateEmailBaseOptionsWithTemplate & { react?: undefined; html?: undefined; text?: undefined; }'.
+    Property 'template' is missing in type '{ from: string; to: string[]; subject: string; text: string | undefined; html: string | undefined; replyTo: string | undefined; cc: string[] | undefined; bcc: string[] | undefined; attachments: any; }' but required in type 'EmailTemplateOptions'.
