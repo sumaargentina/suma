@@ -18,19 +18,26 @@ export async function GET(request: Request) {
     const camelCaseClinics = clinics.map((clinic: any) => ({
         id: clinic.id,
         name: clinic.name,
-        email: clinic.admin_email,
+        adminEmail: clinic.admin_email,
+        email: clinic.email, // Some UI might use email property too? Type says email? is optional.
         slug: clinic.slug,
         phone: clinic.phone,
+        whatsapp: clinic.whatsapp,
+        website: clinic.website,
         description: clinic.description,
         address: clinic.address,
         city: clinic.city,
         logoUrl: clinic.logo_url,
         bannerImage: clinic.banner_image,
         status: clinic.status,
+        plan: clinic.plan,
+        billingCycle: clinic.billing_cycle,
+        verificationStatus: clinic.verification_status,
         rating: clinic.rating,
         reviewCount: clinic.review_count,
         createdAt: clinic.created_at,
         acceptedInsurances: clinic.accepted_insurances,
+        paymentSettings: clinic.payment_settings,
     }));
 
     return NextResponse.json(camelCaseClinics);
@@ -63,6 +70,8 @@ export async function PATCH(request: Request) {
         if (body.website !== undefined) dbData.website = body.website;
         if (body.adminEmail !== undefined) dbData.admin_email = body.adminEmail;
         if (body.acceptedInsurances !== undefined) dbData.accepted_insurances = body.acceptedInsurances;
+        if (body.verificationStatus !== undefined) dbData.verification_status = body.verificationStatus;
+        if (body.plan !== undefined) dbData.plan = body.plan;
 
         const { error } = await supabaseAdmin
             .from('clinics')

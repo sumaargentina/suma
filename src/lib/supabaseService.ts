@@ -2734,27 +2734,33 @@ export const getPatientChatClinics = async (patientId: string): Promise<{ clinic
 };
 
 export const getAdminClinics = async (): Promise<Clinic[]> => {
-    const { data, error } = await supabaseAdmin
-        .from('clinics')
-        .select('*')
-        .order('created_at', { ascending: false });
+    try {
+        const response = await fetch('/api/clinics', {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
 
-    if (error) {
+        if (!response.ok) throw new Error('Failed to fetch clinics');
+
+        const data = await response.json();
+        return data as Clinic[];
+    } catch (error) {
         console.error('Error fetching clinics:', error);
         return [];
     }
-
-    return (data || []).map(clinic => toCamelCase(clinic as Record<string, unknown>)) as Clinic[];
 };
 
 export const updateClinicStatus = async (id: string, updates: Partial<Clinic>) => {
-    const snakeCaseData = toSnakeCase(updates as unknown as Record<string, unknown>);
-    const { error } = await supabaseAdmin
-        .from('clinics')
-        .update(snakeCaseData)
-        .eq('id', id);
+    const response = await fetch(`/api/clinics?id=${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+    });
 
-    if (error) throw new Error(error.message);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update clinic');
+    }
 };
 
 export const getServiceAppointmentHistory = async (serviceId: string, startDate?: string, endDate?: string): Promise<Appointment[]> => {
