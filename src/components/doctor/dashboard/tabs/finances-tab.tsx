@@ -261,6 +261,36 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [doctorData.expenses, timeRange, selectedOffice]);
 
+  // Citas pagadas para la tabla de ingresos
+  const filteredIncomeAppointments = useMemo(() => {
+    let apps = appointments.filter(a => a.paymentStatus === 'Pagado');
+
+    if (timeRange !== 'all') {
+      const now = new Date();
+      let startDate: Date, endDate: Date;
+      switch (timeRange) {
+        case 'today': startDate = startOfDay(now); endDate = endOfDay(now); break;
+        case 'week': startDate = startOfWeek(now, { locale: es }); endDate = endOfWeek(now, { locale: es }); break;
+        case 'year': startDate = startOfYear(now); endDate = endOfYear(now); break;
+        case 'month': default: startDate = startOfMonth(now); endDate = endOfMonth(now); break;
+      }
+      apps = apps.filter(a => {
+        const apptDate = parseISO(a.date);
+        return apptDate >= startDate && apptDate <= endDate;
+      });
+    }
+
+    if (selectedOffice !== 'all') {
+      apps = apps.filter(a => {
+        const office = a.consultationType === 'online' ? 'Consultas Online' :
+          (addressToNameMap.get(a.doctorAddress || '') || a.office || 'Sin consultorio');
+        return office === selectedOffice;
+      });
+    }
+
+    return apps.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [appointments, selectedOffice, timeRange, addressToNameMap]);
+
   return (
     <div className="space-y-6">
       {/* Filtros de tiempo y consultorio */}
@@ -395,8 +425,13 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {officeStats.map((stats, index) => (
-                <Card key={stats.office} className="border-l-4" style={{ borderLeftColor: index === 0 ? '#10b981' : index === 1 ? '#3b82f6' : '#8b5cf6' }}>
+              {officeStats.filter(s => s.office !== 'Sin consultorio').map((stats, index) => (
+                <Card
+                  key={stats.office}
+                  className="border-l-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                  style={{ borderLeftColor: index === 0 ? '#10b981' : index === 1 ? '#3b82f6' : '#8b5cf6' }}
+                  onClick={() => setSelectedOffice(stats.office)}
+                >
                   <CardContent className="p-4">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="flex items-center gap-3">
@@ -504,9 +539,10 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
       {/* Tabs para diferentes vistas */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Resumen</TabsTrigger>
           <TabsTrigger value="statistics">Estadísticas</TabsTrigger>
+          <TabsTrigger value="incomes">Ingresos</TabsTrigger>
           <TabsTrigger value="expenses">Gastos</TabsTrigger>
         </TabsList>
 
@@ -581,6 +617,57 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             timeRange={timeRange}
             selectedOffice={selectedOffice}
           />
+        </TabsContent>
+
+        {/* Tab de Ingresos */}
+        <TabsContent value="incomes" className="space-y-4">
+          <Card className="border-2 border-green-200 bg-green-50/30">
+            <CardHeader>
+              <CardTitle className="text-green-800 flex items-center gap-2">
+                <TrendingUp className="h-6 w-6" />
+                Registro de Ingresos
+                {selectedOffice !== 'all' && <Badge variant="outline" className="ml-2">{selectedOffice}</Badge>}
+              </CardTitle>
+              <CardDescription className="text-green-700">
+                Detalle de citas pagadas y otros ingresos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>Consultorio</TableHead>
+                    <TableHead>Servicio</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredIncomeAppointments.length > 0 ? filteredIncomeAppointments.map(appt => (
+                    <TableRow key={appt.id}>
+                      <TableCell>{format(parseISO(appt.date), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                      <TableCell className="font-medium">{appt.patientName}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">
+                          <Building2 className="h-3 w-3 mr-1" />
+                          {appt.consultationType === 'online' ? 'Consultas Online' : (addressToNameMap.get(appt.doctorAddress || '') || appt.office || 'Sin consultorio')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{appt.services?.[0]?.name || 'Consulta'}</TableCell>
+                      <TableCell className="text-right font-bold text-green-600">${appt.totalPrice}</TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No hay ingresos registrados en este periodo.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Tab de Gastos */}
