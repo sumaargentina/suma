@@ -539,34 +539,30 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
       {/* Tabs para diferentes vistas */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 p-1.5 bg-muted/20 border border-border/50 rounded-xl h-auto gap-2">
+        <TabsList className="grid w-full grid-cols-4 h-12 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg border border-zinc-200 dark:border-zinc-700">
           <TabsTrigger
             value="overview"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm data-[state=active]:shadow-md"
+            className="h-full rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all data-[state=active]:shadow-sm"
           >
-            <PieChart className="h-4 w-4" />
-            <span className="font-semibold">Resumen</span>
+            Resumen
           </TabsTrigger>
           <TabsTrigger
             value="statistics"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm data-[state=active]:shadow-md"
+            className="h-full rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all data-[state=active]:shadow-sm"
           >
-            <BarChart3 className="h-4 w-4" />
-            <span className="font-semibold">Estadísticas</span>
+            Estadísticas
           </TabsTrigger>
           <TabsTrigger
             value="incomes"
-            className="data-[state=active]:bg-green-600 data-[state=active]:text-white py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm data-[state=active]:shadow-md"
+            className="h-full rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all data-[state=active]:shadow-sm"
           >
-            <TrendingUp className="h-4 w-4" />
-            <span className="font-semibold">Ingresos</span>
+            Ingresos
           </TabsTrigger>
           <TabsTrigger
             value="expenses"
-            className="data-[state=active]:bg-red-600 data-[state=active]:text-white py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm data-[state=active]:shadow-md"
+            className="h-full rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground font-semibold transition-all data-[state=active]:shadow-sm"
           >
-            <TrendingDown className="h-4 w-4" />
-            <span className="font-semibold">Gastos</span>
+            Gastos
           </TabsTrigger>
         </TabsList>
 
