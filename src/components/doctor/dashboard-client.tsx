@@ -60,6 +60,8 @@ const ServiceFormSchema = z.object({
 });
 
 const CouponFormSchema = z.object({
+    name: z.string().optional(),
+    description: z.string().optional(),
     code: z.string().min(3, "El código debe tener al menos 3 caracteres.").toUpperCase(),
     discountType: z.enum(['percentage', 'fixed']),
     value: z.preprocess((val) => Number(val), z.number().positive("El valor debe ser positivo.")),
@@ -652,7 +654,7 @@ ID Transacción: ${transactionId}`;
                         )}
                         {currentTab === "coupons" && (
                             !isClinicDoctor ? (
-                                <CouponsTab coupons={doctorData.coupons || []} onOpenDialog={(c) => { setEditingCoupon(c); setIsCouponDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                <CouponsTab coupons={doctorData.coupons || []} doctorId={doctorData.id} onOpenDialog={(c) => { setEditingCoupon(c); setIsCouponDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
@@ -901,7 +903,9 @@ ID Transacción: ${transactionId}`;
             </Dialog>
             <Dialog open={isCouponDialogOpen} onOpenChange={setIsCouponDialogOpen}>
                 <DialogContent><DialogHeader><DialogTitle>{editingCoupon ? 'Editar Cupón' : 'Nuevo Cupón'}</DialogTitle></DialogHeader>
-                    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const data = { code: fd.get('code') as string, discountType: fd.get('discountType') as 'percentage' | 'fixed', value: parseFloat(fd.get('value') as string) }; const result = CouponFormSchema.safeParse(data); if (result.success) handleSaveEntity('coupon', result.data); else toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e => e.message).join(' ') }) }} className="space-y-4 py-4">
+                    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const data = { name: fd.get('name') as string, description: fd.get('description') as string, code: fd.get('code') as string, discountType: fd.get('discountType') as 'percentage' | 'fixed', value: parseFloat(fd.get('value') as string) }; const result = CouponFormSchema.safeParse(data); if (result.success) handleSaveEntity('coupon', result.data); else toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e => e.message).join(' ') }) }} className="space-y-4 py-4">
+                        <div><Label htmlFor="name">Nombre (Opcional)</Label><Input id="name" name="name" defaultValue={editingCoupon?.name || ''} placeholder="Ej: Promo Verano" /></div>
+                        <div><Label htmlFor="description">Descripción (Opcional)</Label><Input id="description" name="description" defaultValue={editingCoupon?.description || ''} placeholder="Detalles de condiciones..." /></div>
                         <div><Label htmlFor="code">Código del Cupón</Label><Input id="code" name="code" defaultValue={editingCoupon?.code || ''} required /></div>
                         <div><Label htmlFor="discountType">Tipo</Label><Select name="discountType" defaultValue={editingCoupon?.discountType || 'fixed'}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Monto Fijo ($)</SelectItem><SelectItem value="percentage">Porcentaje (%)</SelectItem></SelectContent></Select></div>
                         <div><Label htmlFor="value">Valor</Label><Input id="value" name="value" type="number" step="0.01" defaultValue={editingCoupon?.value || ''} required /></div>

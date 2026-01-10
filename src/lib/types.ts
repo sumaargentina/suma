@@ -102,8 +102,9 @@ export type Service = {
 
 export type Coupon = {
   id: string;
+  name?: string;
   code: string;
-  description: string;
+  description?: string;
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   minAmount?: number;
