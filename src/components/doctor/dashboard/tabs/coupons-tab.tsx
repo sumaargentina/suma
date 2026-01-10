@@ -19,6 +19,17 @@ interface CouponsTabProps {
 export function CouponsTab({ coupons, onOpenDialog, onDeleteItem, doctorId }: CouponsTabProps) {
   const { toast } = useToast();
 
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      toast({
+        title: "¡Código copiado!",
+        description: `El código ${code} ha sido copiado al portapapeles.`
+      });
+    }).catch(() => {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo copiar el código." });
+    });
+  };
+
   const handleShare = (coupon: Coupon) => {
     const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/doctors/${doctorId}` : '';
     const shareText = `¡Obtén un descuento en tu consulta con el código: *${coupon.code}*!\n\nReserva aquí: ${shareUrl}`;
@@ -30,10 +41,11 @@ export function CouponsTab({ coupons, onOpenDialog, onDeleteItem, doctorId }: Co
         url: shareUrl,
       }).catch((err) => console.error('Error sharing:', err));
     } else {
+      // Fallback for desktop: Copy full share message
       navigator.clipboard.writeText(shareText).then(() => {
         toast({
-          title: "¡Listo para compartir!",
-          description: "Mensaje y enlace copiados al portapapeles."
+          title: "Enlace copiado",
+          description: "El mensaje promocional se ha copiado al portapapeles."
         });
       });
     }
@@ -87,11 +99,22 @@ export function CouponsTab({ coupons, onOpenDialog, onDeleteItem, doctorId }: Co
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => handleCopyCode(coupon.code)} className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                            <ClipboardCopy className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Copiar Código</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <Button variant="ghost" size="icon" onClick={() => handleShare(coupon)} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                             <Share2 className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Compartir</TooltipContent>
+                        <TooltipContent>Compartir Promoción</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
 
