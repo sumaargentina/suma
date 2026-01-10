@@ -1,8 +1,9 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Appointment, Service } from "@/lib/types";
+import type { Appointment, Service, FamilyMember } from "@/lib/types";
+import * as supabaseService from '@/lib/supabaseService';
+import { FAMILY_RELATIONSHIP_LABELS } from '@/lib/types';
 import {
     Dialog,
     DialogContent,
@@ -45,6 +46,8 @@ export function AppointmentDetailDialog({
     const [prescription, setPrescription] = useState("");
     const [editableServices, setEditableServices] = useState<Service[]>([]);
     const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+    const [familyMemberInfo, setFamilyMemberInfo] = useState<FamilyMember | null>(null);
+    const [patientInfo, setPatientInfo] = useState<import('@/lib/types').Patient | null>(null);
 
     // Calculate editableTotalPrice
     const editableTotalPrice =
@@ -57,8 +60,33 @@ export function AppointmentDetailDialog({
             setClinicalNotes(appointment.clinicalNotes || "");
             setPrescription(appointment.prescription || "");
             setEditableServices(appointment.services || []);
+
+            if (appointment.familyMemberId) {
+                supabaseService.getFamilyMember(appointment.familyMemberId).then(setFamilyMemberInfo);
+                setPatientInfo(null);
+            } else {
+                setFamilyMemberInfo(null);
+                // Si no es familiar, cargamos info del paciente para obtener su edad
+                if (appointment.patientId) {
+                    supabaseService.getPatient(appointment.patientId).then(setPatientInfo);
+                }
+            }
         }
     }, [appointment]);
+
+    const calculateAge = (dateString?: string) => {
+        if (!dateString) return null;
+        try {
+            return new Date().getFullYear() - new Date(dateString).getFullYear();
+        } catch (e) {
+            return null;
+        }
+    };
+
+    // Si es familiar, calculamos edad por fecha de nacimiento. Si es paciente directo, usamos el campo 'age' directo.
+    const patientAge = familyMemberInfo?.birthDate
+        ? calculateAge(familyMemberInfo.birthDate)
+        : (patientInfo?.age || null);
 
     const handleSaveServices = () => {
         if (appointment) {
@@ -136,6 +164,11 @@ export function AppointmentDetailDialog({
                                         <Label className="text-muted-foreground text-xs uppercase font-bold">Paciente</Label>
                                         <div className="flex items-center gap-2">
                                             <p className="font-medium text-lg">{appointment.patientName}</p>
+                                            {patientAge !== null && (
+                                                <Badge variant="secondary" className="text-[10px] ml-2 h-5">
+                                                    {patientAge} años
+                                                </Badge>
+                                            )}
                                             {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && (
                                                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
                                                     Familiar
@@ -153,6 +186,11 @@ export function AppointmentDetailDialog({
                                             <p className="text-sm text-amber-900">
                                                 Dependiente de: <span className="font-semibold">{appointment.bookedByName}</span>
                                             </p>
+                                            {familyMemberInfo && (
+                                                <p className="text-xs text-amber-700 mt-1">
+                                                    Relación: <span className="font-semibold uppercase">{FAMILY_RELATIONSHIP_LABELS[familyMemberInfo.relationship] || familyMemberInfo.relationship}</span>
+                                                </p>
+                                            )}
                                         </div>
                                     )}
 
