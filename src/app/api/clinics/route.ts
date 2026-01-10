@@ -5,42 +5,62 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-    const { data: clinics, error } = await supabaseAdmin
-        .from('clinics')
-        .select('*')
-        .order('name');
+    try {
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
 
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        let query = supabaseAdmin
+            .from('clinics')
+            .select('*');
+
+        if (id) {
+            query = query.eq('id', id);
+        } else {
+            query = query.order('name');
+        }
+
+        const { data: clinics, error } = await query;
+
+        if (error) {
+            console.error('Database error fetching clinics:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        if (!clinics) {
+            return NextResponse.json([]);
+        }
+
+        // Convert to camelCase
+        const camelCaseClinics = clinics.map((clinic: any) => ({
+            id: clinic.id,
+            name: clinic.name,
+            adminEmail: clinic.admin_email,
+            email: clinic.email,
+            slug: clinic.slug,
+            phone: clinic.phone,
+            whatsapp: clinic.whatsapp,
+            website: clinic.website,
+            description: clinic.description,
+            address: clinic.address,
+            city: clinic.city,
+            logoUrl: clinic.logo_url,
+            bannerImage: clinic.banner_image,
+            status: clinic.status,
+            plan: clinic.plan,
+            billingCycle: clinic.billing_cycle,
+            verificationStatus: clinic.verification_status,
+            rating: clinic.rating,
+            reviewCount: clinic.review_count,
+            createdAt: clinic.created_at,
+            acceptedInsurances: clinic.accepted_insurances,
+            paymentSettings: clinic.payment_settings,
+        }));
+
+        return NextResponse.json(camelCaseClinics);
+    } catch (error: any) {
+        console.error('Unexpected error in GET /api/clinics:', error);
+        return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
     }
-
-    // Convert to camelCase
-    const camelCaseClinics = clinics.map((clinic: any) => ({
-        id: clinic.id,
-        name: clinic.name,
-        adminEmail: clinic.admin_email,
-        email: clinic.email, // Some UI might use email property too? Type says email? is optional.
-        slug: clinic.slug,
-        phone: clinic.phone,
-        whatsapp: clinic.whatsapp,
-        website: clinic.website,
-        description: clinic.description,
-        address: clinic.address,
-        city: clinic.city,
-        logoUrl: clinic.logo_url,
-        bannerImage: clinic.banner_image,
-        status: clinic.status,
-        plan: clinic.plan,
-        billingCycle: clinic.billing_cycle,
-        verificationStatus: clinic.verification_status,
-        rating: clinic.rating,
-        reviewCount: clinic.review_count,
-        createdAt: clinic.created_at,
-        acceptedInsurances: clinic.accepted_insurances,
-        paymentSettings: clinic.payment_settings,
-    }));
-
-    return NextResponse.json(camelCaseClinics);
 }
 
 export async function PATCH(request: Request) {
