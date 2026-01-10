@@ -166,11 +166,28 @@ export default function DoctorProfile() {
               const settings = await supabaseService.getSettings();
               let allCoupons = settings?.coupons || [];
 
+              // Agregar cupones propios del médico (asignando scope explícito para pasar validación)
+              if (docData.coupons && docData.coupons.length > 0) {
+                const doctorCoupons = docData.coupons.map((c: any) => ({
+                  ...c,
+                  scopeType: 'specific',
+                  scopeDoctors: [docData.id]
+                }));
+                allCoupons = [...allCoupons, ...doctorCoupons];
+              }
+
               // Si es médico de clínica, agregar cupones de la clínica
               if (docData.clinicId) {
                 const clinicData = await supabaseService.getClinic(docData.clinicId);
                 if (clinicData && clinicData.coupons) {
-                  allCoupons = [...allCoupons, ...clinicData.coupons];
+                  // Asegurar que los cupones de clínica apliquen a este doctor si no tienen scope definido
+                  const clinicCoupons = clinicData.coupons.map((c: any) => {
+                    if (!c.scopeType && !c.scope) {
+                      return { ...c, scopeType: 'specific', scopeDoctors: [docData.id] };
+                    }
+                    return c;
+                  });
+                  allCoupons = [...allCoupons, ...clinicCoupons];
                 }
                 if (clinicData) setClinic(clinicData); // Ensure clinic is set
               }
