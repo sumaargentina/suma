@@ -19,10 +19,10 @@ import { uploadPublicImage } from '@/lib/supabaseService';
 
 const DoctorProfileSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
-  cedula: z.string().min(1, "El documento es requerido."),
+  cedula: z.string().min(1, "El documento es requerido.").max(20, "El documento es muy largo."),
   documentType: z.enum(['DNI', 'Pasaporte', 'Otro']),
   medicalLicense: z.string().min(4, "La matrícula médica debe tener al menos 4 caracteres."),
-  whatsapp: z.string().optional(),
+  whatsapp: z.string().max(20, "El número es muy largo.").optional(),
   address: z.string().min(5, "La dirección debe tener al menos 5 caracteres."),
   sector: z.string().min(1, "El sector es requerido."),
   description: z.string().min(10, "La descripción debe tener al menos 10 caracteres."),
@@ -168,7 +168,7 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                       {DOCUMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input id="cedula" name="cedula" defaultValue={doctorData.cedula} className="h-9 md:h-10 text-xs md:text-sm flex-1" readOnly={isClinicEmployee} />
+                  <Input id="cedula" name="cedula" defaultValue={doctorData.cedula} className="h-9 md:h-10 text-xs md:text-sm flex-1" readOnly={isClinicEmployee} maxLength={15} />
                 </div>
               </div>
             </div>
@@ -205,6 +205,7 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   className="h-9 md:h-10 text-xs md:text-sm flex-1"
+                  maxLength={15}
                 />
               </div>
             </div>
