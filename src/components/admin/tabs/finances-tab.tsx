@@ -47,6 +47,8 @@ export function FinancesTab() {
     netProfit: 0,
     pendingPayments: 0,
     activeSubscriptions: 0,
+    activeDoctors: 0,
+    activeClinics: 0,
     monthlyGrowth: 0
   });
 
@@ -85,8 +87,8 @@ export function FinancesTab() {
       const pendingPaymentsCount = pending.length;
 
       // Calcular suscripciones activas (doctores + clínicas con estado activo)
-      const activeSubscriptions = doctors.filter((doctor: Doctor) => doctor.status === 'active').length +
-        clinics.filter((clinic: Clinic) => clinic.subscriptionStatus === 'active').length;
+      const activeDoctorsCount = doctors.filter((doctor: Doctor) => doctor.status === 'active').length;
+      const activeClinicsCount = clinics.filter((clinic: Clinic) => clinic.subscriptionStatus === 'active').length;
 
       // Filtrar pagos de clínicas pendientes
       const pendingClinic = clinicPayments.filter(p => p.status === 'Pending');
@@ -102,7 +104,9 @@ export function FinancesTab() {
         totalExpenses,
         netProfit: totalRevenue + clinicRevenue - totalExpenses,
         pendingPayments: pendingPaymentsCount + pendingClinic.length,
-        activeSubscriptions,
+        activeSubscriptions: activeDoctorsCount + activeClinicsCount,
+        activeDoctors: activeDoctorsCount,
+        activeClinics: activeClinicsCount,
         monthlyGrowth: 0
       });
 
@@ -365,9 +369,14 @@ export function FinancesTab() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.activeSubscriptions}</div>
-            <p className="text-xs text-muted-foreground">
-              Médicos suscritos
-            </p>
+            <div className="flex gap-3 mt-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-blue-600">{stats.activeDoctors}</span> Médicos
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-purple-600">{stats.activeClinics}</span> Clínicas
+              </p>
+            </div>
           </CardContent>
         </Card>
 
