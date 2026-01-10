@@ -12,19 +12,31 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Shield, Upload, Eye, Calendar, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, ChevronLeft, ChevronRight, Building2, Copy, Check, BanknoteIcon, Loader2, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, addMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Image from 'next/image';
 import { getSettings, getClinicPayments, addClinicPayment } from '@/lib/supabaseService';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 
-// Plan prices (should match backend configuration)
-const PLAN_PRICES: Record<string, number> = {
-    esencial: 50,
-    profesional: 100,
-    empresarial: 200,
-    integral: 300,
+// Base monthly price - matches landing page
+const BASE_MONTHLY_PRICE = 29000;
+
+// Discounts for multi-month payments
+const DISCOUNTS: Record<number, number> = {
+    1: 0,
+    3: 0.05,  // 5% off
+    6: 0.08,  // 8% off
+    12: 0.15, // 15% off
+};
+
+// Calculate total and discount for a given number of months
+const calculatePayment = (months: number) => {
+    const discount = DISCOUNTS[months] || 0;
+    const subtotal = BASE_MONTHLY_PRICE * months;
+    const total = subtotal * (1 - discount);
+    const pricePerMonth = total / months;
+    return { total, discount, pricePerMonth, subtotal };
 };
 
 export function SubscriptionTab() {
@@ -44,6 +56,7 @@ export function SubscriptionTab() {
     // Payment dialog state
     const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedMonths, setSelectedMonths] = useState(1);
     const [paymentForm, setPaymentForm] = useState({
         transactionId: '',
         notes: '',
@@ -71,7 +84,7 @@ export function SubscriptionTab() {
                     subscriptionStatus: (user as any).subscriptionStatus || 'inactive',
                     lastPaymentDate: (user as any).lastPaymentDate,
                     nextPaymentDate: (user as any).nextPaymentDate,
-                    subscriptionFee: PLAN_PRICES[(user as any).plan || 'esencial'],
+                    subscriptionFee: BASE_MONTHLY_PRICE,
                 };
                 setClinicData(clinicInfo);
 
@@ -119,7 +132,8 @@ export function SubscriptionTab() {
     const endIndex = startIndex + paymentsPerPage;
     const currentPayments = sortedPayments.slice(startIndex, endIndex);
 
-    const subscriptionFee = clinicData?.subscriptionFee || PLAN_PRICES[clinicData?.plan || 'esencial'];
+    // Calculate payment based on selected months
+    const { total: paymentTotal, discount, pricePerMonth } = calculatePayment(selectedMonths);
 
     const handleViewProof = (paymentProofUrl: string | null) => {
         if (!paymentProofUrl) {
@@ -162,13 +176,13 @@ export function SubscriptionTab() {
 
             await addClinicPayment({
                 clinicId: clinicData.id,
-                amount: subscriptionFee,
+                amount: paymentTotal,
                 date: format(new Date(), 'yyyy-MM-dd'),
                 status: 'Pending',
                 paymentMethod: 'transfer',
                 transactionId: paymentForm.transactionId,
                 paymentProofUrl: proofUrl,
-                notes: paymentForm.notes,
+                notes: `${selectedMonths} mes(es) de suscripción${paymentForm.notes ? '. ' + paymentForm.notes : ''}`,
             });
 
             // Reload payments
@@ -287,10 +301,10 @@ export function SubscriptionTab() {
                                 <CardContent className="p-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <DollarSign className="h-4 w-4 text-green-600" />
-                                        <p className="text-sm text-muted-foreground">Monto Mensual</p>
+                                        <p className="text-sm text-muted-foreground">Precio Base</p>
                                     </div>
                                     <p className="text-xl font-bold text-green-600">
-                                        ${subscriptionFee.toFixed(2)}
+                                        ${BASE_MONTHLY_PRICE.toLocaleString('es-AR')}
                                         <span className="text-sm font-normal text-muted-foreground">/mes</span>
                                     </p>
                                 </CardContent>
@@ -528,9 +542,57 @@ export function SubscriptionTab() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                        {/* Month Selector */}
                         <div className="space-y-2">
-                            <Label>Monto a Pagar</Label>
-                            <p className="text-2xl font-bold text-green-600">${subscriptionFee.toFixed(2)}</p>
+                            <Label>Selecciona el período a pagar</Label>
+                            <div className="flex flex-wrap gap-2 bg-slate-100 p-2 rounded-xl">
+                                {[1, 3, 6, 12].map((m) => (
+                                    <button
+                                        key={m}
+                                        type="button"
+                                        onClick={() => setSelectedMonths(m)}
+                                        className={cn(
+                                            'px-4 py-2 rounded-lg text-sm font-bold transition-all relative',
+                                            selectedMonths === m
+                                                ? 'bg-slate-900 text-white shadow-lg'
+                                                : 'text-slate-600 hover:bg-slate-200'
+                                        )}
+                                    >
+                                        {m === 1 ? '1 Mes' : `${m} Meses`}
+                                        {DISCOUNTS[m] > 0 && (
+                                            <span className={cn(
+                                                'absolute -top-2 -right-2 text-white text-[10px] px-1.5 py-0.5 rounded-full',
+                                                m === 3 ? 'bg-blue-500' : m === 6 ? 'bg-purple-500' : 'bg-green-500'
+                                            )}>
+                                                -{Math.round(DISCOUNTS[m] * 100)}%
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Payment Summary */}
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-muted-foreground">Precio por mes:</span>
+                                <span className="font-medium">${BASE_MONTHLY_PRICE.toLocaleString('es-AR')}</span>
+                            </div>
+                            {discount > 0 && (
+                                <div className="flex justify-between items-center mb-2 text-green-600">
+                                    <span className="text-sm">Descuento ({Math.round(discount * 100)}%):</span>
+                                    <span className="font-medium">-${((BASE_MONTHLY_PRICE * selectedMonths) * discount).toLocaleString('es-AR')}</span>
+                                </div>
+                            )}
+                            <div className="border-t pt-2 mt-2 flex justify-between items-center">
+                                <span className="font-bold">Total a pagar:</span>
+                                <span className="text-2xl font-bold text-green-600">${paymentTotal.toLocaleString('es-AR')}</span>
+                            </div>
+                            {selectedMonths > 1 && (
+                                <p className="text-xs text-muted-foreground mt-1 text-right">
+                                    Equivale a ${pricePerMonth.toLocaleString('es-AR')}/mes
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="transactionId">Número de Transacción / Referencia *</Label>
