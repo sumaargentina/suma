@@ -725,7 +725,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                           {expense.office && (
                             <Badge variant="secondary" className="mt-1 text-xs">
                               <Building2 className="h-3 w-3 mr-1" />
-                              {expense.office}
+                              {addressToNameMap.get(expense.office) || expense.office}
                             </Badge>
                           )}
                         </div>
@@ -799,7 +799,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                           {expense.office ? (
                             <Badge variant="secondary" className="text-xs">
                               <Building2 className="h-3 w-3 mr-1" />
-                              {expense.office}
+                              {addressToNameMap.get(expense.office) || expense.office}
                             </Badge>
                           ) : (
                             <span className="text-xs text-muted-foreground">Sin asignar</span>
