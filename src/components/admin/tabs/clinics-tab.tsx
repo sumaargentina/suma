@@ -72,8 +72,13 @@ export function ClinicsTab() {
             if (selectedClinic?.id === clinic.id) {
                 setSelectedClinic(null);
             }
-        } catch (error) {
-            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar el estado.' });
+        } catch (error: any) {
+            console.error('Update failed:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error de Actualización',
+                description: error.message || 'No se pudo actualizar el estado.'
+            });
         } finally {
             setProcessingId(null);
         }

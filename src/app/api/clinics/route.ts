@@ -65,6 +65,15 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
     try {
+        // Validación de credenciales críticas para operación de administración
+        if (!process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY.includes('placeholder')) {
+            console.error('CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing or invalid.');
+            return NextResponse.json({
+                error: 'Configuration Error',
+                details: 'Falta la variable SUPABASE_SERVICE_ROLE_KEY en Vercel. Configúrala en Project Settings > Environment Variables.'
+            }, { status: 500 });
+        }
+
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
