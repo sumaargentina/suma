@@ -2759,7 +2759,8 @@ export const updateClinicStatus = async (id: string, updates: Partial<Clinic>) =
 
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to update clinic');
+        const errorMessage = error.details ? `${error.error}: ${error.details}` : (error.error || 'Failed to update clinic');
+        throw new Error(errorMessage);
     }
 };
 
