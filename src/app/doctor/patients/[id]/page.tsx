@@ -42,9 +42,20 @@ export default function PatientHistoryPage() {
 
     // Fetch separate family member data if viewing a dependent's profile context
     useEffect(() => {
-        if (familyMemberId) {
-            supabaseService.getFamilyMember(familyMemberId).then(setFamilyMember);
-        }
+        const fetchFamilyMember = async () => {
+            if (familyMemberId) {
+                try {
+                    const res = await fetch(`/api/family-members/get?id=${familyMemberId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setFamilyMember(data);
+                    }
+                } catch (error) {
+                    console.error("Error loading family member:", error);
+                }
+            }
+        };
+        fetchFamilyMember();
     }, [familyMemberId]);
 
     const fetchLastRecord = async () => {
