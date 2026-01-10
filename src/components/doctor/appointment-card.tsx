@@ -16,7 +16,7 @@ function capitalizeWords(str: string | null | undefined) {
     return str.replace(/\b\w+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
-export function DoctorAppointmentCard({ appointment, onOpenDialog, isPast = false }: { appointment: Appointment, onOpenDialog: (type: 'appointment' | 'chat', appointment: Appointment) => void, isPast?: boolean }) {
+export function DoctorAppointmentCard({ appointment, onOpenDialog, isPast = false, officeName }: { appointment: Appointment, onOpenDialog: (type: 'appointment' | 'chat', appointment: Appointment) => void, isPast?: boolean, officeName?: string }) {
     // Función para obtener el texto del estado de pago
     const getPaymentStatusText = (status: string) => {
         switch (status) {
@@ -65,9 +65,17 @@ export function DoctorAppointmentCard({ appointment, onOpenDialog, isPast = fals
                             <span className="font-medium">Consulta Online</span>
                         </div>
                     ) : appointment.doctorAddress && (
-                        <div className="flex items-center text-sm gap-1.5 pt-1 text-muted-foreground">
-                            <MapPin className="h-4 w-4" />
-                            <span>{appointment.doctorAddress}</span>
+                        <div className="flex flex-col text-sm pt-1 text-muted-foreground">
+                            {officeName && (
+                                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                    <MapPin className="h-4 w-4 text-primary" />
+                                    {officeName}
+                                </span>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                                {!officeName && <MapPin className="h-4 w-4" />}
+                                <span className={cn(officeName && "ml-5 text-xs")}>{appointment.doctorAddress}</span>
+                            </div>
                         </div>
                     )}
                 </div>

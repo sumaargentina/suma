@@ -605,6 +605,7 @@ ID Transacción: ${transactionId}`;
                                 onOpenDialog={handleOpenAppointmentDialog}
                                 onOpenWalkInDialog={handleOpenWalkIn}
                                 offices={uniqueOffices}
+                                doctorAddresses={doctorData?.addresses || []}
                             />
                         )}
                         {currentTab === "finances" && (

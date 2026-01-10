@@ -1,7 +1,7 @@
 
 "use client";
 import { useMemo, useState } from "react";
-import type { Appointment } from "@/lib/types";
+import type { Appointment, DoctorAddress } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { DoctorAppointmentCard } from "@/components/doctor/appointment-card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,12 +16,14 @@ export function AppointmentsTab({
   appointments,
   onOpenDialog,
   onOpenWalkInDialog,
-  offices = []
+  offices = [],
+  doctorAddresses = []
 }: {
   appointments: Appointment[];
   onOpenDialog: (type: 'appointment' | 'chat', appointment: Appointment) => void;
   onOpenWalkInDialog?: () => void;
   offices?: string[];
+  doctorAddresses?: DoctorAddress[];
 }) {
   const [pendingMonthFilter, setPendingMonthFilter] = useState('all');
   const [selectedOffice, setSelectedOffice] = useState('all');
@@ -133,6 +135,12 @@ export function AppointmentsTab({
     setCurrentPage(page);
   };
 
+  const getOfficeName = (address?: string) => {
+    if (!address) return undefined;
+    const found = doctorAddresses.find(a => a.address === address);
+    return found ? found.name : undefined;
+  };
+
   return (
     <div className="space-y-8">
       {/* Filtro de Consultorio */}
@@ -179,7 +187,7 @@ export function AppointmentsTab({
           </CardHeader>
           <CardContent className="space-y-4 max-h-[500px] overflow-y-auto">
             {todayAppointments.length > 0 ? (
-              todayAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} />)
+              todayAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} officeName={getOfficeName(appt.doctorAddress)} />)
             ) : (
               <p className="text-center text-muted-foreground py-10">No hay citas para hoy.</p>
             )}
@@ -193,7 +201,7 @@ export function AppointmentsTab({
             {tomorrowAppointments.length > 0 ? (
               tomorrowAppointments.map(appt => (
                 <div key={appt.id}>
-                  <DoctorAppointmentCard appointment={appt} onOpenDialog={onOpenDialog} />
+                  <DoctorAppointmentCard appointment={appt} onOpenDialog={onOpenDialog} officeName={getOfficeName(appt.doctorAddress)} />
                 </div>
               ))
             ) : (
@@ -230,7 +238,7 @@ export function AppointmentsTab({
         </CardHeader>
         <CardContent className="space-y-4">
           {filteredPendingAppointments.length > 0 ? (
-            filteredPendingAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} />)
+            filteredPendingAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} officeName={getOfficeName(appt.doctorAddress)} />)
           ) : (
             <p className="text-center text-muted-foreground py-10">
               No hay más citas pendientes.
@@ -313,7 +321,7 @@ export function AppointmentsTab({
         </CardHeader>
         <CardContent className="space-y-4">
           {filteredPastAppointments.length > 0 ? (
-            filteredPastAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} isPast />)
+            filteredPastAppointments.map(appt => <DoctorAppointmentCard key={appt.id} appointment={appt} onOpenDialog={onOpenDialog} isPast officeName={getOfficeName(appt.doctorAddress)} />)
           ) : (
             <p className="text-center text-muted-foreground py-10">
               {isFilterActive
