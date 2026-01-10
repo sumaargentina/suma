@@ -98,11 +98,14 @@ export async function PATCH(request: Request) {
             .update(dbData)
             .eq('id', id);
 
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase error updating clinic:', error);
+            throw error;
+        }
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error('Error updating clinic:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to update clinic', details: error.message }, { status: 500 });
     }
 }
