@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText } from "lucide-react";
+import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText, Users, Phone } from "lucide-react";
 import { format, parseISO, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
@@ -131,8 +131,40 @@ export function AppointmentDetailDialog({
                         {/* Left Column */}
                         <div className="space-y-6">
                             <Card><CardHeader><CardTitle className="text-base">Información del Paciente</CardTitle></CardHeader>
-                                <CardContent className="text-sm space-y-1">
-                                    <p><strong>Nombre:</strong> {appointment.patientName}</p>
+                                <CardContent className="text-sm space-y-3">
+                                    <div>
+                                        <Label className="text-muted-foreground text-xs uppercase font-bold">Paciente</Label>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-medium text-lg">{appointment.patientName}</p>
+                                            {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && (
+                                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+                                                    Familiar
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && appointment.bookedByName && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Users className="h-4 w-4 text-amber-600" />
+                                                <span className="font-bold text-amber-800 text-xs uppercase">Titular de la Cuenta</span>
+                                            </div>
+                                            <p className="text-sm text-amber-900">
+                                                Dependiente de: <span className="font-semibold">{appointment.bookedByName}</span>
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {appointment.patientPhone && (
+                                        <div>
+                                            <Label className="text-muted-foreground text-xs uppercase font-bold">Teléfono de Contacto</Label>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <Phone className="h-3 w-3 text-muted-foreground" />
+                                                <p>{appointment.patientPhone}</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                             <Card>
