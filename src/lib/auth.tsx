@@ -28,7 +28,11 @@ interface DoctorRegistrationData {
   specialty: string;
   city: string;
   dni: string;
+  documentType: 'DNI' | 'Pasaporte' | 'Otro';
   medicalLicense: string;
+  address: string;
+  sector: string;
+  phone: string;
 }
 
 interface ClinicRegistrationData {
@@ -377,7 +381,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const registerDoctor = async (doctorData: DoctorRegistrationData) => {
-    const { email, password, name, specialty, city, dni, medicalLicense } = doctorData;
+    const { email, password, name, specialty, city, dni, medicalLicense, address, sector, phone, documentType } = doctorData;
 
     const normalizedEmail = email.toLowerCase();
     const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
@@ -394,8 +398,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const paymentDateArgentina = getPaymentDateInArgentina(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-      name, email: normalizedEmail, specialty, city, address: '', password: hashedPassword,
-      sellerId: null, cedula: dni, sector: '', rating: 0, reviewCount: 0,
+      name, email: normalizedEmail, specialty, city, address: address || '', password: hashedPassword,
+      sellerId: null, cedula: dni, documentType, sector: sector || '', rating: 0, reviewCount: 0,
       profileImage: 'https://placehold.co/400x400.png',
       bannerImage: 'https://placehold.co/1200x400.png',
       aiHint: 'doctor portrait', description: 'Especialista comprometido con la salud y el bienestar de mis pacientes.', services: [], bankDetails: [],
@@ -410,8 +414,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         saturday: { active: false, slots: [] },
         sunday: { active: false, slots: [] },
       },
+
       status: 'active', lastPaymentDate: null,
-      whatsapp: '', lat: 0, lng: 0,
+      whatsapp: phone, lat: 0, lng: 0,
       joinDate: joinDateArgentina,
       subscriptionStatus: 'active', nextPaymentDate: paymentDateArgentina,
       coupons: [], expenses: [],

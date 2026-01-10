@@ -36,9 +36,11 @@ const DoctorRegistrationSchema = z.object({
   specialty: z.string().min(1, "Debes seleccionar una especialidad."),
   city: z.string().min(1, "Debes seleccionar una ciudad."),
   documentType: z.enum(['DNI', 'Pasaporte', 'Otro']),
-  dni: z.string().min(5, "El documento debe tener al menos 5 caracteres."),
+  dni: z.string().min(5, "El documento debe tener al menos 5 caracteres.").max(12, "El documento no puede tener más de 12 caracteres."),
   medicalLicense: z.string().min(4, "La matrícula médica es requerida."),
   phone: z.string().min(8, "El número de teléfono es requerido."),
+  address: z.string().min(5, "La dirección es requerida."),
+  sector: z.string().min(3, "El sector es requerido."),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden.",
   path: ["confirmPassword"],
@@ -61,6 +63,8 @@ export default function RegisterDoctorPage() {
     documentType: 'DNI' as DocumentType,
     dni: '',
     medicalLicense: '',
+    address: '',
+    sector: '',
     countryCode: '+54',
     phone: ''
   });
@@ -84,7 +88,8 @@ export default function RegisterDoctorPage() {
     const passSan = validatePassword(formData.password);
     const specialtySan = validateSpecialty(formData.specialty);
     const citySan = validateCity(formData.city);
-    const addressSan = { isValid: true, sanitized: '' }; // No se requiere dirección en el registro
+    const addressSan = validateAddress(formData.address);
+    const sectorSan = validateAddress(formData.sector); // Reusamos validación de dirección para sector por ahora
 
     // Debug: mostrar qué validaciones están fallando
     console.log('Validaciones:', {
@@ -103,6 +108,8 @@ export default function RegisterDoctorPage() {
       if (!passSan.isValid) failedValidations.push('Contraseña');
       if (!specialtySan.isValid) failedValidations.push('Especialidad');
       if (!citySan.isValid) failedValidations.push('Ciudad');
+      if (!addressSan.isValid) failedValidations.push('Dirección');
+      if (!sectorSan.isValid) failedValidations.push('Sector');
 
       toast({
         variant: 'destructive',
@@ -120,7 +127,9 @@ export default function RegisterDoctorPage() {
       password: passSan.sanitized,
       specialty: specialtySan.sanitized,
       city: citySan.sanitized,
-      phone: `${formData.countryCode} ${formData.phone}`.trim()
+      address: addressSan.sanitized,
+      sector: sectorSan.sanitized,
+      phone: `${formData.countryCode} ${formData.phone}`.trim(),
     };
 
     const result = DoctorRegistrationSchema.safeParse(dataToValidate);
@@ -269,6 +278,17 @@ export default function RegisterDoctorPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="address">Dirección del Consultorio</Label>
+                <Input id="address" name="address" placeholder="Av. Corrientes 1234" required value={formData.address} onChange={handleChange} disabled={isLoading} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sector">Sector / Barrio</Label>
+                <Input id="sector" name="sector" placeholder="Centro" required value={formData.sector} onChange={handleChange} disabled={isLoading} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label htmlFor="dni">Documento de Identidad</Label>
                 <div className="flex gap-2">
                   <Select
@@ -294,49 +314,49 @@ export default function RegisterDoctorPage() {
                     onChange={handleChange}
                     disabled={isLoading}
                     className="flex-1"
+                    maxLength={12}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Teléfono Móvil</Label>
-                  <div className="flex gap-2">
-                    <Select
-                      value={formData.countryCode}
-                      onValueChange={(v) => handleSelectChange('countryCode', v)}
-                      disabled={isLoading}
-                    >
-                      <SelectTrigger className="w-[100px]">
-                        <SelectValue placeholder="País" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COUNTRY_CODES.map(item => (
-                          <SelectItem key={item.code} value={item.code}>
-                            <span className="flex items-center gap-2">
-                              <span>{item.flag}</span>
-                              <span>{item.code}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      placeholder="11 1234 5678"
-                      required
-                      type="tel"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      disabled={isLoading}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="medicalLicense">Número de Matrícula Médica</Label>
-                  <Input id="medicalLicense" name="medicalLicense" placeholder="Ej: MN 123456" required value={formData.medicalLicense} onChange={handleChange} disabled={isLoading} />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="medicalLicense">Número de Matrícula Médica</Label>
+                <Input id="medicalLicense" name="medicalLicense" placeholder="Ej: MN 123456" required value={formData.medicalLicense} onChange={handleChange} disabled={isLoading} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">Teléfono Móvil</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.countryCode}
+                  onValueChange={(v) => handleSelectChange('countryCode', v)}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="País" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COUNTRY_CODES.map(item => (
+                      <SelectItem key={item.code} value={item.code}>
+                        <span className="flex items-center gap-2">
+                          <span>{item.flag}</span>
+                          <span>{item.code}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="phone"
+                  name="phone"
+                  placeholder="11 1234 5678"
+                  required
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  disabled={isLoading}
+                  className="flex-1"
+                />
               </div>
             </div>
 
