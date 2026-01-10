@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
+import { useSearchParams } from 'next/navigation';
 import { HeaderWrapper } from '@/components/header';
 import * as supabaseService from '@/lib/supabaseService';
 import { createWalkInAppointmentAction, sendMessageAction } from '@/app/actions';
@@ -113,7 +114,9 @@ function capitalizeWords(str: string) {
 
 export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const { user, loading, changePassword } = useAuth();
-    // const router = useRouter(); // Comentado porque no se usa actualmente
+    const searchParams = useSearchParams();
+    const ticketIdParam = searchParams.get('ticketId');
+    const appointmentIdParam = searchParams.get('appointmentId');
     const isClinicDoctor = user?.role === 'doctor' && user?.isClinicEmployee;
 
     const { toast } = useToast();
@@ -192,6 +195,32 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Auto-open Support Ticket
+    useEffect(() => {
+        if (!isLoadingData && supportTickets.length > 0 && ticketIdParam) {
+            const ticket = supportTickets.find(t => t.id === ticketIdParam);
+            if (ticket) {
+                setSelectedSupportTicket(ticket);
+                setIsSupportDetailOpen(true);
+
+                // Limpiar param de la URL para evitar re-abrir al refrescar (opcional, pero buena práctica)
+                // window.history.replaceState(null, '', window.location.pathname + '?view=support'); 
+                // Mejor no manipular historial directamente en React si no es crítico.
+            }
+        }
+    }, [isLoadingData, supportTickets, ticketIdParam]);
+
+    // Auto-open Appointment
+    useEffect(() => {
+        if (!isLoadingData && appointments.length > 0 && appointmentIdParam) {
+            const appt = appointments.find(a => a.id === appointmentIdParam);
+            if (appt) {
+                setSelectedAppointment(appt);
+                setIsAppointmentDetailOpen(true);
+            }
+        }
+    }, [isLoadingData, appointments, appointmentIdParam]);
 
     // Obtener lista de consultorios registrados del médico (desde módulo Addresses)
     const uniqueOffices = useMemo(() => {

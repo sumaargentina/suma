@@ -185,7 +185,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
             title: `Respuesta de Soporte`,
             description: `El equipo de SUMA ha respondido a tu ticket: "${ticket.subject}"`,
             date: lastMessage.timestamp, createdAt: now.toISOString(), read: false,
-            link: `/doctor/dashboard?view=support`
+            link: `/doctor/dashboard?view=support&ticketId=${ticket.id}`
           });
         }
       }
