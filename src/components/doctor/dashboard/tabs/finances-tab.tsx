@@ -184,7 +184,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       totalRevenue: acc.totalRevenue + stats.totalRevenue,
       totalExpenses: acc.totalExpenses + stats.totalExpenses,
       netProfit: acc.netProfit + stats.netProfit,
-      totalAppointments: acc.totalAppointments + stats.appointments,
+      appointments: acc.appointments + stats.appointments,
       paidAppointments: acc.paidAppointments + stats.paidAppointments,
       uniquePatients: acc.uniquePatients + stats.uniquePatients,
       pendingPayments: 0, // Se calculará después
@@ -192,7 +192,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       totalRevenue: 0,
       totalExpenses: 0,
       netProfit: 0,
-      totalAppointments: 0,
+      appointments: 0,
       paidAppointments: 0,
       uniquePatients: 0,
       pendingPayments: 0,
@@ -258,6 +258,15 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                 Análisis detallado de ingresos, gastos y rentabilidad por consultorio
               </CardDescription>
             </div>
+
+            <Button
+              onClick={() => onOpenExpenseDialog(null)}
+              className="bg-red-600 hover:bg-red-700 shadow-md font-semibold text-white animate-pulse-slow"
+              size="default"
+            >
+              <PlusCircle className="mr-2 h-5 w-5" />
+              REGISTRAR GASTO
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
