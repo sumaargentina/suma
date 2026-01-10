@@ -1194,7 +1194,10 @@ export default function DoctorProfile() {
                   const hasBankDetails = isClinicDoctor
                     ? (ps.transfer?.cbu || ps.transfer?.alias)
                     : (doctor.bankDetails && doctor.bankDetails.length > 0);
-                  const showTransfer = ps.transfer?.enabled !== false && hasBankDetails;
+                  // Para doctores de clínica, respetar la configuración explícita.
+                  // Para independientes, como no tienen UI para configurar 'enabled', asumimos true si tienen cuentas.
+                  const transferEnabled = isClinicDoctor ? ps.transfer?.enabled !== false : true;
+                  const showTransfer = transferEnabled && hasBankDetails;
 
                   if (!showCash && !showMercadoPago && !showTransfer) {
                     return (
