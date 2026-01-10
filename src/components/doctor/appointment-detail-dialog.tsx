@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { Appointment, Service, FamilyMember } from "@/lib/types";
-import * as supabaseService from '@/lib/supabaseService';
 import { FAMILY_RELATIONSHIP_LABELS } from '@/lib/types';
 import {
     Dialog,
@@ -47,9 +46,8 @@ export function AppointmentDetailDialog({
     const [editableServices, setEditableServices] = useState<Service[]>([]);
     const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
     const [familyMemberInfo, setFamilyMemberInfo] = useState<FamilyMember | null>(null);
-    const [patientInfo, setPatientInfo] = useState<import('@/lib/types').Patient | null>(null);
+    const [patientInfo, setPatientInfo] = useState<any>(null);
 
-    // Calculate editableTotalPrice
     const editableTotalPrice =
         (appointment?.consultationFee || 0) +
         editableServices.reduce((sum, s) => sum + (s.price || 0), 0) -
@@ -61,15 +59,26 @@ export function AppointmentDetailDialog({
             setPrescription(appointment.prescription || "");
             setEditableServices(appointment.services || []);
 
+            if (appointment.patientId) {
+                fetch(`/api/patients/get?id=${appointment.patientId}`)
+                    .then(res => res.ok ? res.json() : null)
+                    .then(data => {
+                        console.log("Titular Loaded:", data);
+                        setPatientInfo(data);
+                    })
+                    .catch(err => console.error("Error loading patient info:", err));
+            }
+
             if (appointment.familyMemberId) {
-                supabaseService.getFamilyMember(appointment.familyMemberId).then(setFamilyMemberInfo);
-                setPatientInfo(null);
+                fetch(`/api/family-members/get?id=${appointment.familyMemberId}`)
+                    .then(res => res.ok ? res.json() : null)
+                    .then(data => {
+                        console.log("Familia Loaded:", data);
+                        setFamilyMemberInfo(data);
+                    })
+                    .catch(err => console.error("Error loading family info:", err));
             } else {
                 setFamilyMemberInfo(null);
-                // Si no es familiar, cargamos info del paciente para obtener su edad
-                if (appointment.patientId) {
-                    supabaseService.getPatient(appointment.patientId).then(setPatientInfo);
-                }
             }
         }
     }, [appointment]);
@@ -83,17 +92,19 @@ export function AppointmentDetailDialog({
         }
     };
 
-    // Si es familiar, calculamos edad por fecha de nacimiento. Si es paciente directo, usamos el campo 'age' directo.
     const patientAge = familyMemberInfo?.birthDate
         ? calculateAge(familyMemberInfo.birthDate)
         : (patientInfo?.age || null);
+
+    const holderRaw = patientInfo as any;
+    const holderName = appointment?.bookedByName ||
+        (holderRaw ? `${holderRaw.first_name || holderRaw.name || ''} ${holderRaw.last_name || ''}`.trim() : null);
 
     const handleSaveServices = () => {
         if (appointment) {
             onUpdateAppointment(appointment.id, {
                 services: editableServices,
                 totalPrice: editableTotalPrice,
-                // Mantener los campos de descuento y cupón si existen
                 discountAmount: appointment.discountAmount ?? 0,
                 appliedCoupon: appointment.appliedCoupon ?? undefined,
             });
@@ -121,7 +132,6 @@ export function AppointmentDetailDialog({
     const isAttended = appointment.attendance === 'Atendido';
     const isAppointmentLocked = appointment.attendance !== 'Pendiente';
 
-    // Función para obtener el texto del estado de pago
     const getPaymentStatusText = (status: string) => {
         switch (status) {
             case 'Pagado':
@@ -133,7 +143,6 @@ export function AppointmentDetailDialog({
         }
     };
 
-    // Función para obtener el icono del estado de pago
     const getPaymentStatusIcon = (status: string) => {
         switch (status) {
             case 'Pagado':
@@ -145,8 +154,6 @@ export function AppointmentDetailDialog({
         }
     };
 
-    console.log("APPOINTMENT EN MODAL:", appointment);
-
     return (
         <>
             <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -156,7 +163,6 @@ export function AppointmentDetailDialog({
                         <DialogDescription>Cita con {appointment.patientName} el {format(addHours(parseISO(appointment.date), 5), 'dd MMM yyyy', { locale: es })} a las {appointment.time}.</DialogDescription>
                     </DialogHeader>
                     <div className="py-4 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[70vh] overflow-y-auto pr-2">
-                        {/* Left Column */}
                         <div className="space-y-6">
                             <Card><CardHeader><CardTitle className="text-base">Información del Paciente</CardTitle></CardHeader>
                                 <CardContent className="text-sm space-y-3">
@@ -177,14 +183,14 @@ export function AppointmentDetailDialog({
                                         </div>
                                     </div>
 
-                                    {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && appointment.bookedByName && (
+                                    {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && holderName && (
                                         <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <Users className="h-4 w-4 text-amber-600" />
                                                 <span className="font-bold text-amber-800 text-xs uppercase">Titular de la Cuenta</span>
                                             </div>
                                             <p className="text-sm text-amber-900">
-                                                Dependiente de: <span className="font-semibold">{appointment.bookedByName}</span>
+                                                Dependiente de: <span className="font-semibold">{holderName}</span>
                                             </p>
                                             {familyMemberInfo && (
                                                 <p className="text-xs text-amber-700 mt-1">
@@ -210,7 +216,6 @@ export function AppointmentDetailDialog({
                                     <CardTitle className="text-base">Detalles del Pago</CardTitle>
                                 </CardHeader>
                                 <CardContent className="text-sm space-y-2">
-                                    {/* Mostrar el subtotal antes de descuento si hay descuento */}
                                     {appointment.discountAmount && appointment.discountAmount > 0 && (
                                         <p>
                                             <strong>Subtotal:</strong>
@@ -219,7 +224,6 @@ export function AppointmentDetailDialog({
                                             </span>
                                         </p>
                                     )}
-                                    {/* Mostrar el descuento si existe */}
                                     {appointment.discountAmount && appointment.discountAmount > 0 && (
                                         <p>
                                             <strong>Descuento:</strong>
@@ -233,7 +237,6 @@ export function AppointmentDetailDialog({
                                             )}
                                         </p>
                                     )}
-                                    {/* Mostrar el total final */}
                                     <p>
                                         <strong>Total:</strong>
                                         <span className="font-mono font-semibold">
@@ -302,7 +305,6 @@ export function AppointmentDetailDialog({
                             </Card>
                         </div>
 
-                        {/* Right Column */}
                         <div className="space-y-6">
                             <Card>
                                 <CardHeader>
@@ -330,7 +332,6 @@ export function AppointmentDetailDialog({
                                         )}
                                     </div>
                                     <Separator />
-                                    {/* Mostrar descuento si existe */}
                                     {appointment.discountAmount && appointment.discountAmount > 0 && (
                                         <div className="flex justify-between items-center text-green-600 text-sm">
                                             <span>
@@ -344,7 +345,6 @@ export function AppointmentDetailDialog({
                                             <span className="font-mono">-${appointment.discountAmount.toFixed(2)}</span>
                                         </div>
                                     )}
-                                    {/* Mostrar el total final */}
                                     <div className="flex justify-between items-center font-bold text-lg pt-2">
                                         <span>Total:</span>
                                         <span className="text-primary">${appointment.totalPrice?.toFixed(2) ?? "0.00"}</span>
@@ -352,7 +352,6 @@ export function AppointmentDetailDialog({
                                 </CardContent>
                             </Card>
 
-                            {/* Acceso rápido a Historia Clínica del Paciente */}
                             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
                                 <CardHeader>
                                     <CardTitle className="text-base text-blue-900">Historia Clínica del Paciente</CardTitle>
@@ -386,7 +385,6 @@ export function AppointmentDetailDialog({
                 </DialogContent>
             </Dialog>
 
-            {/* Diálogo para mostrar el comprobante de pago */}
             <Dialog open={isProofDialogOpen} onOpenChange={setIsProofDialogOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh]">
                     <DialogHeader>
@@ -402,7 +400,6 @@ export function AppointmentDetailDialog({
                         {appointment?.paymentProof ? (
                             <div className="relative w-full h-[60vh] bg-muted rounded-lg overflow-hidden">
                                 {appointment.paymentProof.startsWith('data:') ? (
-                                    // Es un archivo base64
                                     <Image
                                         src={appointment.paymentProof}
                                         alt="Comprobante de pago"
@@ -411,7 +408,6 @@ export function AppointmentDetailDialog({
                                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
                                     />
                                 ) : (
-                                    // Es una URL
                                     <Image
                                         src={appointment.paymentProof}
                                         alt="Comprobante de pago"
