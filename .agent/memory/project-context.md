@@ -1,5 +1,5 @@
 # SUMA - Sistema Unificado de Medicina Avanzada
-## Memoria del Proyecto - Última actualización: 2024-12-31
+## Memoria del Proyecto - Última actualización: 2026-01-10
 
 ---
 
@@ -187,6 +187,27 @@ RESEND_API_KEY=
   - Funcionalidad para vincular un perfil de familiar con una cuenta existente de SUMA.
   - Endpoint `/api/family-members/[id]/link` validado.
 - ✅ **Migración SQL ejecutada** en Supabase.
+
+### Dashboard Médico: Finanzas (Enero 2026):
+- ✅ **Filtros por Consultorio**:
+  - Corrección de mapping: direcciones físicas ahora se muestran con el nombre comercial del consultorio.
+  - Tarjetas de resumen interactivas: click para filtrar todo el dashboard por ese consultorio.
+  - Eliminada opción "Sin consultorio" para forzar integridad de datos.
+- ✅ **Nueva Pestaña de Ingresos**:
+  - Tabla detallada de citas pagadas por consultorio.
+- ✅ **Mejoras UI/UX**:
+  - Menú de pestañas rediseñado: botones grandes, íconos, contraste alto (Verde Ingresos, Rojo Gastos).
+  - Registro de gastos obliga a seleccionar un consultorio válido.
+
+### Registro de Médicos (Enero 2026):
+- ✅ **Nuevos Campos Obligatorios**:
+  - Dirección completa del consultorio.
+  - Sector / Barrio.
+  - Teléfono móvil (con UI mejorada y validación).
+  - Licencia Médica.
+- ✅ **Validaciones**:
+  - DNI con límite de 12 caracteres.
+  - Soporte explícito documentado para Pasaportes y otros documentos.
 
 ---
 
