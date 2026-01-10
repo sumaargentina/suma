@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -46,6 +46,7 @@ export function ClinicsTab() {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Clinic>>({});
+    const [newPassword, setNewPassword] = useState('');
 
     const loadClinics = async () => {
         try {
@@ -106,6 +107,7 @@ export function ClinicsTab() {
     const handleCancelEdit = () => {
         setIsEditing(false);
         setEditData({});
+        setNewPassword('');
     };
 
     const handleSaveEdit = async () => {
@@ -113,15 +115,25 @@ export function ClinicsTab() {
 
         setProcessingId(selectedClinic.id);
         try {
-            await updateClinicStatus(selectedClinic.id, editData);
+            // Include password in the update if provided
+            const dataToSave = { ...editData };
+            if (newPassword.trim()) {
+                (dataToSave as any).password = newPassword;
+            }
+
+            await updateClinicStatus(selectedClinic.id, dataToSave);
 
             const updatedClinic = { ...selectedClinic, ...editData };
             setClinics(prev => prev.map(c => c.id === selectedClinic.id ? updatedClinic : c));
             setSelectedClinic(updatedClinic);
             setIsEditing(false);
             setEditData({});
+            setNewPassword('');
 
-            toast({ title: 'Clínica actualizada', description: 'Los cambios han sido guardados.' });
+            toast({
+                title: 'Clínica actualizada',
+                description: newPassword.trim() ? 'Los cambios y la contraseña han sido guardados.' : 'Los cambios han sido guardados.'
+            });
         } catch (error: any) {
             console.error('Save failed:', error);
             toast({
@@ -496,6 +508,23 @@ export function ClinicsTab() {
                                             {selectedClinic.createdAt ? format(new Date(selectedClinic.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '-'}
                                         </p>
                                     </div>
+
+                                    {/* Password Change Section */}
+                                    {isEditing && (
+                                        <div className="space-y-2 pt-4 border-t">
+                                            <Label className="flex items-center gap-2">
+                                                <KeyRound className="h-4 w-4" />
+                                                Nueva Contraseña (opcional)
+                                            </Label>
+                                            <Input
+                                                type="password"
+                                                placeholder="Dejar en blanco para no cambiar"
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                            />
+                                            <p className="text-xs text-muted-foreground">Solo ingresa una contraseña si deseas cambiarla.</p>
+                                        </div>
+                                    )}
                                 </TabsContent>
                             </Tabs>
 

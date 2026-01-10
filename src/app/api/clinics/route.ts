@@ -101,6 +101,14 @@ export async function PATCH(request: Request) {
         if (body.acceptedInsurances !== undefined) dbData.accepted_insurances = body.acceptedInsurances;
         if (body.verificationStatus !== undefined) dbData.verification_status = body.verificationStatus;
         if (body.plan !== undefined) dbData.plan = body.plan;
+        if (body.billingCycle !== undefined) dbData.billing_cycle = body.billingCycle;
+        if (body.email !== undefined) dbData.email = body.email;
+
+        // Handle password change - hash it before saving
+        if (body.password && body.password.trim()) {
+            const bcrypt = await import('bcryptjs');
+            dbData.password = await bcrypt.hash(body.password, 10);
+        }
 
         const { error } = await supabaseAdmin
             .from('clinics')
