@@ -413,6 +413,11 @@ export default function DoctorProfile() {
   const handleApplyCoupon = () => {
     if (!id || !couponInput || !doctor) return;
 
+    const inputCode = couponInput.trim().toUpperCase();
+    console.log('🔍 Intentando aplicar cupón:', inputCode);
+    console.log('👨‍⚕️ Doctor ID:', doctor.id);
+    console.log('🎫 Total cupones disponibles en contexto:', coupons.length);
+
     // Filtrar cupones que aplican a este médico
     const applicableCoupons = coupons.filter(c => {
       // Verificar si el cupón está activo
@@ -424,23 +429,33 @@ export default function DoctorProfile() {
       if (c.validTo && new Date(c.validTo) < now) return false;
 
       // Verificar alcance del cupón
+      let applies = false;
       switch (c.scopeType) {
         case 'all':
-          return true;
+          applies = true;
+          break;
         case 'specialty':
-          return c.scopeSpecialty === doctor.specialty;
+          applies = c.scopeSpecialty === doctor.specialty;
+          break;
         case 'city':
-          return c.scopeCity === doctor.city;
+          applies = c.scopeCity === doctor.city;
+          break;
         case 'specific':
-          return c.scopeDoctors?.includes(doctor.id);
+          applies = c.scopeDoctors?.includes(doctor.id);
+          break;
         default:
           // Compatibilidad con formato antiguo
-          return c.scope === 'general' || c.scope === id ||
+          applies = c.scope === 'general' || c.scope === id ||
             (c.scope === 'specialty' && c.specialty === doctor.specialty);
       }
+
+      console.log(`🎫 Evaluando cupón [${c.code}]: Scope=${c.scopeType}, Applies=${applies}`);
+      return applies;
     });
 
-    const coupon = applicableCoupons.find(c => c.code.toUpperCase() === couponInput.toUpperCase());
+    console.log('✅ Cupones aplicables encontrados:', applicableCoupons.length);
+
+    const coupon = applicableCoupons.find(c => c.code.toUpperCase().trim() === inputCode);
 
     if (!coupon) {
       toast({
