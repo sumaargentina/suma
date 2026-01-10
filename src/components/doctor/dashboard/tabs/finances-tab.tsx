@@ -78,6 +78,13 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     return officeNames.sort();
   }, [doctorData.addresses, doctorData.onlineConsultation]);
 
+  // Mapa para convertir dirección a nombre de consultorio
+  const addressToNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (doctorData.addresses || []).forEach(addr => map.set(addr.address, addr.name));
+    return map;
+  }, [doctorData.addresses]);
+
   // Calcular estadísticas financieras por consultorio
   const officeStats = useMemo((): OfficeStats[] => {
     let filteredAppointments = appointments;
@@ -117,15 +124,24 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       });
     }
 
+
+
     // Agrupar por consultorio
     const statsMap = new Map<string, OfficeStats>();
 
     // Procesar citas
     filteredAppointments.forEach(apt => {
-      // Determinar el consultorio: si es online, usar "Consultas Online", sino usar el campo office
-      const office = apt.consultationType === 'online'
-        ? 'Consultas Online'
-        : (apt.office || 'Sin consultorio');
+      // Determinar el consultorio por nombre
+      let office = 'Sin consultorio';
+
+      if (apt.consultationType === 'online') {
+        office = 'Consultas Online';
+      } else if (apt.doctorAddress && addressToNameMap.has(apt.doctorAddress)) {
+        office = addressToNameMap.get(apt.doctorAddress)!;
+      } else if (apt.office) {
+        // Fallback legacy
+        office = apt.office;
+      }
 
       const existing = statsMap.get(office) || {
         office,
@@ -148,6 +164,8 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
     // Procesar gastos
     filteredExpenses.forEach(exp => {
+      // Los gastos ya deberían tener el nombre del consultorio en 'office' si se guardan correctamente
+      // O 'Consultas Online'
       const office = exp.office || 'Sin consultorio';
       const existing = statsMap.get(office) || {
         office,
@@ -176,7 +194,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [doctorData, appointments, timeRange]);
+  }, [doctorData, appointments, timeRange, addressToNameMap]);
 
   // Estadísticas totales (todos los consultorios)
   const totalStats = useMemo(() => {

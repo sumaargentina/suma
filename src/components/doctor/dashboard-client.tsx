@@ -1027,11 +1027,14 @@ ID Transacción: ${transactionId}`;
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="none">Sin consultorio</SelectItem>
-                                    {uniqueOffices.map(office => (
-                                        <SelectItem key={office} value={office}>
-                                            {office}
+                                    {doctorData?.addresses?.map(addr => (
+                                        <SelectItem key={addr.address} value={addr.name}>
+                                            {addr.name}
                                         </SelectItem>
                                     ))}
+                                    {doctorData?.onlineConsultation?.enabled && (
+                                        <SelectItem value="Consultas Online">Consultas Online</SelectItem>
+                                    )}
 
                                 </SelectContent>
                             </Select>
@@ -1399,7 +1402,7 @@ ID Transacción: ${transactionId}`;
                         </div>
 
                         {/* Consultorio */}
-                        {uniqueOffices.length > 0 && (
+                        {(doctorData?.addresses?.length || 0) > 0 && (
                             <div className="space-y-2">
                                 <Label htmlFor="office">Consultorio</Label>
                                 <Select name="office" value={selectedWalkInOffice} onValueChange={setSelectedWalkInOffice}>
@@ -1407,8 +1410,10 @@ ID Transacción: ${transactionId}`;
                                         <SelectValue placeholder="Seleccionar consultorio" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {uniqueOffices.map(office => (
-                                            <SelectItem key={office} value={office}>{office}</SelectItem>
+                                        {doctorData?.addresses?.map(addr => (
+                                            <SelectItem key={addr.address} value={addr.address}>
+                                                {addr.name}
+                                            </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
