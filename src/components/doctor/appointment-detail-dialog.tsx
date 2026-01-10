@@ -364,7 +364,8 @@ export function AppointmentDetailDialog({
                                     <Button
                                         className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                                         onClick={() => {
-                                            window.location.href = `/doctor/patients/${appointment.patientId}`;
+                                            const url = `/doctor/patients/${appointment.patientId}${appointment.familyMemberId ? `?familyMemberId=${appointment.familyMemberId}` : ''}`;
+                                            window.location.href = url;
                                         }}
                                     >
                                         <FileText className="mr-2 h-4 w-4" />

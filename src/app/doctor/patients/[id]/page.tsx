@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import * as supabaseService from '@/lib/supabaseService';
 import { HeaderWrapper } from '@/components/header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -15,11 +16,14 @@ import { useToast } from '@/hooks/use-toast';
 
 export default function PatientHistoryPage() {
     const { id: patientId } = useParams();
+    const searchParams = useSearchParams();
+    const familyMemberId = searchParams.get('familyMemberId');
     const { user, loading } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
 
     const [patient, setPatient] = useState<any>(null);
+    const [familyMember, setFamilyMember] = useState<any>(null);
     const [isLoadingPatient, setIsLoadingPatient] = useState(true);
     const [activeTab, setActiveTab] = useState('summary');
     const [lastRecord, setLastRecord] = useState<any>(null);
@@ -35,6 +39,13 @@ export default function PatientHistoryPage() {
             fetchLastRecord();
         }
     }, [patientId, user, loading]);
+
+    // Fetch separate family member data if viewing a dependent's profile context
+    useEffect(() => {
+        if (familyMemberId) {
+            supabaseService.getFamilyMember(familyMemberId).then(setFamilyMember);
+        }
+    }, [familyMemberId]);
 
     const fetchLastRecord = async () => {
         try {
@@ -91,7 +102,7 @@ export default function PatientHistoryPage() {
                 </Button>
 
                 {/* Patient Profile Header */}
-                <PatientProfileHeader patient={patient} />
+                <PatientProfileHeader patient={patient} familyMember={familyMember} />
 
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
