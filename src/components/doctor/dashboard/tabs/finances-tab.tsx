@@ -389,12 +389,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                       </div>
                     </SelectItem>
                   ))}
-                  <SelectItem value="Sin consultorio">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      Sin consultorio asignado
-                    </div>
-                  </SelectItem>
+
                 </SelectContent>
               </Select>
             </div>

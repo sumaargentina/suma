@@ -1026,7 +1026,7 @@ ID Transacción: ${transactionId}`;
                                     <SelectValue placeholder="Seleccionar consultorio" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="none">Sin consultorio</SelectItem>
+
                                     {doctorData?.addresses?.map(addr => (
                                         <SelectItem key={addr.address} value={addr.name}>
                                             {addr.name}
