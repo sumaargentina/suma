@@ -48,23 +48,33 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const patient_id = searchParams.get('patient_id');
+    const family_member_id = searchParams.get('family_member_id');
 
-    if (!patient_id) {
-        return NextResponse.json({ error: 'Patient ID required' }, { status: 400 });
+    if (!patient_id && !family_member_id) {
+        return NextResponse.json({ error: 'Patient ID or Family Member ID required' }, { status: 400 });
     }
 
     try {
-        console.log(`🔎 API GET Records para paciente: ${patient_id}`);
-        console.log('🔑 Supabase Key Status:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Presente' : 'MISSING/UNDEFINED');
+        console.log(`🔎 API GET Records. Patient: ${patient_id}, FamilyMember: ${family_member_id}`);
 
-        const { data, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('medical_records')
             .select(`
                 *,
                 doctors ( name, specialty )
             `)
-            .eq('patient_id', patient_id)
             .order('visit_date', { ascending: false });
+
+        if (family_member_id) {
+            // Si se pide un familiar específico, filtramos por su ID
+            query = query.eq('family_member_id', family_member_id);
+        } else {
+            // Si es solo paciente titular, aseguramos que sean SUS registros (family_member_id IS NULL)
+            // Esto evita mezclar historias de hijos en la vista del padre
+            query = query.eq('patient_id', patient_id).is('family_member_id', null);
+        }
+
+        const { data, error } = await query;
 
         if (data && data.length === 0) {
             console.warn('⚠️ No se encontraron registros. Corriendo diagnóstico de permisos...');

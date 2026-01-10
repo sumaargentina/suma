@@ -10,21 +10,26 @@ import { Loader2, FileText, Stethoscope, AlertTriangle } from 'lucide-react';
 
 interface MedicalRecordTimelineProps {
     patientId: string;
+    familyMemberId?: string;
 }
 
-export function MedicalRecordTimeline({ patientId }: MedicalRecordTimelineProps) {
+export function MedicalRecordTimeline({ patientId, familyMemberId }: MedicalRecordTimelineProps) {
     const [records, setRecords] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchRecords();
-    }, [patientId]);
+    }, [patientId, familyMemberId]);
 
     const fetchRecords = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`/api/medical-records?patient_id=${patientId}`);
+            let url = `/api/medical-records?patient_id=${patientId}`;
+            if (familyMemberId) {
+                url += `&family_member_id=${familyMemberId}`;
+            }
+            const response = await fetch(url);
 
             if (!response.ok) {
                 const errorData = await response.json();

@@ -13,11 +13,12 @@ import { useAuth } from '@/lib/auth';
 
 interface NewRecordFormProps {
     patientId: string;
+    familyMemberId?: string;
     doctorId: string;
     onSuccess: () => void;
 }
 
-export function NewRecordForm({ patientId, doctorId: initialDoctorId, onSuccess }: NewRecordFormProps) {
+export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoctorId, onSuccess }: NewRecordFormProps) {
     const { toast } = useToast();
     const { user } = useAuth();
     const [loading, setLoading] = useState(false);
@@ -174,6 +175,7 @@ export function NewRecordForm({ patientId, doctorId: initialDoctorId, onSuccess 
 
             const payload = {
                 patient_id: patientId,
+                family_member_id: familyMemberId,
                 doctor_id: validDoctorId,
                 visit_date: new Date().toISOString(),
                 ...formData

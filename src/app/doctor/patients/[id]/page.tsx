@@ -168,12 +168,13 @@ export default function PatientHistoryPage() {
                     </TabsContent>
 
                     <TabsContent value="history">
-                        <MedicalRecordTimeline patientId={patientId as string} />
+                        <MedicalRecordTimeline patientId={patientId as string} familyMemberId={familyMemberId || undefined} />
                     </TabsContent>
 
                     <TabsContent value="new-evolution">
                         <NewRecordForm
                             patientId={patientId as string}
+                            familyMemberId={familyMemberId || undefined}
                             doctorId={user!.id}
                             onSuccess={() => setActiveTab('history')}
                         />
