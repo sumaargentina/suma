@@ -29,6 +29,7 @@ export function MedicalRecordTimeline({ patientId, familyMemberId }: MedicalReco
             if (familyMemberId) {
                 url += `&family_member_id=${familyMemberId}`;
             }
+            console.log("Timeline fetching URL:", url); // Debug
             const response = await fetch(url);
 
             if (!response.ok) {

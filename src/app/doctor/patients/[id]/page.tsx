@@ -38,7 +38,7 @@ export default function PatientHistoryPage() {
             fetchPatientData();
             fetchLastRecord();
         }
-    }, [patientId, user, loading]);
+    }, [patientId, familyMemberId, user, loading]);
 
     // Fetch separate family member data if viewing a dependent's profile context
     useEffect(() => {
@@ -60,11 +60,17 @@ export default function PatientHistoryPage() {
 
     const fetchLastRecord = async () => {
         try {
-            const res = await fetch(`/api/medical-records?patient_id=${patientId}`);
+            let url = `/api/medical-records?patient_id=${patientId}`;
+            if (familyMemberId) {
+                url += `&family_member_id=${familyMemberId}`;
+            }
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.length > 0) {
-                    setLastRecord(data[0]); // El endpoint ya devuelve ordenado por fecha desc
+                    setLastRecord(data[0]);
+                } else {
+                    setLastRecord(null); // Limpiar si no hay registros para el familiar
                 }
             }
         } catch (error) {

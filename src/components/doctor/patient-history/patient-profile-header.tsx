@@ -14,6 +14,8 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
     const displayData = familyMember || patient;
     const isDependent = !!familyMember;
 
+    console.log("Header Patient Data:", patient); // Debug titular name
+
     // Normalización de campos (API devuelve snake_case, supabaseService camelCase)
     const firstName = displayData.firstName || displayData.first_name || '';
     const lastName = displayData.lastName || displayData.last_name || '';
@@ -25,7 +27,7 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
     const profileImage = displayData.profileImage || displayData.profile_image;
 
     // Datos del titular (solo si es dependiente)
-    const holderFirstName = patient?.first_name || patient?.firstName || '';
+    const holderFirstName = patient?.first_name || patient?.firstName || patient?.name || '';
     const holderLastName = patient?.last_name || patient?.lastName || '';
 
     const calculateAge = (dob: string) => {
