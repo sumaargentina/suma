@@ -5,7 +5,7 @@ import type {
     Doctor, Seller, Patient, Appointment, AdminSupportTicket,
     SellerPayment, DoctorPayment, AppSettings, MarketingMaterial,
     ChatMessage, DoctorReview, Service, Clinic, ClinicBranch, ClinicService, Secretary, ClinicSpecialty, ClinicExpense, PatientCommunication, ClinicPatientMessage, ClinicChatConversation,
-    FamilyMember
+    FamilyMember, ClinicPayment
 } from './types';
 import { roundPrice } from './validation-utils';
 
@@ -185,6 +185,79 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
 export const getDoctorPayments = () => getCollectionData<DoctorPayment>('doctor_payments');
 export const getSellerPayments = () => getCollectionData<SellerPayment>('seller_payments');
 export const getMarketingMaterials = () => getCollectionData<MarketingMaterial>('marketing_materials');
+
+// Clinic Payment Functions
+export const getClinicPayments = async (clinicId?: string): Promise<ClinicPayment[]> => {
+    try {
+        let query = supabase.from('clinic_payments').select('*');
+        if (clinicId) {
+            query = query.eq('clinic_id', clinicId);
+        }
+        const { data, error } = await query.order('date', { ascending: false });
+        if (error) throw error;
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>) as unknown as ClinicPayment);
+    } catch (error) {
+        console.error('Error fetching clinic payments:', error);
+        return [];
+    }
+};
+
+export const addClinicPayment = async (paymentData: Omit<ClinicPayment, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const dbData = toSnakeCase(paymentData as unknown as Record<string, unknown>);
+
+    const { data, error } = await supabase
+        .from('clinic_payments')
+        .insert(dbData)
+        .select('id')
+        .single();
+
+    if (error) throw error;
+
+    // Update clinic subscription status to pending
+    await supabase
+        .from('clinics')
+        .update({ subscription_status: 'pending_payment' })
+        .eq('id', paymentData.clinicId);
+
+    return data.id;
+};
+
+export const updateClinicPayment = async (id: string, data: Partial<ClinicPayment>): Promise<void> => {
+    const dbData = toSnakeCase(data as unknown as Record<string, unknown>);
+    dbData.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+        .from('clinic_payments')
+        .update(dbData)
+        .eq('id', id);
+
+    if (error) throw error;
+};
+
+export const getClinicPaymentsForAdmin = async (): Promise<(ClinicPayment & { clinicName: string })[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('clinic_payments')
+            .select(`
+                *,
+                clinics:clinic_id (name)
+            `)
+            .order('date', { ascending: false });
+
+        if (error) throw error;
+
+        return (data || []).map(item => {
+            const payment = toCamelCase(item as Record<string, unknown>) as unknown as ClinicPayment;
+            return {
+                ...payment,
+                clinicName: (item as any).clinics?.name || 'Clínica Desconocida'
+            };
+        });
+    } catch (error) {
+        console.error('Error fetching clinic payments for admin:', error);
+        return [];
+    }
+};
 export const getSupportTickets = async (): Promise<AdminSupportTicket[]> => {
     // Si estamos en el cliente, usar la API
     if (typeof window !== 'undefined') {

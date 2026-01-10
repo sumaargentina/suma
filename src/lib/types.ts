@@ -319,6 +319,28 @@ export type Clinic = {
   billingCycle?: 'monthly' | 'annual';
   verificationStatus?: 'pending' | 'verified' | 'rejected';
   acceptedInsurances?: string[];
+  // Subscription fields
+  subscriptionStatus?: 'active' | 'inactive' | 'pending_payment';
+  lastPaymentDate?: string | null;
+  nextPaymentDate?: string | null;
+  subscriptionFee?: number;
+};
+
+export type ClinicPayment = {
+  id: string;
+  clinicId: string;
+  clinicName?: string; // Computed field for display
+  amount: number;
+  date: string;
+  status: 'Pending' | 'Paid' | 'Rejected';
+  paymentMethod: 'transfer' | 'mercadopago' | 'cash';
+  transactionId?: string;
+  paymentProofUrl?: string | null;
+  notes?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PaymentSettings = {

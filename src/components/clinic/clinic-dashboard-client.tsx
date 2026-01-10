@@ -16,7 +16,8 @@ import {
     Ticket,
     Menu,
     LogOut,
-    ShieldCheck
+    ShieldCheck,
+    Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -33,6 +34,7 @@ import { SettingsTab } from './tabs/settings-tab';
 import { TeamTab } from './tabs/team-tab';
 import { PatientsTab } from './tabs/patients-tab';
 import { InsurancesTab } from './tabs/insurances-tab';
+import { SubscriptionTab } from './tabs/subscription-tab';
 
 // Tab Placeholders (will be replaced by real components later)
 const PlaceholderTab = ({ title }: { title: string }) => (
@@ -77,6 +79,7 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
         { icon: CreditCard, label: 'Finanzas', value: 'finances', adminOnly: true },
         { icon: MessageCircle, label: 'Chat', value: 'chat' },
         { icon: Ticket, label: 'Cupones', value: 'coupons', adminOnly: true },
+        { icon: Crown, label: 'Suscripción', value: 'subscription', adminOnly: true },
         { icon: Settings, label: 'Configuración', value: 'settings', adminOnly: true },
         { icon: LifeBuoy, label: 'Soporte', value: 'support' },
     ].filter(item => !isSecretary || !item.adminOnly);
@@ -99,6 +102,7 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
             case 'chat': return <ChatTab />;
             case 'coupons': return <CouponsTab />;
             case 'insurances': return <InsurancesTab />;
+            case 'subscription': return <SubscriptionTab />;
             case 'settings': return <SettingsTab />;
             case 'support': return <SupportTab />;
             default: return <OverviewTab />;
