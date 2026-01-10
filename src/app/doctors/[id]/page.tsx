@@ -478,25 +478,44 @@ export default function DoctorProfile() {
 
     setAppliedCoupon(coupon);
 
+    // Calular descuento
     let discount = 0;
     const basePrice = (currentAddress && currentAddress.consultationFee !== undefined)
       ? currentAddress.consultationFee
       : (doctor.consultationFee || 0);
 
-    // Usar los campos correctos: discountType y discountValue
+    // Obtener el valor del descuento (soporte para 'value' o 'discountValue')
+    const discountVal = coupon.value !== undefined ? coupon.value : coupon.discountValue;
+
+    if (discountVal === undefined) {
+      console.error('El cupón no tiene valor de descuento definido:', coupon);
+      toast({
+        variant: "destructive",
+        title: "Error de Cupón",
+        description: "El cupón no tiene un valor válido.",
+      });
+      return;
+    }
+
     if (coupon.discountType === 'percentage') {
-      discount = (basePrice * coupon.discountValue) / 100;
+      discount = (basePrice * discountVal) / 100;
       // Aplicar límite máximo de descuento si existe
       if (coupon.maxDiscount && discount > coupon.maxDiscount) {
         discount = coupon.maxDiscount;
       }
     } else {
-      discount = coupon.discountValue;
+      // Monto fijo
+      discount = discountVal;
     }
 
     // No permitir descuento mayor al precio base
     if (discount > basePrice) {
       discount = basePrice;
+    }
+
+    // Asegurar que discount sea un número válido
+    if (isNaN(discount)) {
+      discount = 0;
     }
 
     setDiscountAmount(discount);
