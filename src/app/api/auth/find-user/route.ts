@@ -1,15 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { NextResponse } from 'next/server';
 
 // Convert snake_case to camelCase
 const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
@@ -21,7 +12,7 @@ const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
     return result;
 };
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
     try {
         const { email } = await request.json();
 
@@ -31,7 +22,6 @@ export async function POST(request: NextRequest) {
 
         const lowerEmail = email.toLowerCase();
 
-        // Check in doctors, sellers, and patients tables
         const collections = [
             { name: 'doctors', role: 'doctor' },
             { name: 'sellers', role: 'seller' },
@@ -41,21 +31,15 @@ export async function POST(request: NextRequest) {
         ];
 
         for (const { name, role } of collections) {
-            // Clinics table uses 'admin_email' instead of 'email'
-            const emailColumn = name === 'clinics' ? 'admin_email' : 'email';
-
-            const { data, error } = await supabaseAdmin
+            // Use 'email' for all tables including clinics
+            const { data } = await supabaseAdmin
                 .from(name)
                 .select('*')
-                .eq(emailColumn, lowerEmail)
+                .eq('email', lowerEmail)
                 .maybeSingle();
 
             if (data) {
                 const camelCaseData = toCamelCase(data as Record<string, unknown>);
-                // Normalize email field for clinics
-                if (role === 'clinic' && camelCaseData.adminEmail) {
-                    camelCaseData.email = camelCaseData.adminEmail;
-                }
                 return NextResponse.json({
                     ...camelCaseData,
                     role,
@@ -63,12 +47,11 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // User not found
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error finding user:', error);
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: 'Internal server error', details: error.message },
             { status: 500 }
         );
     }
