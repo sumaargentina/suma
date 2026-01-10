@@ -31,15 +31,21 @@ export async function POST(request: Request) {
         ];
 
         for (const { name, role } of collections) {
-            // Use 'email' for all tables including clinics
+            // Clinics use 'admin_email', others use 'email'
+            const emailColumn = name === 'clinics' ? 'admin_email' : 'email';
+
             const { data } = await supabaseAdmin
                 .from(name)
                 .select('*')
-                .eq('email', lowerEmail)
+                .eq(emailColumn, lowerEmail)
                 .maybeSingle();
 
             if (data) {
                 const camelCaseData = toCamelCase(data as Record<string, unknown>);
+                // Normalize email field for clinics so login works consistently
+                if (role === 'clinic' && camelCaseData.adminEmail) {
+                    camelCaseData.email = camelCaseData.adminEmail;
+                }
                 return NextResponse.json({
                     ...camelCaseData,
                     role,
