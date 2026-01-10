@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users } from 'lucide-react';
+import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -68,15 +68,21 @@ function AppointmentCard({
       <CardContent className="p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
         <div className="flex-1 space-y-3">
           <div className="space-y-1">
-            {/* Indicador de cita para familiar */}
-            {appointment.familyMemberId && (
-              <div className="flex items-center gap-1.5 mb-1">
+            {/* Indicador de cita para familiar y Tipo de Consulta */}
+            <div className="flex flex-wrap gap-2 mb-1">
+              {appointment.familyMemberId && (
                 <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 border-blue-200">
                   <Users className="h-3 w-3 mr-1" />
                   Para: {appointment.patientName}
                 </Badge>
-              </div>
-            )}
+              )}
+              {appointment.consultationType === 'online' && (
+                <Badge variant="secondary" className="text-xs bg-indigo-100 text-indigo-700 border-indigo-200">
+                  <Video className="h-3 w-3 mr-1" />
+                  Consulta Online
+                </Badge>
+              )}
+            </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
               <p className="font-bold text-base sm:text-lg">{appointment.doctorName}</p>
               {doctor && (
@@ -89,7 +95,11 @@ function AppointmentCard({
               <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  <span>{doctor.city}</span>
+                  <span>
+                    {appointment.consultationType === 'online'
+                      ? 'Sala Virtual'
+                      : (appointment.doctorAddress || appointment.office || doctor.address || doctor.city)}
+                  </span>
                 </div>
                 <div className="hidden sm:block">•</div>
                 <div className="flex items-center gap-1">
@@ -176,7 +186,17 @@ function AppointmentCard({
 
           {/* Acciones */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {/* Botón para unirse a consulta online */}
+              {!isPast && appointment.consultationType === 'online' && appointment.meetingLink && (
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" asChild>
+                  <a href={appointment.meetingLink} target="_blank" rel="noopener noreferrer">
+                    <Video className="mr-2 h-4 w-4" />
+                    Unirse a Consulta
+                  </a>
+                </Button>
+              )}
+
               {isPast && appointment.attendance === 'Atendido' && onOpenRecord && (
                 <Button variant="secondary" size="sm" onClick={() => onOpenRecord(appointment)}>
                   <ClipboardList className="mr-2 h-4 w-4" /> Ver Resumen Clínico
