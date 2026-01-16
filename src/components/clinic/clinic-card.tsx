@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Phone, ArrowRight, Building2, Star, ShieldCheck, Globe } from 'lucide-react';
+import { MapPin, Building2, Star, ShieldCheck, ChevronRight, Phone } from 'lucide-react';
 import { Clinic } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -16,154 +15,134 @@ interface ClinicCardProps {
 
 export function ClinicCard({ clinic }: ClinicCardProps) {
     return (
-        <Card className="group overflow-hidden border-0 shadow-md hover:shadow-2xl transition-all duration-300 rounded-2xl bg-white">
-            {/* Banner Image */}
-            <div className="relative h-44 bg-white overflow-hidden">
-                {clinic.bannerImage ? (
+        <Card className="group overflow-hidden border-0 shadow-sm md:shadow-md hover:shadow-lg md:hover:shadow-2xl transition-all duration-300 rounded-xl md:rounded-2xl bg-white">
+            {/* Banner Image - más pequeño en móvil */}
+            <div className="relative h-24 md:h-40 bg-slate-50 overflow-hidden">
+                {clinic.bannerImage || clinic.logoUrl ? (
                     <Image
-                        src={clinic.bannerImage}
+                        src={clinic.bannerImage || clinic.logoUrl || ''}
                         alt={`Portada de ${clinic.name}`}
                         fill
-                        className="object-contain p-2"
+                        className="object-contain p-2 md:p-3"
                     />
                 ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-secondary/10 flex items-center justify-center">
-                        <div className="text-center">
-                            <Building2 className="h-16 w-16 text-primary/20 mx-auto" />
-                            <span className="text-xs font-medium text-primary/30 uppercase tracking-wider">Centro Médico</span>
-                        </div>
+                        <Building2 className="h-10 w-10 md:h-14 md:w-14 text-primary/20" />
                     </div>
                 )}
 
-                {/* Overlay gradient */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
-
                 {/* Badge Verificado */}
                 {clinic.verificationStatus === 'verified' && (
-                    <Badge className="absolute top-3 right-3 bg-emerald-500/90 hover:bg-emerald-600 text-white border-0 text-[10px] px-2.5 py-1 backdrop-blur-sm shadow-lg">
-                        <ShieldCheck className="w-3 h-3 mr-1" />
-                        Verificado
-                    </Badge>
+                    <div className="absolute top-2 right-2 md:top-3 md:right-3">
+                        <div className="md:hidden bg-emerald-500 rounded-full p-1">
+                            <ShieldCheck className="w-3 h-3 text-white" />
+                        </div>
+                        <Badge className="hidden md:inline-flex bg-emerald-500/90 text-white border-0 text-[10px] px-2 py-0.5">
+                            <ShieldCheck className="w-3 h-3 mr-1" />
+                            Verificado
+                        </Badge>
+                    </div>
                 )}
 
-                {/* Rating badge */}
+                {/* Rating */}
                 {clinic.rating && clinic.rating > 0 && (
-                    <div className="absolute top-3 left-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full shadow-lg">
-                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                        <span className="text-xs font-bold text-slate-700">{clinic.rating.toFixed(1)}</span>
-                        {clinic.reviewCount && clinic.reviewCount > 0 && (
-                            <span className="text-[10px] text-slate-400">({clinic.reviewCount})</span>
-                        )}
+                    <div className="absolute top-2 left-2 md:top-3 md:left-3 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-1.5 md:px-2 py-0.5 md:py-1 rounded-full shadow">
+                        <Star className="h-3 w-3 md:h-3.5 md:w-3.5 fill-amber-400 text-amber-400" />
+                        <span className="text-[10px] md:text-xs font-bold text-slate-700">{clinic.rating.toFixed(1)}</span>
                     </div>
                 )}
             </div>
 
-            <CardHeader className="relative pt-0 pb-3">
-                {/* Avatar flotante */}
-                <div className="flex justify-between items-start">
-                    <div className="-mt-10 bg-white p-1.5 rounded-2xl shadow-lg ring-4 ring-white">
-                        <Avatar className="h-20 w-20 rounded-xl">
-                            <AvatarImage src={clinic.logoUrl} alt={clinic.name} className="object-contain p-1 bg-white" />
-                            <AvatarFallback className="rounded-xl text-xl font-bold bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
-                                {clinic.name.substring(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                        </Avatar>
-                    </div>
+            {/* Avatar/Logo flotante */}
+            <div className="relative px-2 md:px-3">
+                <div className="-mt-6 md:-mt-8 bg-white p-1 rounded-xl shadow-md ring-2 ring-white w-fit">
+                    <Avatar className="h-10 w-10 md:h-14 md:w-14 rounded-lg">
+                        <AvatarImage src={clinic.logoUrl} alt={clinic.name} className="object-contain p-0.5 bg-white" />
+                        <AvatarFallback className="rounded-lg text-xs md:text-sm font-bold bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
+                            {clinic.name.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                    </Avatar>
                 </div>
+            </div>
 
-                {/* Nombre y tipo */}
-                <div className="mt-3 space-y-1">
-                    <h3 className="text-xl font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
+            {/* Content */}
+            <div className="p-2 md:p-4 pt-1 md:pt-2 space-y-1.5 md:space-y-3">
+                {/* Nombre */}
+                <div>
+                    <h3 className="text-sm md:text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
                         {clinic.name}
                     </h3>
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                            <Building2 className="h-3.5 w-3.5" />
-                            <span className="text-sm">Clínica Médica</span>
-                        </div>
+
+                    {/* Ciudad y tipo */}
+                    <div className="flex items-center gap-1.5 md:gap-2 mt-0.5 md:mt-1 text-slate-500">
+                        <Building2 className="h-3 w-3 md:h-3.5 md:w-3.5 shrink-0" />
+                        <span className="text-[10px] md:text-xs">Clínica</span>
                         {clinic.city && (
                             <>
                                 <span className="text-slate-300">•</span>
-                                <div className="flex items-center gap-1 text-slate-500">
-                                    <MapPin className="h-3.5 w-3.5 text-rose-400" />
-                                    <span className="text-sm font-medium">{clinic.city}</span>
-                                </div>
+                                <MapPin className="h-3 w-3 md:h-3.5 md:w-3.5 text-rose-400 shrink-0" />
+                                <span className="text-[10px] md:text-xs font-medium truncate">{clinic.city}</span>
                             </>
                         )}
                     </div>
                 </div>
-            </CardHeader>
 
-            <CardContent className="space-y-4 pt-0">
-                {/* Descripción */}
+                {/* Descripción - solo desktop */}
                 {clinic.description && (
-                    <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
+                    <p className="hidden md:block text-xs text-slate-500 line-clamp-2 leading-relaxed">
                         {clinic.description}
                     </p>
                 )}
 
-                {/* Información de contacto */}
-                <div className="flex flex-col gap-2">
+                {/* Info adicional móvil */}
+                <div className="md:hidden space-y-1.5">
                     {clinic.phone && (
-                        <div className="flex items-center gap-2.5 text-sm text-slate-600">
-                            <div className="p-1.5 bg-slate-100 rounded-lg">
-                                <Phone className="h-3.5 w-3.5 text-slate-500" />
-                            </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                            <Phone className="h-3 w-3" />
                             <span>{clinic.phone}</span>
                         </div>
                     )}
                     {clinic.address && (
-                        <div className="flex items-center gap-2.5 text-sm text-slate-600">
-                            <div className="p-1.5 bg-slate-100 rounded-lg">
-                                <MapPin className="h-3.5 w-3.5 text-slate-500" />
-                            </div>
-                            <span className="line-clamp-1">{clinic.address}</span>
-                        </div>
-                    )}
-                    {clinic.website && (
-                        <div className="flex items-center gap-2.5 text-sm text-blue-600">
-                            <div className="p-1.5 bg-blue-50 rounded-lg">
-                                <Globe className="h-3.5 w-3.5 text-blue-500" />
-                            </div>
-                            <span className="truncate">{clinic.website}</span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                            <MapPin className="h-3 w-3" />
+                            <span className="truncate">{clinic.address}</span>
                         </div>
                     )}
                 </div>
 
                 {/* Obras Sociales */}
                 {clinic.acceptedInsurances && clinic.acceptedInsurances.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                        {clinic.acceptedInsurances.slice(0, 3).map(ins => (
-                            <Badge
+                    <div className="flex flex-wrap gap-1">
+                        {clinic.acceptedInsurances.slice(0, 2).map(ins => (
+                            <span
                                 key={ins}
-                                variant="secondary"
-                                className="px-2.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 rounded-full"
+                                className="px-1.5 md:px-2 py-0.5 text-[9px] md:text-[10px] font-medium bg-blue-50 text-blue-600 rounded-full border border-blue-100"
                             >
                                 {ins}
-                            </Badge>
+                            </span>
                         ))}
-                        {clinic.acceptedInsurances.length > 3 && (
-                            <Badge
-                                variant="outline"
-                                className="px-2 py-0.5 text-[10px] bg-slate-50 text-slate-500 border-slate-200 rounded-full"
-                            >
-                                +{clinic.acceptedInsurances.length - 3} más
-                            </Badge>
+                        {clinic.acceptedInsurances.length > 2 && (
+                            <span className="px-1.5 py-0.5 text-[9px] md:text-[10px] bg-slate-50 text-slate-400 rounded-full">
+                                +{clinic.acceptedInsurances.length - 2}
+                            </span>
                         )}
                     </div>
                 )}
 
                 {/* Botón CTA */}
-                <Button
-                    asChild
-                    className="w-full h-11 rounded-xl bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md shadow-primary/20 font-semibold group/btn"
+                <Link
+                    href={`/clinica/${clinic.slug || clinic.id}`}
+                    className={cn(
+                        "flex items-center justify-center w-full rounded-lg md:rounded-xl transition-all",
+                        "h-8 md:h-10 text-xs md:text-sm font-semibold",
+                        "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary",
+                        "text-white shadow-sm md:shadow-md shadow-primary/20"
+                    )}
                 >
-                    <Link href={`/clinica/${clinic.slug || clinic.id}`}>
-                        Ver Profesionales
-                        <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-                    </Link>
-                </Button>
-            </CardContent>
+                    Ver Profesionales
+                    <ChevronRight className="ml-1 h-3.5 w-3.5 md:h-4 md:w-4" />
+                </Link>
+            </div>
         </Card>
     );
 }

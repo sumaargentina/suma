@@ -145,7 +145,9 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-600 mb-2">
                 <div className="flex items-center gap-1 min-w-0">
                   <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                  <span className="truncate">{doctor.city}</span>
+                  <span className="truncate">
+                    {doctor.city}{doctor.sector ? `, ${doctor.sector}` : ''}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Star className="h-3 w-3 text-amber-400 fill-amber-400" />

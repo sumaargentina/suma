@@ -56,13 +56,14 @@ import {
   XCircle,
   Heart,
   User,
+  Users,
   Home,
   Search,
   Bot,
   LayoutDashboard,
   LogIn,
   Menu,
-
+  Building2,
 } from 'lucide-react';
 
 
@@ -945,16 +946,17 @@ export function Header() {
 
 const patientBottomNavItems = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard },
-  { href: "/find-a-doctor", label: "Buscar", icon: Search },
-  { href: "/favorites", label: "Favoritos", icon: Heart },
+  { href: "/find-a-doctor?view=doctors", label: "Médicos", icon: Stethoscope },
+  { href: "/find-a-doctor?view=clinics", label: "Clínicas", icon: Building2 },
+  { href: "/dashboard/family", label: "Familia", icon: Users },
   { href: "/profile", label: "Perfil", icon: User },
 ];
 
 const publicBottomNavItems = [
   { href: "/", label: "Inicio", icon: Home },
-  { href: "/find-a-doctor", label: "Buscar", icon: Search },
+  { href: "/find-a-doctor?view=doctors", label: "Médicos", icon: Stethoscope },
+  { href: "/find-a-doctor?view=clinics", label: "Clínicas", icon: Building2 },
   { href: "/ai-assistant", label: "Asistente", icon: Bot },
-  { href: "/login", label: "Acceder", icon: LogIn },
 ];
 
 
@@ -985,7 +987,7 @@ export function BottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 p-2 rounded-md transition-colors w-1/4 h-full",
+                "flex flex-col items-center justify-center gap-0.5 p-1.5 rounded-lg transition-colors w-1/5 h-full",
                 isActive
                   ? "text-primary bg-primary/10"
                   : "text-muted-foreground hover:text-primary/80"

@@ -53,6 +53,9 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     // Ref para el timeout del debounce
     const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
 
+    // Flag para controlar si ya se aplicó la ciudad inicial del usuario
+    const hasAppliedUserCityRef = React.useRef(false);
+
     // Función para construir URL con parámetros actuales
     const buildSearchUrl = React.useCallback((currentQuery: string) => {
         const params = new URLSearchParams();
@@ -66,16 +69,25 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
         return `/find-a-doctor?${params.toString()}`;
     }, [specialty, city, minRating, priceRange, maxPrice, verifiedOnly]);
 
-    // Auto-select city for patient
+    // Auto-select city for patient - SOLO UNA VEZ al cargar la página
     React.useEffect(() => {
-        const urlCity = searchParams.get("city");
-        if (urlCity === null && user?.role === 'patient' && user.city) {
+        // Solo aplicar si:
+        // 1. No se ha aplicado antes
+        // 2. No hay ciudad en la URL
+        // 3. El usuario es paciente y tiene ciudad configurada
+        if (
+            !hasAppliedUserCityRef.current &&
+            !searchParams.get("city") &&
+            user?.role === 'patient' &&
+            user.city
+        ) {
+            hasAppliedUserCityRef.current = true;
             setCity(user.city);
             const params = new URLSearchParams(searchParams.toString());
             params.set("city", user.city);
             router.replace(`?${params.toString()}`, { scroll: false });
         }
-    }, [user, searchParams, router]);
+    }, [user]); // Solo se ejecuta cuando cambia user, no searchParams
 
     // Búsqueda en tiempo real con debounce
     const handleQueryChange = (value: string) => {
