@@ -3,20 +3,123 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Building2, Star, ShieldCheck, ChevronRight, Phone } from 'lucide-react';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { MapPin, Building2, Star, ShieldCheck, ChevronRight, Phone, Heart, Share2 } from 'lucide-react';
 import { Clinic } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 interface ClinicCardProps {
     clinic: Clinic;
 }
 
 export function ClinicCard({ clinic }: ClinicCardProps) {
+    const { user, updateUser } = useAuth();
+    const { toast } = useToast();
+
+    const isFavorite = user?.role === 'patient' && user.favoriteClinicIds?.includes(clinic.id);
+
+    const toggleFavorite = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!user || user.role !== 'patient') {
+            toast({
+                variant: "destructive",
+                title: "Inicia sesión",
+                description: "Debes iniciar sesión para guardar favoritos.",
+            });
+            return;
+        }
+
+        const currentFavorites = user.favoriteClinicIds || [];
+        let newFavorites: string[];
+
+        if (currentFavorites.includes(clinic.id)) {
+            newFavorites = currentFavorites.filter(id => id !== clinic.id);
+            toast({ title: "Eliminado de favoritos" });
+        } else {
+            newFavorites = [...currentFavorites, clinic.id];
+            toast({ title: "Añadido a favoritos", description: clinic.name });
+        }
+
+        updateUser({ favoriteClinicIds: newFavorites });
+    };
+
+    const copyToClipboard = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const shareUrl = `${window.location.origin}/clinica/${clinic.slug || clinic.id}`;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(shareUrl);
+            toast({ title: "¡Enlace copiado!" });
+        }
+    };
+
+    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/clinica/${clinic.slug || clinic.id}` : '';
+    const shareText = `¡Mira este centro médico! ${clinic.name}`;
+    const whatsappLink = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}%20${encodeURIComponent(shareUrl)}`;
+
     return (
-        <Card className="group overflow-hidden border-0 shadow-sm md:shadow-md hover:shadow-lg md:hover:shadow-2xl transition-all duration-300 rounded-xl md:rounded-2xl bg-white">
-            {/* Banner Image - más pequeño en móvil */}
+        <Card className="group overflow-hidden border-0 shadow-sm md:shadow-md hover:shadow-lg md:hover:shadow-2xl transition-all duration-300 rounded-xl md:rounded-2xl bg-white relative">
+            {/* Botones flotantes - Favorito y Compartir */}
+            <div className="absolute top-2 right-2 md:top-3 md:right-3 z-10 flex gap-1">
+                {/* Verificado */}
+                {clinic.verificationStatus === 'verified' && (
+                    <>
+                        <div className="md:hidden bg-emerald-500 rounded-full p-1">
+                            <ShieldCheck className="w-3 h-3 text-white" />
+                        </div>
+                        <Badge className="hidden md:inline-flex bg-emerald-500/90 text-white border-0 text-[10px] px-2 py-0.5">
+                            <ShieldCheck className="w-3 h-3 mr-1" />
+                            Verificado
+                        </Badge>
+                    </>
+                )}
+
+                {/* Favorito */}
+                <button
+                    onClick={toggleFavorite}
+                    className={cn(
+                        "p-1.5 rounded-full transition-all shadow-sm",
+                        isFavorite ? "bg-red-500 text-white" : "bg-white/90 text-slate-400 hover:text-red-500"
+                    )}
+                >
+                    <Heart className={cn("h-3.5 w-3.5 md:h-4 md:w-4", isFavorite && "fill-current")} />
+                </button>
+
+                {/* Compartir */}
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <button
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            className="p-1.5 rounded-full bg-white/90 text-slate-400 hover:text-primary transition-all shadow-sm"
+                        >
+                            <Share2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-36 p-1" align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                        <div className="grid gap-1">
+                            <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(whatsappLink, '_blank'); }}>
+                                WhatsApp
+                            </Button>
+                            <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={copyToClipboard}>
+                                Copiar Link
+                            </Button>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            </div>
+
+            {/* Banner Image */}
             <div className="relative h-24 md:h-40 bg-slate-50 overflow-hidden">
                 {clinic.bannerImage || clinic.logoUrl ? (
                     <Image
@@ -28,19 +131,6 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
                 ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-secondary/10 flex items-center justify-center">
                         <Building2 className="h-10 w-10 md:h-14 md:w-14 text-primary/20" />
-                    </div>
-                )}
-
-                {/* Badge Verificado */}
-                {clinic.verificationStatus === 'verified' && (
-                    <div className="absolute top-2 right-2 md:top-3 md:right-3">
-                        <div className="md:hidden bg-emerald-500 rounded-full p-1">
-                            <ShieldCheck className="w-3 h-3 text-white" />
-                        </div>
-                        <Badge className="hidden md:inline-flex bg-emerald-500/90 text-white border-0 text-[10px] px-2 py-0.5">
-                            <ShieldCheck className="w-3 h-3 mr-1" />
-                            Verificado
-                        </Badge>
                     </div>
                 )}
 

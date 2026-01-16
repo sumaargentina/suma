@@ -428,6 +428,7 @@ export type Patient = {
   documentType?: DocumentType;
   city: string | null;
   favoriteDoctorIds?: string[];
+  favoriteClinicIds?: string[];
   profileImage: string | null;
   profileCompleted?: boolean;
 };

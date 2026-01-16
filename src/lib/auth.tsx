@@ -77,6 +77,7 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       cedula: patientData.cedula || null,
       city: patientData.city || null,
       favoriteDoctorIds: patientData.favoriteDoctorIds || [],
+      favoriteClinicIds: patientData.favoriteClinicIds || [],
       profileImage: patientData.profileImage || null,
       profileCompleted: patientData.profileCompleted ?? false,
     };

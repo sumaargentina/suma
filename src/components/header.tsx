@@ -227,6 +227,7 @@ export function Header() {
 
   const patientNavLinks = [
     { href: "/find-a-doctor", label: "Buscar Médico" },
+    { href: "/dashboard/family", label: "Mi Familia" },
     { href: "/ai-assistant", label: "Asistente IA" },
   ];
 
@@ -949,7 +950,7 @@ const patientBottomNavItems = [
   { href: "/find-a-doctor?view=doctors", label: "Médicos", icon: Stethoscope },
   { href: "/find-a-doctor?view=clinics", label: "Clínicas", icon: Building2 },
   { href: "/dashboard/family", label: "Familia", icon: Users },
-  { href: "/profile", label: "Perfil", icon: User },
+  { href: "/favorites", label: "Favoritos", icon: Heart },
 ];
 
 const publicBottomNavItems = [
