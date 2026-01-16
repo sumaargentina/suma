@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from "next/link";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSettings } from '@/lib/settings';
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -15,12 +16,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2, Building2, CheckCircle2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Loader2, Building2, CheckCircle2, MapPin } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
 function RegisterClinicContent() {
     const { registerClinic } = useAuth();
+    const { cities } = useSettings();
     const { toast } = useToast();
     const searchParams = useSearchParams();
     const initialMonths = parseInt(searchParams.get('months') || '12'); // Default to 12
@@ -28,10 +31,12 @@ function RegisterClinicContent() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [city, setCity] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [billingMonths, setBillingMonths] = useState(initialMonths);
     const [isLoading, setIsLoading] = useState(false);
+
 
     const basePrice = 29000;
 
@@ -74,6 +79,7 @@ function RegisterClinicContent() {
                 email,
                 password,
                 phone,
+                city,
                 billingCycle: billingMonths === 12 ? 'annual' : 'monthly'
             });
 
@@ -180,14 +186,39 @@ function RegisterClinicContent() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="phone">Teléfono de Contacto</Label>
-                                <Input
-                                    id="phone"
-                                    placeholder="+54 11 ..."
-                                    required
-                                    value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
-                                    disabled={isLoading}
-                                />
+                                <div className="flex">
+                                    <div className="flex items-center justify-center px-3 border border-r-0 rounded-l-md bg-slate-100 text-slate-600 text-sm font-medium">
+                                        🇦🇷 +54
+                                    </div>
+                                    <Input
+                                        id="phone"
+                                        placeholder="11 1234-5678"
+                                        required
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                        disabled={isLoading}
+                                        className="rounded-l-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="city">Ciudad</Label>
+                                <Select value={city} onValueChange={setCity} disabled={isLoading}>
+                                    <SelectTrigger className="w-full">
+                                        <div className="flex items-center gap-2">
+                                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                                            <SelectValue placeholder="Selecciona tu ciudad" />
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {cities.map((cityOption) => (
+                                            <SelectItem key={cityOption.name} value={cityOption.name}>
+                                                {cityOption.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

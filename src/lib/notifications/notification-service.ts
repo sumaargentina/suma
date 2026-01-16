@@ -316,10 +316,10 @@ class NotificationService {
         hoursBeforeq: number
     ): Promise<NotificationResult[]> {
         try {
-            // Get appointment details
+            // Get appointment details with potentially missing relations
             const { data: appointment, error } = await supabaseAdmin
                 .from('appointments')
-                .select('*, patients(*), doctors(*)')
+                .select('*, patients(*), doctors(*), clinic_services:clinic_service_id(*)')
                 .eq('id', appointmentId)
                 .single();
 
@@ -328,12 +328,24 @@ class NotificationService {
             }
 
             const patient = appointment.patients;
-            const doctor = appointment.doctors;
+            const doctor = appointment.doctors; // Can be null now
+            const service = appointment.clinic_services; // Can be present now
+
+            // Validate we have enough info
+            if (!patient || (!doctor && !service)) {
+                // If we don't have basic info, simple log and return
+                console.warn(`⚠️ Skipping reminder for incomplete appointment ${appointmentId}`);
+                return [];
+            }
 
             // Determine notification type
             const type = hoursBeforeq === 24
                 ? 'appointment_reminder_24h'
                 : 'appointment_reminder_2h';
+
+            // Provider name logic
+            const providerName = doctor ? `Dr. ${doctor.name}` : (service?.name || 'Clínica');
+            const providerLabel = doctor ? '👨‍⚕️ Doctor' : '🏥 Servicio';
 
             // Format message
             const message = `
@@ -341,7 +353,7 @@ Recordatorio de Cita - SUMA
 
 ${hoursBeforeq === 24 ? '📅 Mañana' : '⏰ En 2 horas'} tienes tu cita:
 
-👨‍⚕️ Doctor: ${doctor.name}
+${providerLabel}: ${providerName}
 📍 Lugar: ${appointment.doctor_address || appointment.consultation_type === 'online' ? 'Videollamada' : 'Consultorio'}
 🕐 Hora: ${appointment.time}
 📅 Fecha: ${appointment.date}
@@ -355,7 +367,7 @@ ${appointment.consultation_type === 'online' ? '💻 Recibirás el link de la vi
                 userId: patient.id,
                 email: patient.email,
                 phone: patient.phone,
-                subject: `Recordatorio: Cita con Dr. ${doctor.name}`,
+                subject: `Recordatorio: Cita ${doctor ? 'con ' : ''}${providerName}`,
                 message,
                 type,
                 appointmentId,
@@ -375,7 +387,7 @@ ${appointment.consultation_type === 'online' ? '💻 Recibirás el link de la vi
         try {
             const { data: appointment, error } = await supabaseAdmin
                 .from('appointments')
-                .select('*, patients(*), doctors(*)')
+                .select('*, patients(*), doctors(*), clinic_services:clinic_service_id(*)')
                 .eq('id', appointmentId)
                 .single();
 
@@ -384,12 +396,13 @@ ${appointment.consultation_type === 'online' ? '💻 Recibirás el link de la vi
             }
 
             const patient = appointment.patients;
-            const doctor = appointment.doctors;
+            const doctor = appointment.doctors; // Can be null
+            const service = appointment.clinic_services; // Can be present
+
             let familyMember = null;
             let patientName = patient.name;
 
             // Fetch family member if exists
-            // Supabase returns snake_case columns by default via supabaseAdmin
             if (appointment.family_member_id) {
                 const { data: fm } = await supabaseAdmin
                     .from('family_members')
@@ -403,13 +416,17 @@ ${appointment.consultation_type === 'online' ? '💻 Recibirás el link de la vi
                 }
             }
 
+            // Provider logic
+            const providerName = doctor ? `Dr. ${doctor.name}` : (service?.name || 'Servicio de Clínica');
+            const providerLabel = doctor ? '👨‍⚕️ Doctor' : '🏥 Servicio';
+
             const message = `
 ¡Cita Confirmada! ✅
 
 Tu cita ha sido agendada exitosamente:
 
 👤 Paciente: ${patientName}
-👨‍⚕️ Doctor: ${doctor.name}
+${providerLabel}: ${providerName}
 📍 Lugar: ${appointment.doctor_address || appointment.consultation_type === 'online' ? 'Videollamada' : 'Consultorio'}
 🕐 Hora: ${appointment.time}
 📅 Fecha: ${appointment.date}
@@ -442,8 +459,6 @@ Te enviaremos recordatorios antes de tu cita.
                 console.log(`📧 Sending copy to family member: ${familyMember.email}`);
                 const fmResults = await this.send({
                     email: familyMember.email,
-                    // If they have a phone, we could also send whatsapp, but let's stick to email for now to avoid spam/cost
-                    // phone: familyMember.phone, 
                     subject: `Tu Cita Confirmada - SUMA`,
                     message,
                     type: 'appointment_confirmation',

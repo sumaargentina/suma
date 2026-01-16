@@ -11,6 +11,7 @@ import { AdminNotificationProvider } from "@/lib/admin-notifications";
 import { ChatNotificationProvider } from "@/lib/chat-notifications";
 import { ClinicNotificationProvider } from "@/lib/clinic-notifications";
 import { SettingsProvider } from "@/lib/settings";
+import { RealtimeNotifications } from "@/components/realtime-notifications";
 import "./globals.css";
 
 // Configuración optimizada de fuentes con next/font
@@ -87,6 +88,7 @@ export default function RootLayout({
                       <ChatNotificationProvider>
                         <SettingsProvider>
                           {children}
+                          <RealtimeNotifications />
                           <Toaster />
                         </SettingsProvider>
                       </ChatNotificationProvider>

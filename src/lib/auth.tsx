@@ -40,6 +40,7 @@ interface ClinicRegistrationData {
   email: string;
   password: string;
   phone: string;
+  city?: string;
   billingCycle?: 'monthly' | 'annual';
 }
 
@@ -435,7 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const registerClinic = async (clinicData: ClinicRegistrationData) => {
-    const { name, email, password, phone, billingCycle } = clinicData;
+    const { name, email, password, phone, city, billingCycle } = clinicData;
     const normalizedEmail = email.toLowerCase();
 
     // Check existing user
@@ -469,6 +470,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Reviewing migration: "CREATE TABLE IF NOT EXISTS public.clinics ...".
       // I need to add password column to clinics.
       phone,
+      city,
       billingCycle: billingCycle || 'monthly',
       plan: 'integral',
     } as any; // Type casting because of missing password in type definition, see below logic.

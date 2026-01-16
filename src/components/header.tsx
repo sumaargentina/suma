@@ -77,6 +77,13 @@ export function Header() {
 
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+
 
   const getAdminNotificationIcon = (type: AdminNotification['type']) => {
     switch (type) {
@@ -273,6 +280,26 @@ export function Header() {
   const isDoctor = user?.role === 'doctor';
   const isSeller = user?.role === 'seller';
   const isClinicOrSecretary = user?.role === 'clinic' || user?.role === 'secretary';
+
+  // Prevent hydration mismatch by rendering a safe version first
+  if (!isMounted) {
+    return (
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center">
+          <div className="flex items-center gap-2 font-bold text-lg">
+            <Link href="/" className="flex items-center gap-2">
+              <Stethoscope className="h-6 w-6 text-primary" />
+              <span className="font-headline">SUMA</span>
+            </Link>
+          </div>
+          {/* Static buttons placeholder or empty */}
+          <div className="hidden md:flex ml-auto items-center gap-1">
+            <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse"></div>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
 
   return (

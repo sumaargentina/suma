@@ -75,154 +75,144 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
 
 
   return (
-    <div className="relative h-full">
-      {/* Popover de compartir fuera del Link */}
-      <div className="absolute top-3 right-3 z-10 flex gap-1.5">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow-md backdrop-blur-sm"
-            >
-              <Share2 className="h-4 w-4 text-slate-600" />
-              <span className="sr-only">Compartir</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-            <div className="flex flex-col gap-1 text-sm">
-              <Button variant="ghost" asChild className="justify-start px-2 py-1.5 h-auto">
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center" onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(whatsappLink, '_blank'); }}>
-                  <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2 fill-current text-green-500"><title>WhatsApp</title><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.204-1.634a11.86 11.86 0 005.785 1.65c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" /></svg>
-                  WhatsApp
-                </a>
-              </Button>
-              <Button variant="ghost" asChild className="justify-start px-2 py-1.5 h-auto">
-                <a href={telegramLink} target="_blank" rel="noopener noreferrer" className="flex items-center" onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(telegramLink, '_blank'); }}>
-                  <Send className="mr-2 h-4 w-4 text-sky-500" />
-                  Telegram
-                </a>
-              </Button>
-              <Button variant="ghost" asChild className="justify-start px-2 py-1.5 h-auto">
-                <a href={facebookLink} target="_blank" rel="noopener noreferrer" className="flex items-center" onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(facebookLink, '_blank'); }}>
-                  <svg className="w-4 h-4 mr-2 text-blue-600" viewBox="0 0 24 24" fill="currentColor"><title>Facebook</title><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.019 4.388 10.995 10.125 11.854v-8.385H7.078v-3.47h3.047V9.413c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953h-1.513c-1.491 0-1.953.926-1.953 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.068 24 18.092 24 12.073z" /></svg>
-                  Facebook
-                </a>
-              </Button>
-              <Button variant="ghost" asChild className="justify-start px-2 py-1.5 h-auto">
-                <a href={emailLink} className="flex items-center" onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(emailLink, '_blank'); }}>
-                  <Mail className="mr-2 h-4 w-4 text-amber-600" />
-                  Correo electrónico
-                </a>
-              </Button>
-              <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto" onClick={e => { e.preventDefault(); e.stopPropagation(); copyToClipboard(e); }}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copiar enlace
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-        {/* Botón de favorito, solo si aplica */}
-        {user?.role === 'patient' && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow-md backdrop-blur-sm"
-            onClick={handleFavoriteClick}
-          >
-            <Heart className={cn("h-4 w-4", isFavorite ? "fill-red-500 text-red-500" : "text-slate-600")} />
-            <span className="sr-only">Marcar como favorito</span>
-          </Button>
-        )}
-      </div>
+    <div className="relative group h-full">
+      {/* Botón de favorito flotante (Ajustado) */}
+      {user?.role === 'patient' && (
+        <button
+          onClick={handleFavoriteClick}
+          className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-white/90 backdrop-blur-sm shadow-sm hover:bg-white hover:scale-110 transition-all duration-300"
+        >
+          <Heart className={cn("h-4 w-4", isFavorite ? "fill-red-500 text-red-500" : "text-slate-400")} />
+        </button>
+      )}
 
-      {/* El Link solo envuelve la tarjeta y su contenido */}
-      <Link href={`/doctors/${doctor.id}`} className="block h-full group">
-        <Card className="overflow-hidden transition-all duration-300 group-hover:shadow-xl group-hover:-translate-y-1 w-full h-full flex flex-col bg-white border-slate-200">
-          {/* Image Section */}
-          <div className="relative w-full aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 overflow-hidden">
-            {doctor.profileImage ? (
-              <Image
-                src={doctor.profileImage}
-                alt={`Dr. ${doctor.name}`}
-                fill
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                className="object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-                  <User className="w-12 h-12 text-white" />
+      <Link href={`/doctors/${doctor.id}`} className="block h-full">
+        {/* DISEÑO MÓVIL COMPACTO Y ESCRITORIO HORIZONTAL */}
+        {/* Usamos flex-row desde móvil en adelante, ajustando tamaños */}
+        <Card className="flex flex-row h-full overflow-hidden border-slate-200 hover:shadow-xl hover:border-primary/20 transition-all duration-300 bg-white shadow-sm">
+
+          {/* SECCIÓN DE IMAGEN */}
+          {/* Móvil: Cuadrado pequeño (w-28 o w-32). Desktop: Rectángulo más grande (w-48) */}
+          <div className="relative w-28 sm:w-48 shrink-0 bg-slate-100 overflow-hidden border-r border-slate-100">
+            {/* Aspect ratio handled by container height stretching */}
+            <div className="absolute inset-0 h-full w-full">
+              {doctor.profileImage ? (
+                <Image
+                  src={doctor.profileImage}
+                  alt={`Dr. ${doctor.name}`}
+                  fill
+                  sizes="(max-width: 640px) 120px, 200px"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
+                  <User className="h-10 w-10 sm:h-16 sm:w-16 text-slate-300" />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Verified Badge on Image */}
+            {/* Badge Verificado */}
             {doctor.verificationStatus === 'verified' && (
-              <div className="absolute bottom-3 left-3">
-                <Badge className="bg-emerald-500 hover:bg-emerald-500 text-white shadow-lg px-2.5 py-1 gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5" />
+              <div className="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 z-10">
+                {/* Versión Móvil: Solo Icono o muy compacto */}
+                <div className="sm:hidden bg-emerald-500 text-white rounded-full p-1 shadow-sm border border-white/20">
+                  <ShieldCheck className="w-3 h-3" />
+                </div>
+
+                {/* Versión Escritorio: Badge completo */}
+                <Badge className="hidden sm:inline-flex bg-emerald-500/95 hover:bg-emerald-600 text-white border-0 text-[10px] px-2 py-0.5 backdrop-blur-sm shadow-sm transition-all">
+                  <ShieldCheck className="w-3 h-3 mr-1" />
                   Verificado
                 </Badge>
               </div>
             )}
           </div>
 
-          {/* Content Section */}
-          <CardContent className="p-5 flex flex-col flex-grow">
-            {/* Name and Specialty */}
-            <div className="mb-3">
-              <h3 className="text-lg font-bold text-slate-900 leading-tight mb-1 line-clamp-1">
-                Dr. {doctor.name}
-              </h3>
-              <p className="text-sm font-medium text-blue-600">
-                {doctor.specialty}
-              </p>
+          {/* SECCIÓN DE CONTENIDO */}
+          <CardContent className="flex-1 p-3 sm:p-5 flex flex-col justify-between gap-2 sm:gap-3 min-w-0">
+            <div>
+              {/* Header: Nombre y Especialidad */}
+              <div className="mb-1 sm:mb-2">
+                <h3 className="text-base sm:text-xl font-bold text-slate-900 leading-snug mb-0.5 line-clamp-1 group-hover:text-primary transition-colors">
+                  Dr. {doctor.name}
+                </h3>
+                <p className="text-xs sm:text-sm font-medium text-primary line-clamp-1">
+                  {doctor.specialty}
+                </p>
+              </div>
+
+              {/* Info: Ubicación y Rating */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-600 mb-2">
+                <div className="flex items-center gap-1 min-w-0">
+                  <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                  <span className="truncate">{doctor.city}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                  <span className="font-bold text-slate-900">{doctor.rating || '0'}</span>
+                  <span className="text-muted-foreground hidden sm:inline">({doctor.reviewCount || 0})</span>
+                </div>
+              </div>
+
+              {/* Badges de Seguro (Visibles en móvil también) */}
+              {doctor.acceptedInsurances && doctor.acceptedInsurances.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {/* En móvil mostramos máximo 2 para no saturar, en desktop 3 */}
+                  {doctor.acceptedInsurances.slice(0, 3).map((ins, index) => (
+                    <span
+                      key={ins}
+                      className={cn(
+                        "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200",
+                        // Ocultar el 3er elemento en pantallas muy pequeñas si queremos ahorrar espacio, o dejarlo
+                        index > 1 ? "hidden sm:inline-flex" : ""
+                      )}
+                    >
+                      {ins}
+                    </span>
+                  ))}
+                  {doctor.acceptedInsurances.length > 2 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] bg-slate-50 text-slate-400">
+                      +{doctor.acceptedInsurances.length - (doctor.acceptedInsurances.length > 3 ? 3 : 2)}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Location and Rating */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5 text-slate-500">
-                <MapPin className="h-4 w-4" />
-                <span className="text-sm">{doctor.city}</span>
+            {/* Footer: Botones de Acción */}
+            <div className="flex items-center gap-2 mt-auto pt-2 border-t sm:border-t-0 border-slate-50 sm:border-transparent">
+              <div className="flex-1">
+                <Button
+                  size="sm"
+                  className="w-full bg-primary hover:bg-primary/90 text-white font-semibold h-8 sm:h-9 text-xs sm:text-sm rounded-lg shadow-sm"
+                >
+                  Reservar
+                </Button>
               </div>
-              <div className="flex items-center gap-1">
-                <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
-                <span className="font-bold text-slate-900">{doctor.rating || '0'}</span>
-                <span className="text-sm text-slate-500">
-                  ({doctor.reviewCount || 0})
-                </span>
-              </div>
-            </div>
 
-            {/* Insurances */}
-            {doctor.acceptedInsurances && doctor.acceptedInsurances.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {doctor.acceptedInsurances.slice(0, 2).map((ins) => (
-                  <span
-                    key={ins}
-                    className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-md font-medium truncate max-w-[120px]"
+              {/* Botón Compartir (Compacto) */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 rounded-lg border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   >
-                    {ins}
-                  </span>
-                ))}
-                {doctor.acceptedInsurances.length > 2 && (
-                  <span className="px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded-md font-medium">
-                    +{doctor.acceptedInsurances.length - 2} más
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* CTA Button */}
-            <div className="mt-auto">
-              <Button
-                tabIndex={-1}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md hover:shadow-lg transition-all"
-                size="default"
-              >
-                Reservar Cita
-              </Button>
+                    <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-40 p-1" align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                  <div className="grid gap-1">
+                    <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(whatsappLink, '_blank'); }}>
+                      WhatsApp
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); copyToClipboard(e); }}>
+                      Copiar Link
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </CardContent>
         </Card>
