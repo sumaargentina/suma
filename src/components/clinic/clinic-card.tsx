@@ -3,14 +3,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
 import { MapPin, Building2, Star, ShieldCheck, ChevronRight, Phone, Heart, Share2 } from 'lucide-react';
 import { Clinic } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -54,19 +48,34 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
         updateUser({ favoriteClinicIds: newFavorites });
     };
 
-    const copyToClipboard = (e: React.MouseEvent) => {
+    const handleShare = async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
         const shareUrl = `${window.location.origin}/clinica/${clinic.slug || clinic.id}`;
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(shareUrl);
-            toast({ title: "¡Enlace copiado!" });
+        const shareText = `¡Mira este centro médico! ${clinic.name}`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: clinic.name,
+                    text: shareText,
+                    url: shareUrl,
+                });
+            } catch {
+                copyToClipboardFallback(shareUrl);
+            }
+        } else {
+            copyToClipboardFallback(shareUrl);
         }
     };
 
-    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/clinica/${clinic.slug || clinic.id}` : '';
-    const shareText = `¡Mira este centro médico! ${clinic.name}`;
-    const whatsappLink = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}%20${encodeURIComponent(shareUrl)}`;
+    const copyToClipboardFallback = (url: string) => {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(() => {
+                toast({ title: "¡Enlace copiado!" });
+            });
+        }
+    };
 
     return (
         <Card className="group overflow-hidden border-0 shadow-sm md:shadow-md hover:shadow-lg md:hover:shadow-2xl transition-all duration-300 rounded-xl md:rounded-2xl bg-white relative">
@@ -97,26 +106,12 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
                 </button>
 
                 {/* Compartir */}
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <button
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            className="p-1.5 rounded-full bg-white/90 text-slate-400 hover:text-primary transition-all shadow-sm"
-                        >
-                            <Share2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                        </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-36 p-1" align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                        <div className="grid gap-1">
-                            <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(whatsappLink, '_blank'); }}>
-                                WhatsApp
-                            </Button>
-                            <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={copyToClipboard}>
-                                Copiar Link
-                            </Button>
-                        </div>
-                    </PopoverContent>
-                </Popover>
+                <button
+                    onClick={handleShare}
+                    className="p-1.5 rounded-full bg-white/90 text-slate-400 hover:text-primary transition-all shadow-sm"
+                >
+                    <Share2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                </button>
             </div>
 
             {/* Banner Image */}

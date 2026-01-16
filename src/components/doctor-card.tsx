@@ -35,30 +35,38 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
     }
   };
 
-  const copyToClipboard = (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const shareUrl = `${window.location.origin}/doctors/${doctor.id}`;
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    const shareText = `¡Mira este especialista! Dr. ${doctor.name}, ${doctor.specialty}.`;
+
+    // Usar Web Share API si está disponible (móviles)
+    if (navigator.share) {
       try {
-        navigator.clipboard.writeText(shareUrl);
-        toast({
-          title: "¡Enlace Copiado!",
-          description: "El enlace al perfil del doctor ha sido copiado.",
+        await navigator.share({
+          title: `Dr. ${doctor.name}`,
+          text: shareText,
+          url: shareUrl,
         });
-      } catch {
-        toast({
-          variant: "destructive",
-          title: "Error al copiar",
-          description: "No se pudo copiar el enlace. Intenta manualmente.",
-        });
+      } catch (err) {
+        // Usuario canceló o error, intentar clipboard
+        copyToClipboardFallback(shareUrl);
       }
     } else {
-      toast({
-        variant: "destructive",
-        title: "No compatible",
-        description: "Tu navegador no permite copiar al portapapeles.",
+      copyToClipboardFallback(shareUrl);
+    }
+  };
+
+  const copyToClipboardFallback = (url: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        toast({ title: "¡Enlace copiado!" });
+      }).catch(() => {
+        toast({ variant: "destructive", title: "Error al copiar" });
       });
+    } else {
+      toast({ variant: "destructive", title: "No compatible" });
     }
   };
 
@@ -192,29 +200,15 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
                 </Button>
               </div>
 
-              {/* Botón Compartir (Compacto) */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 rounded-lg border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  >
-                    <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-40 p-1" align="end" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                  <div className="grid gap-1">
-                    <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(whatsappLink, '_blank'); }}>
-                      WhatsApp
-                    </Button>
-                    <Button variant="ghost" size="sm" className="justify-start h-8 px-2 text-xs" onClick={(e) => { e.preventDefault(); e.stopPropagation(); copyToClipboard(e); }}>
-                      Copiar Link
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              {/* Botón Compartir (Simple y directo) */}
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 rounded-lg border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                onClick={handleShare}
+              >
+                <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
             </div>
           </CardContent>
         </Card>
