@@ -1091,6 +1091,18 @@ export const updateClinicService = async (id: string, serviceData: Partial<Clini
     if (error) throw new Error(error.message || String(error));
 };
 
+// Obtener un servicio de clínica por ID (para verificar permisos)
+export const getClinicServiceById = async (id: string): Promise<{ clinicId: string } | null> => {
+    const { data, error } = await supabaseAdmin
+        .from('clinic_services')
+        .select('clinic_id')
+        .eq('id', id)
+        .single();
+
+    if (error || !data) return null;
+    return { clinicId: data.clinic_id };
+};
+
 export const deleteClinicService = async (id: string) => {
     if (typeof window !== 'undefined') {
         const res = await fetch(`/api/clinics/services/delete?id=${id}`, {

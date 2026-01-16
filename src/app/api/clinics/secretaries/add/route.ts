@@ -1,19 +1,53 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { NextResponse } from 'next/server';
+import { requireAuth, logSecurityEvent } from '@/lib/auth-utils';
+import { sanitizeString, sanitizeEmail, detectInjection } from '@/lib/sanitize';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
     try {
+        // 🔐 SEGURIDAD: Solo clínicas y admins pueden añadir secretarias
+        const authResult = await requireAuth(request, ['clinic', 'admin']);
+
+        if (authResult instanceof NextResponse) {
+            logSecurityEvent('SECRETARY_ADD_UNAUTHORIZED', {
+                ip: request.headers.get('x-forwarded-for') || 'unknown'
+            });
+            return authResult;
+        }
+
+        const { user } = authResult;
         const body = await request.json();
         const { name, email, password, clinicId, permissions } = body;
 
+        // 🔐 SEGURIDAD: Verificar que la clínica solo añade secretarias a sí misma
+        if (user.role === 'clinic' && clinicId !== user.id) {
+            logSecurityEvent('SECRETARY_ADD_FORBIDDEN', {
+                userId: user.id,
+                attemptedClinicId: clinicId
+            });
+            return NextResponse.json(
+                { error: 'No puedes añadir secretarias a otra clínica' },
+                { status: 403 }
+            );
+        }
+
+        // 🔐 SEGURIDAD: Detectar inyección
+        if (detectInjection(JSON.stringify(body))) {
+            return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+        }
+
+        // 🔐 SEGURIDAD: Sanitizar
+        const sanitizedName = sanitizeString(name);
+        const sanitizedEmail = sanitizeEmail(email);
+
         // 1. Create Auth User
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-            email,
+            email: sanitizedEmail,
             password,
             email_confirm: true,
-            user_metadata: { role: 'secretary', full_name: name }
+            user_metadata: { role: 'secretary', full_name: sanitizedName }
         });
 
         if (authError) {
@@ -29,10 +63,10 @@ export async function POST(request: Request) {
         const { data, error } = await supabaseAdmin
             .from('secretaries')
             .insert([{
-                id: authData.user.id, // Use Auth ID as PK
-                name,
-                email,
-                password: 'MANAGED_BY_AUTH', // Secure
+                id: authData.user.id,
+                name: sanitizedName,
+                email: sanitizedEmail,
+                password: 'MANAGED_BY_AUTH',
                 clinic_id: clinicId,
                 permissions: permissions || ['agenda'],
                 role: 'secretary',
@@ -47,8 +81,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        logSecurityEvent('SECRETARY_ADDED', {
+            userId: user.id,
+            clinicId,
+            secretaryId: data.id
+        });
+
         return NextResponse.json(data);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

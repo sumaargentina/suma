@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { roundPrice } from '@/lib/validation-utils';
+import { requireAuth, logSecurityEvent } from '@/lib/auth-utils';
 
 // Helper function to convert camelCase to snake_case
 const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
@@ -25,7 +26,26 @@ const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 // POST /api/appointments/create - Create a new appointment
 export async function POST(request: NextRequest) {
     try {
+        // 🔐 SEGURIDAD: Verificar que el usuario está autenticado
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'secretary', 'admin']);
+
+        // Si authResult es un NextResponse, significa que la autenticación falló
+        if (authResult instanceof NextResponse) {
+            logSecurityEvent('APPOINTMENT_CREATE_UNAUTHORIZED', {
+                ip: request.headers.get('x-forwarded-for') || 'unknown'
+            });
+            return authResult;
+        }
+
+        const { user } = authResult;
         const appointmentData = await request.json();
+
+        // 🔐 SEGURIDAD: Log de la acción
+        logSecurityEvent('APPOINTMENT_CREATE_ATTEMPT', {
+            userId: user.id,
+            role: user.role,
+            doctorId: appointmentData.doctorId
+        });
 
         console.log('📝 API: Creating appointment with data:', {
             doctorId: appointmentData.doctorId,

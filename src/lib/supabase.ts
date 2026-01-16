@@ -1,23 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Fallback credentials if .env fails
-const FALLBACK_URL = 'https://fnjdqdwpttmrpzbqzbqm.supabase.co';
-const FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZuamRxZHdwdHRtcnB6YnF6YnFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyODIxNzcsImV4cCI6MjA3OTg1ODE3N30.SqE1FWYn0nMrT4OOYtmDLlRJKpDOWue2iDlQqyvqKGQ';
+// SEGURIDAD: Credenciales SOLO desde variables de entorno
+// NUNCA hardcodear credenciales en el código
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || FALLBACK_ANON_KEY;
+// Validar que las credenciales existan
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ SEGURIDAD: Faltan variables de entorno de Supabase');
+  console.error('   Configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local');
+}
 
 // Initialize Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
-
-// console.log('✅ Supabase configurado (Cliente):', {
-//   url: supabaseUrl,
-//   usingFallback: !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-// });
+export const supabase = createClient(
+  supabaseUrl || '',
+  supabaseAnonKey || '',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  }
+);
 
 export { supabaseUrl, supabaseAnonKey };
+

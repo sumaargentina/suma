@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAuth, canAccessResource, logSecurityEvent } from '@/lib/auth-utils';
 
 // Convert camelCase to snake_case for database fields
 const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
@@ -13,6 +14,17 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 
 export async function PATCH(request: NextRequest) {
     try {
+        // 🔐 SEGURIDAD: Verificar autenticación
+        const authResult = await requireAuth(request, ['patient', 'admin']);
+
+        if (authResult instanceof NextResponse) {
+            logSecurityEvent('PATIENT_UPDATE_UNAUTHORIZED', {
+                ip: request.headers.get('x-forwarded-for') || 'unknown'
+            });
+            return authResult;
+        }
+
+        const { user } = authResult;
         const { id, data } = await request.json();
 
         if (!id) {
@@ -21,6 +33,21 @@ export async function PATCH(request: NextRequest) {
                 { status: 400 }
             );
         }
+
+        // 🔐 SEGURIDAD: Verificar que el usuario puede modificar este paciente
+        if (!canAccessResource(user, id, ['admin'])) {
+            logSecurityEvent('PATIENT_UPDATE_FORBIDDEN', {
+                userId: user.id,
+                targetPatientId: id,
+                reason: 'User trying to update another patient'
+            });
+            return NextResponse.json(
+                { error: 'No tienes permisos para modificar este perfil' },
+                { status: 403 }
+            );
+        }
+
+        logSecurityEvent('PATIENT_UPDATE', { userId: user.id, patientId: id });
 
         // Remove 'role' field as it doesn't exist in the patients table
         const { role, ...dataWithoutRole } = data;

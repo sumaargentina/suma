@@ -1,12 +1,25 @@
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAuth, logSecurityEvent } from '@/lib/auth-utils';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: Request) {
+// POST - Crear registro médico
+export async function POST(request: NextRequest) {
     try {
-        const body = await req.json();
+        // 🔐 SEGURIDAD: Solo médicos y admins pueden crear registros médicos
+        const authResult = await requireAuth(request, ['doctor', 'admin', 'clinic']);
+
+        if (authResult instanceof NextResponse) {
+            logSecurityEvent('MEDICAL_RECORD_CREATE_UNAUTHORIZED', {
+                ip: request.headers.get('x-forwarded-for') || 'unknown'
+            });
+            return authResult;
+        }
+
+        const { user } = authResult;
+        const body = await request.json();
 
         console.log('📝 API Recibida para crear registro:', body);
 
@@ -18,7 +31,25 @@ export async function POST(req: Request) {
             );
         }
 
-        // Usamos supabaseAdmin para ignorar RLS y asegurar la escritura
+        // 🔐 SEGURIDAD: Verificar que el doctor solo crea registros a su nombre
+        if (user.role === 'doctor' && body.doctor_id !== user.id) {
+            logSecurityEvent('MEDICAL_RECORD_CREATE_FORBIDDEN', {
+                userId: user.id,
+                attemptedDoctorId: body.doctor_id,
+                reason: 'Doctor trying to create record for another doctor'
+            });
+            return NextResponse.json(
+                { error: 'No puedes crear registros médicos a nombre de otro doctor' },
+                { status: 403 }
+            );
+        }
+
+        logSecurityEvent('MEDICAL_RECORD_CREATE', {
+            userId: user.id,
+            role: user.role,
+            patientId: body.patient_id
+        });
+
         const { data, error } = await supabaseAdmin
             .from('medical_records')
             .insert([body])
@@ -27,7 +58,6 @@ export async function POST(req: Request) {
 
         if (error) {
             console.error('❌ Error Supabase Admin:', error);
-            // Devolver el error exacto para depuración
             return NextResponse.json(
                 { error: error.message, details: error },
                 { status: 500 }
@@ -36,25 +66,48 @@ export async function POST(req: Request) {
 
         return NextResponse.json(data);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('💥 Error Servidor:', error);
         return NextResponse.json(
-            { error: 'Error interno del servidor', details: error.message },
+            { error: 'Error interno del servidor', details: errorMessage },
             { status: 500 }
         );
     }
 }
 
-export async function GET(req: Request) {
-    const { searchParams } = new URL(req.url);
-    const patient_id = searchParams.get('patient_id');
-    const family_member_id = searchParams.get('family_member_id');
-
-    if (!patient_id && !family_member_id) {
-        return NextResponse.json({ error: 'Patient ID or Family Member ID required' }, { status: 400 });
-    }
-
+// GET - Obtener registros médicos
+export async function GET(request: NextRequest) {
     try {
+        // 🔐 SEGURIDAD: Requiere autenticación
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'admin', 'clinic']);
+
+        if (authResult instanceof NextResponse) {
+            return authResult;
+        }
+
+        const { user } = authResult;
+        const { searchParams } = new URL(request.url);
+        const patient_id = searchParams.get('patient_id');
+        const family_member_id = searchParams.get('family_member_id');
+
+        if (!patient_id && !family_member_id) {
+            return NextResponse.json({ error: 'Patient ID or Family Member ID required' }, { status: 400 });
+        }
+
+        // 🔐 SEGURIDAD: Pacientes solo pueden ver sus propios registros
+        if (user.role === 'patient' && patient_id && patient_id !== user.id) {
+            logSecurityEvent('MEDICAL_RECORD_ACCESS_FORBIDDEN', {
+                userId: user.id,
+                attemptedPatientId: patient_id,
+                reason: 'Patient trying to access another patient records'
+            });
+            return NextResponse.json(
+                { error: 'No tienes permisos para ver estos registros' },
+                { status: 403 }
+            );
+        }
+
         console.log(`🔎 API GET Records. Patient: ${patient_id}, FamilyMember: ${family_member_id}`);
 
         let query = supabaseAdmin
@@ -66,28 +119,23 @@ export async function GET(req: Request) {
             .order('visit_date', { ascending: false });
 
         if (family_member_id) {
-            // Si se pide un familiar específico, filtramos por su ID
             query = query.eq('family_member_id', family_member_id);
         } else {
-            // Si es solo paciente titular, aseguramos que sean SUS registros (family_member_id IS NULL)
-            // Esto evita mezclar historias de hijos en la vista del padre
             query = query.eq('patient_id', patient_id).is('family_member_id', null);
         }
 
         const { data, error } = await query;
 
         if (data && data.length === 0) {
-            console.warn('⚠️ No se encontraron registros. Corriendo diagnóstico de permisos...');
-            // Check count global
-            const { count } = await supabaseAdmin.from('medical_records').select('*', { count: 'exact', head: true });
-            console.log(`📊 Registros totales en DB (desde API): ${count}`);
+            console.warn('⚠️ No se encontraron registros.');
         }
 
         if (error) throw error;
 
         return NextResponse.json(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('Error fetching records:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
