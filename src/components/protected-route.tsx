@@ -5,12 +5,32 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 
-type UserRole = 'patient' | 'doctor' | 'seller' | 'admin';
+type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
     allowedRoles: UserRole[];
     redirectTo?: string;
+}
+
+// Función para obtener el dashboard según el rol
+function getDashboardByRole(role: string): string {
+    switch (role) {
+        case 'admin':
+            return '/admin/dashboard';
+        case 'doctor':
+            return '/doctor/dashboard';
+        case 'seller':
+            return '/seller/dashboard';
+        case 'clinic':
+            return '/clinic/dashboard';
+        case 'secretary':
+            return '/clinic/dashboard';
+        case 'patient':
+            return '/dashboard';
+        default:
+            return '/';
+    }
 }
 
 export function ProtectedRoute({ children, allowedRoles, redirectTo }: ProtectedRouteProps) {
@@ -27,22 +47,8 @@ export function ProtectedRoute({ children, allowedRoles, redirectTo }: Protected
 
             // Si el usuario no tiene el rol permitido, redirigir a su dashboard
             if (!allowedRoles.includes(user.role as UserRole)) {
-                switch (user.role) {
-                    case 'admin':
-                        router.push('/admin/dashboard');
-                        break;
-                    case 'doctor':
-                        router.push('/doctor/dashboard');
-                        break;
-                    case 'seller':
-                        router.push('/seller/dashboard');
-                        break;
-                    case 'patient':
-                        router.push('/dashboard');
-                        break;
-                    default:
-                        router.push('/');
-                }
+                console.log(`🔒 Acceso denegado: rol ${user.role} no permitido en esta página`);
+                router.push(getDashboardByRole(user.role));
             }
         }
     }, [user, loading, allowedRoles, router, redirectTo]);
@@ -84,25 +90,11 @@ export function useRequireAuth(allowedRoles: UserRole[]) {
         if (!loading && !user) {
             router.push('/auth/login');
         } else if (!loading && user && !allowedRoles.includes(user.role as UserRole)) {
-            // Redirigir a dashboard correspondiente
-            switch (user.role) {
-                case 'admin':
-                    router.push('/admin/dashboard');
-                    break;
-                case 'doctor':
-                    router.push('/doctor/dashboard');
-                    break;
-                case 'seller':
-                    router.push('/seller/dashboard');
-                    break;
-                case 'patient':
-                    router.push('/dashboard');
-                    break;
-                default:
-                    router.push('/');
-            }
+            console.log(`🔒 Hook: Acceso denegado para rol ${user.role}`);
+            router.push(getDashboardByRole(user.role));
         }
     }, [user, loading, allowedRoles, router]);
 
     return { user, loading, isAuthorized: user && allowedRoles.includes(user.role as UserRole) };
 }
+

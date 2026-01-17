@@ -7,6 +7,7 @@ const PUBLIC_ROUTES = [
     '/auth/login',
     '/auth/register-patient',
     '/auth/register-doctor',
+    '/auth/register-clinic',
     '/auth/forgot-password',
     '/auth/reset-password',
     '/find-a-doctor',
@@ -19,19 +20,57 @@ const PUBLIC_ROUTES = [
     '/landing-clinica',
 ];
 
+// Mapeo de rutas protegidas a roles permitidos
+const PROTECTED_ROUTES: Record<string, string[]> = {
+    '/admin': ['admin'],
+    '/doctor': ['doctor'],
+    '/seller': ['seller'],
+    '/clinic': ['clinic', 'secretary'],
+    '/dashboard': ['patient', 'doctor', 'seller', 'admin', 'clinic', 'secretary'],
+};
+
 // Headers de seguridad
 const SECURITY_HEADERS = {
-    // Prevenir clickjacking
     'X-Frame-Options': 'DENY',
-    // Prevenir MIME type sniffing
     'X-Content-Type-Options': 'nosniff',
-    // XSS Protection (legacy browsers)
     'X-XSS-Protection': '1; mode=block',
-    // Referrer Policy
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    // Permissions Policy
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)',
 };
+
+// Función para aplicar headers de seguridad
+function applySecurityHeaders(response: NextResponse): NextResponse {
+    Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
+        response.headers.set(key, value);
+    });
+    return response;
+}
+
+// Función para obtener el rol del usuario desde la cookie
+function getUserRoleFromCookie(request: NextRequest): string | null {
+    try {
+        const sessionCookie = request.cookies.get('user_session')?.value;
+        if (!sessionCookie) return null;
+
+        const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64').toString('utf8'));
+        return decoded.role || null;
+    } catch {
+        return null;
+    }
+}
+
+// Función para obtener el dashboard por rol
+function getDashboardByRole(role: string): string {
+    switch (role) {
+        case 'admin': return '/admin/dashboard';
+        case 'doctor': return '/doctor/dashboard';
+        case 'seller': return '/seller/dashboard';
+        case 'clinic': return '/clinic/dashboard';
+        case 'secretary': return '/clinic/dashboard';
+        case 'patient': return '/dashboard';
+        default: return '/';
+    }
+}
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
@@ -41,14 +80,9 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/_next') ||
         pathname.startsWith('/api') ||
         pathname.startsWith('/static') ||
-        pathname.includes('.') // archivos con extensión
+        pathname.includes('.')
     ) {
-        const response = NextResponse.next();
-        // Añadir headers de seguridad
-        Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
-            response.headers.set(key, value);
-        });
-        return response;
+        return applySecurityHeaders(NextResponse.next());
     }
 
     // Verificar si es una ruta pública
@@ -56,27 +90,33 @@ export async function middleware(request: NextRequest) {
         pathname === route || pathname.startsWith(`${route}/`)
     );
 
-    // Crear respuesta con headers de seguridad
-    const response = NextResponse.next();
-    Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
-        response.headers.set(key, value);
-    });
-
-    // Si es ruta pública, permitir acceso
     if (isPublicRoute) {
-        return response;
+        return applySecurityHeaders(NextResponse.next());
     }
 
-    // Para rutas protegidas, verificar la cookie de sesión
-    const sessionCookie = request.cookies.get('user_session');
+    // Obtener rol del usuario
+    const userRole = getUserRoleFromCookie(request);
 
-    if (!sessionCookie) {
-        // Si no hay sesión y no es ruta pública, redirigir a login
-        // Pero permitir acceso para que el componente ProtectedRoute maneje la redirección
-        // Esto evita problemas con rutas que pueden ser públicas o privadas según el contexto
+    // Si no hay sesión, redirigir a login
+    if (!userRole) {
+        const loginUrl = new URL('/auth/login', request.url);
+        loginUrl.searchParams.set('redirect', pathname);
+        return NextResponse.redirect(loginUrl);
     }
 
-    return response;
+    // Verificar permisos para rutas protegidas
+    for (const [routePrefix, allowedRoles] of Object.entries(PROTECTED_ROUTES)) {
+        if (pathname.startsWith(routePrefix)) {
+            if (!allowedRoles.includes(userRole)) {
+                // Redirigir al dashboard correspondiente
+                console.log(`🔒 Middleware: ${userRole} intentó acceder a ${pathname}`);
+                return NextResponse.redirect(new URL(getDashboardByRole(userRole), request.url));
+            }
+            break;
+        }
+    }
+
+    return applySecurityHeaders(NextResponse.next());
 }
 
 export const config = {
@@ -84,4 +124,3 @@ export const config = {
         '/((?!_next/static|_next/image|favicon.ico).*)',
     ],
 };
-
