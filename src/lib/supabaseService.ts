@@ -1969,10 +1969,28 @@ export const getPatientReviews = async (patientId: string): Promise<DoctorReview
 };
 
 export const addDoctorReview = async (reviewData: Omit<DoctorReview, 'id'>): Promise<string> => {
+    // Usar API route para evitar problemas de RLS
+    if (typeof window !== 'undefined') {
+        const response = await fetch('/api/doctors/reviews/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reviewData),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to add review');
+        }
+
+        const result = await response.json();
+        return result.id;
+    }
+
+    // Server-side fallback
     try {
         const snakeCaseData = toSnakeCase(reviewData as unknown as Record<string, unknown>);
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('doctor_reviews')
             .insert([snakeCaseData])
             .select()
