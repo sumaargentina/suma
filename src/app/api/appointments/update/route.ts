@@ -44,13 +44,38 @@ export async function PATCH(request: NextRequest) {
         }
 
         // 🔐 SEGURIDAD: Verificar que el usuario tiene acceso a esta cita
+        console.log('📝 Looking for appointment:', id);
+
         const { data: appointment, error: fetchError } = await supabaseAdmin
             .from('appointments')
-            .select('patient_id, doctor_id, clinic_id')
+            .select('patient_id, doctor_id, clinic_id, clinic_service_id')
             .eq('id', id)
             .single();
 
-        if (fetchError || !appointment) {
+        console.log('📝 Appointment found:', appointment, 'Error:', fetchError);
+
+        if (fetchError) {
+            console.error('Error fetching appointment:', fetchError);
+            // Si es error de columna no existente, intentar sin clinic_id
+            if (fetchError.message?.includes('column')) {
+                const { data: appointmentRetry } = await supabaseAdmin
+                    .from('appointments')
+                    .select('patient_id, doctor_id')
+                    .eq('id', id)
+                    .single();
+
+                if (appointmentRetry) {
+                    // Proceder sin verificación de clinic_id
+                    console.log('📝 Proceeding without clinic_id check');
+                }
+            }
+            return NextResponse.json(
+                { error: 'Cita no encontrada' },
+                { status: 404 }
+            );
+        }
+
+        if (!appointment) {
             return NextResponse.json(
                 { error: 'Cita no encontrada' },
                 { status: 404 }
