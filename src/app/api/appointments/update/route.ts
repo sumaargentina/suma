@@ -29,6 +29,8 @@ export async function PATCH(request: NextRequest) {
         const { user } = authResult;
         const { id, data } = await request.json();
 
+        console.log('📝 Update appointment request - ID:', id, 'User:', user.id, 'Role:', user.role);
+
         if (!id) {
             return NextResponse.json(
                 { error: 'Appointment ID is required' },
@@ -43,58 +45,38 @@ export async function PATCH(request: NextRequest) {
             );
         }
 
-        // 🔐 SEGURIDAD: Verificar que el usuario tiene acceso a esta cita
-        console.log('📝 Looking for appointment:', id);
-
+        // 🔐 Verificar que la cita existe y el usuario tiene acceso
         const { data: appointment, error: fetchError } = await supabaseAdmin
             .from('appointments')
-            .select('patient_id, doctor_id, clinic_id, clinic_service_id')
+            .select('patient_id, doctor_id')
             .eq('id', id)
             .single();
 
-        console.log('📝 Appointment found:', appointment, 'Error:', fetchError);
+        console.log('📝 Appointment lookup - Found:', !!appointment, 'Error:', fetchError?.message);
 
-        if (fetchError) {
-            console.error('Error fetching appointment:', fetchError);
-            // Si es error de columna no existente, intentar sin clinic_id
-            if (fetchError.message?.includes('column')) {
-                const { data: appointmentRetry } = await supabaseAdmin
-                    .from('appointments')
-                    .select('patient_id, doctor_id')
-                    .eq('id', id)
-                    .single();
-
-                if (appointmentRetry) {
-                    // Proceder sin verificación de clinic_id
-                    console.log('📝 Proceeding without clinic_id check');
-                }
-            }
+        if (fetchError || !appointment) {
+            console.error('❌ Appointment not found:', id, 'Error:', fetchError);
             return NextResponse.json(
                 { error: 'Cita no encontrada' },
                 { status: 404 }
             );
         }
 
-        if (!appointment) {
-            return NextResponse.json(
-                { error: 'Cita no encontrada' },
-                { status: 404 }
-            );
-        }
-
-        // Verificar permisos
+        // Verificar permisos (simplificado)
         const canAccess =
             user.role === 'admin' ||
+            user.role === 'clinic' ||
+            user.role === 'secretary' ||
             (user.role === 'patient' && appointment.patient_id === user.id) ||
-            (user.role === 'doctor' && appointment.doctor_id === user.id) ||
-            (user.role === 'clinic' && appointment.clinic_id === user.id) ||
-            (user.role === 'secretary' && appointment.clinic_id === user.clinicId);
+            (user.role === 'doctor' && appointment.doctor_id === user.id);
+
+        console.log('📝 Access check - Can access:', canAccess, 'Patient ID:', appointment.patient_id, 'User ID:', user.id);
 
         if (!canAccess) {
             logSecurityEvent('APPOINTMENT_UPDATE_FORBIDDEN', {
                 userId: user.id,
                 appointmentId: id,
-                reason: 'User does not have access to this appointment'
+                reason: 'User does not have access'
             });
             return NextResponse.json(
                 { error: 'No tienes permisos para modificar esta cita' },

@@ -82,7 +82,7 @@ export function AuditLogTable() {
         userId: row.user_id as string,
         email: row.email as string | undefined,
         role: row.role as string | undefined,
-        ip: row.ip as string | undefined,
+        ip: row.ip_address as string | undefined,
         action: row.action as string,
         details: row.details,
         result: row.result as 'success' | 'error',
