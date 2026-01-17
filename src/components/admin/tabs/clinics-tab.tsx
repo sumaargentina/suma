@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAdminClinics, updateClinicStatus } from '@/lib/supabaseService';
+import { getAdminClinics, updateClinicStatus, addClinic } from '@/lib/supabaseService';
 import { Clinic } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { hashPassword } from '@/lib/password-utils';
 
 export function ClinicsTab() {
     const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -47,6 +48,21 @@ export function ClinicsTab() {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Clinic>>({});
     const [newPassword, setNewPassword] = useState('');
+
+    // Estados para crear clínica nueva
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+    const [newClinicData, setNewClinicData] = useState({
+        name: '',
+        adminEmail: '',
+        password: '',
+        phone: '',
+        city: '',
+        address: '',
+        description: '',
+        plan: 'integral' as string,
+        billingCycle: 'monthly' as string,
+    });
 
     const loadClinics = async () => {
         try {
@@ -150,6 +166,78 @@ export function ClinicsTab() {
         setEditData(prev => ({ ...prev, [field]: value }));
     };
 
+    // Función para crear clínica nueva
+    const handleCreateClinic = async () => {
+        if (!newClinicData.name || !newClinicData.adminEmail || !newClinicData.password) {
+            toast({
+                variant: 'destructive',
+                title: 'Campos requeridos',
+                description: 'Nombre, email y contraseña son obligatorios.'
+            });
+            return;
+        }
+
+        setIsCreating(true);
+        try {
+            // Hash de la contraseña
+            const hashedPassword = await hashPassword(newClinicData.password);
+
+            // Generar slug
+            const slug = newClinicData.name.toLowerCase()
+                .trim()
+                .replace(/[^\w\s-]/g, '')
+                .replace(/[\s_-]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                + '-' + Date.now().toString().slice(-4);
+
+            await addClinic({
+                name: newClinicData.name,
+                adminEmail: newClinicData.adminEmail.toLowerCase(),
+                password: hashedPassword,
+                phone: newClinicData.phone,
+                city: newClinicData.city,
+                address: newClinicData.address,
+                description: newClinicData.description,
+                plan: newClinicData.plan as any,
+                billingCycle: newClinicData.billingCycle as any,
+                slug: slug,
+                status: 'active',
+                verificationStatus: 'verified',
+            } as any);
+
+            toast({
+                title: 'Clínica creada',
+                description: `${newClinicData.name} ha sido creada exitosamente.`
+            });
+
+            // Limpiar y cerrar modal
+            setNewClinicData({
+                name: '',
+                adminEmail: '',
+                password: '',
+                phone: '',
+                city: '',
+                address: '',
+                description: '',
+                plan: 'integral',
+                billingCycle: 'monthly',
+            });
+            setShowCreateModal(false);
+
+            // Recargar lista
+            loadClinics();
+        } catch (error: any) {
+            console.error('Error creating clinic:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error al crear clínica',
+                description: error.message || 'No se pudo crear la clínica.'
+            });
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
     if (loading) {
         return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
     }
@@ -158,10 +246,16 @@ export function ClinicsTab() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5" />
-                        Gestión de Clínicas ({clinics.length})
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center gap-2">
+                            <Building2 className="h-5 w-5" />
+                            Gestión de Clínicas ({clinics.length})
+                        </CardTitle>
+                        <Button onClick={() => setShowCreateModal(true)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Nueva Clínica
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -555,6 +649,136 @@ export function ClinicsTab() {
                             )}
                         </ScrollArea>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal para crear clínica nueva */}
+            <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Building2 className="h-5 w-5" />
+                            Nueva Clínica
+                        </DialogTitle>
+                        <DialogDescription>
+                            Completa los datos para crear una nueva clínica.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Nombre *</Label>
+                                <Input
+                                    value={newClinicData.name}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="Centro Médico XYZ"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Email Admin *</Label>
+                                <Input
+                                    type="email"
+                                    value={newClinicData.adminEmail}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, adminEmail: e.target.value }))}
+                                    placeholder="admin@clinica.com"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Contraseña *</Label>
+                            <Input
+                                type="password"
+                                value={newClinicData.password}
+                                onChange={(e) => setNewClinicData(prev => ({ ...prev, password: e.target.value }))}
+                                placeholder="Contraseña segura"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Teléfono</Label>
+                                <Input
+                                    value={newClinicData.phone}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, phone: e.target.value }))}
+                                    placeholder="+54 11 1234-5678"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Ciudad</Label>
+                                <Input
+                                    value={newClinicData.city}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, city: e.target.value }))}
+                                    placeholder="Buenos Aires"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Dirección</Label>
+                            <Input
+                                value={newClinicData.address}
+                                onChange={(e) => setNewClinicData(prev => ({ ...prev, address: e.target.value }))}
+                                placeholder="Av. Corrientes 1234"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Descripción</Label>
+                            <Textarea
+                                value={newClinicData.description}
+                                onChange={(e) => setNewClinicData(prev => ({ ...prev, description: e.target.value }))}
+                                placeholder="Descripción de la clínica..."
+                                rows={3}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Plan</Label>
+                                <Select
+                                    value={newClinicData.plan}
+                                    onValueChange={(value) => setNewClinicData(prev => ({ ...prev, plan: value }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="esencial">Esencial</SelectItem>
+                                        <SelectItem value="profesional">Profesional</SelectItem>
+                                        <SelectItem value="empresarial">Empresarial</SelectItem>
+                                        <SelectItem value="integral">Integral</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Ciclo de Facturación</Label>
+                                <Select
+                                    value={newClinicData.billingCycle}
+                                    onValueChange={(value) => setNewClinicData(prev => ({ ...prev, billingCycle: value }))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="monthly">Mensual</SelectItem>
+                                        <SelectItem value="annual">Anual</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={isCreating}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleCreateClinic} disabled={isCreating}>
+                            {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                            Crear Clínica
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
