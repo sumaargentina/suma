@@ -5,7 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { jwtVerify } from 'jose';
 import { supabaseAdmin } from './supabase-admin';
+
+// Clave secreta para JWT
+const JWT_SECRET = new TextEncoder().encode(
+    process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
+);
 
 // Tipos de roles permitidos
 export type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
@@ -27,30 +33,35 @@ interface AuthResult {
 }
 
 /**
- * Verifica la sesión del usuario desde las cookies
+ * Verifica la sesión del usuario desde las cookies (JWT token)
  * @param request - NextRequest object
  * @returns AuthResult con el usuario o error
  */
 export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
     try {
-        // Obtener el token de sesión desde las cookies
+        // Obtener el token JWT desde las cookies
         const cookieStore = await cookies();
-        const sessionToken = cookieStore.get('user_session')?.value;
+        const authToken = cookieStore.get('auth-token')?.value;
 
-        if (!sessionToken) {
+        if (!authToken) {
             return { authenticated: false, error: 'No hay sesión activa' };
         }
 
-        // Decodificar el token (es un JSON base64)
         try {
-            const decoded = JSON.parse(Buffer.from(sessionToken, 'base64').toString('utf8'));
+            // Verificar y decodificar el JWT
+            const { payload } = await jwtVerify(authToken, JWT_SECRET);
 
-            if (!decoded.id || !decoded.role) {
+            const userId = payload.userId as string;
+            const role = payload.role as UserRole;
+            const email = payload.email as string;
+            const name = payload.name as string;
+
+            if (!userId || !role) {
                 return { authenticated: false, error: 'Token inválido' };
             }
 
             // Verificar que el usuario existe en la base de datos
-            const tableName = getTableByRole(decoded.role);
+            const tableName = getTableByRole(role);
             if (!tableName) {
                 return { authenticated: false, error: 'Rol no válido' };
             }
@@ -58,7 +69,7 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
             const { data: user, error } = await supabaseAdmin
                 .from(tableName)
                 .select('id, email, name')
-                .eq('id', decoded.id)
+                .eq('id', userId)
                 .single();
 
             if (error || !user) {
@@ -68,15 +79,16 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
             return {
                 authenticated: true,
                 user: {
-                    id: decoded.id,
-                    email: user.email,
-                    role: decoded.role,
-                    name: user.name,
-                    clinicId: decoded.clinicId
+                    id: userId,
+                    email: email || user.email,
+                    role: role,
+                    name: name || user.name,
+                    clinicId: payload.clinicId as string | undefined
                 }
             };
-        } catch {
-            return { authenticated: false, error: 'Token corrupto' };
+        } catch (jwtError) {
+            console.error('JWT verification failed:', jwtError);
+            return { authenticated: false, error: 'Token expirado o inválido' };
         }
     } catch (error) {
         console.error('Error verificando autenticación:', error);

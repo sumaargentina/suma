@@ -20,15 +20,6 @@ const PUBLIC_ROUTES = [
     '/landing-clinica',
 ];
 
-// Mapeo de rutas protegidas a roles permitidos
-const PROTECTED_ROUTES: Record<string, string[]> = {
-    '/admin': ['admin'],
-    '/doctor': ['doctor'],
-    '/seller': ['seller'],
-    '/clinic': ['clinic', 'secretary'],
-    '/dashboard': ['patient', 'doctor', 'seller', 'admin', 'clinic', 'secretary'],
-};
-
 // Headers de seguridad
 const SECURITY_HEADERS = {
     'X-Frame-Options': 'DENY',
@@ -44,32 +35,6 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
         response.headers.set(key, value);
     });
     return response;
-}
-
-// Función para obtener el rol del usuario desde la cookie
-function getUserRoleFromCookie(request: NextRequest): string | null {
-    try {
-        const sessionCookie = request.cookies.get('user_session')?.value;
-        if (!sessionCookie) return null;
-
-        const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64').toString('utf8'));
-        return decoded.role || null;
-    } catch {
-        return null;
-    }
-}
-
-// Función para obtener el dashboard por rol
-function getDashboardByRole(role: string): string {
-    switch (role) {
-        case 'admin': return '/admin/dashboard';
-        case 'doctor': return '/doctor/dashboard';
-        case 'seller': return '/seller/dashboard';
-        case 'clinic': return '/clinic/dashboard';
-        case 'secretary': return '/clinic/dashboard';
-        case 'patient': return '/dashboard';
-        default: return '/';
-    }
 }
 
 export async function middleware(request: NextRequest) {
@@ -94,27 +59,11 @@ export async function middleware(request: NextRequest) {
         return applySecurityHeaders(NextResponse.next());
     }
 
-    // Obtener rol del usuario
-    const userRole = getUserRoleFromCookie(request);
-
-    // Si no hay sesión, redirigir a login
-    if (!userRole) {
-        const loginUrl = new URL('/auth/login', request.url);
-        loginUrl.searchParams.set('redirect', pathname);
-        return NextResponse.redirect(loginUrl);
-    }
-
-    // Verificar permisos para rutas protegidas
-    for (const [routePrefix, allowedRoles] of Object.entries(PROTECTED_ROUTES)) {
-        if (pathname.startsWith(routePrefix)) {
-            if (!allowedRoles.includes(userRole)) {
-                // Redirigir al dashboard correspondiente
-                console.log(`🔒 Middleware: ${userRole} intentó acceder a ${pathname}`);
-                return NextResponse.redirect(new URL(getDashboardByRole(userRole), request.url));
-            }
-            break;
-        }
-    }
+    // Para rutas protegidas, dejar pasar y que el componente ProtectedRoute 
+    // maneje la autenticación del lado del cliente.
+    // El middleware solo aplica headers de seguridad.
+    // La verificación de roles se hace en ProtectedRoute porque el sistema
+    // usa autenticación basada en estado de React, no cookies de sesión.
 
     return applySecurityHeaders(NextResponse.next());
 }

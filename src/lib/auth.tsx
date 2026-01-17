@@ -11,6 +11,28 @@ import { hashPassword, verifyPassword, isPasswordHashed } from './password-utils
 import { clearUserNotifications } from './clear-notifications';
 import { logAuditEvent, AuditActions } from './audit-service';
 
+// Función para establecer el token de autenticación en cookie HTTP-only
+async function setAuthToken(userId: string, email: string, role: string, name: string, clinicId?: string): Promise<void> {
+  try {
+    await fetch('/api/auth/set-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email, role, name, clinicId }),
+    });
+  } catch (error) {
+    console.error('Error setting auth token:', error);
+  }
+}
+
+// Función para limpiar el token de autenticación
+async function clearAuthToken(): Promise<void> {
+  try {
+    await fetch('/api/auth/clear-token', { method: 'POST' });
+  } catch (error) {
+    console.error('Error clearing auth token:', error);
+  }
+}
+
 // The User type represents the logged-in user and must have all Patient properties for consistency across the app.
 interface User extends Patient {
   role: 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
@@ -256,6 +278,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _1, ...adminUserDataNoPassword } = adminUserData;
       localStorage.setItem('user', JSON.stringify(adminUserDataNoPassword));
+
+      // 🔐 Establecer cookie de sesión para API routes
+      await setAuthToken(adminUserData.id, adminUserData.email, adminUserData.role, adminUserData.name);
+
       toast({ title: '¡Bienvenido!', description: `Hola ${adminUserData.name}` });
       router.push('/admin/dashboard');
       return;
@@ -299,6 +325,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _2, ...loggedInUserNoPassword } = loggedInUser;
     localStorage.setItem('user', JSON.stringify(loggedInUserNoPassword));
+
+    // 🔐 Establecer cookie de sesión para API routes
+    await setAuthToken(
+      loggedInUser.id,
+      loggedInUser.email,
+      loggedInUser.role,
+      loggedInUser.name,
+      loggedInUser.clinicId
+    );
 
     if (loggedInUser && ['patient', 'doctor', 'seller'].includes(loggedInUser.role)) {
       clearUserNotifications(loggedInUser.id, loggedInUser.role as 'patient' | 'doctor' | 'seller');
@@ -501,6 +536,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(loggedInUser);
       localStorage.setItem('user', JSON.stringify(loggedInUser));
 
+      // 🔐 Establecer cookie de sesión para API routes
+      await setAuthToken(loggedInUser.id, loggedInUser.email, 'clinic', loggedInUser.name);
+
       // Registrar evento de auditoría
       logAuditEvent({
         userId: loggedInUser.id,
@@ -533,13 +571,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user && ['patient', 'doctor', 'seller'].includes(user.role)) {
       clearUserNotifications(user.id, user.role as 'patient' | 'doctor' | 'seller');
     }
+
+    // 🔐 Limpiar cookie HTTP-only de autenticación
+    clearAuthToken();
+
     setUser(null);
     localStorage.removeItem('user');
-    sessionStorage.removeItem('user'); // Limpiar también sessionStorage
-    // Limpiar cualquier cookie de sesión si las hubiera
-    document.cookie.split(";").forEach(function (c) {
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
+    sessionStorage.removeItem('user');
     router.push('/');
   };
 
