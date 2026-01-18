@@ -439,6 +439,22 @@ export const deleteDoctor = async (id: string) => {
 };
 
 export const updateDoctorStatus = async (id: string, status: 'active' | 'inactive') => {
+    // Si estamos en el cliente, usar la API
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/doctors?id=${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || 'Failed to update doctor status');
+        }
+        return;
+    }
+
+    // Si estamos en el servidor, usar supabaseAdmin directamente
     const { error } = await supabaseAdmin
         .from('doctors')
         .update({ status })

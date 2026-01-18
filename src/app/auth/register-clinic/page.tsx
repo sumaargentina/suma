@@ -32,6 +32,8 @@ function RegisterClinicContent() {
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [city, setCity] = useState('');
+    const [sector, setSector] = useState('');
+    const [address, setAddress] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [billingMonths, setBillingMonths] = useState(initialMonths);
@@ -80,6 +82,8 @@ function RegisterClinicContent() {
                 password,
                 phone,
                 city,
+                sector,
+                address,
                 billingCycle: billingMonths === 12 ? 'annual' : 'monthly'
             });
 
@@ -219,6 +223,30 @@ function RegisterClinicContent() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="sector">Sector / Barrio</Label>
+                                <Input
+                                    id="sector"
+                                    placeholder="Ej: Palermo"
+                                    required
+                                    value={sector}
+                                    onChange={(e) => setSector(e.target.value)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="address">Dirección Exacta</Label>
+                                <Input
+                                    id="address"
+                                    placeholder="Calle 123, Piso 1"
+                                    required
+                                    value={address}
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    disabled={isLoading}
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

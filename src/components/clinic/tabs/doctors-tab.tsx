@@ -394,68 +394,70 @@ export function DoctorsTab() {
                             <Plus className="mr-2 h-4 w-4" /> Registrar Médico
                         </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingDoctor ? 'Editar Médico' : 'Nuevo Médico'}</DialogTitle>
                             <DialogDescription>
                                 {editingDoctor ? 'Modifica los datos del médico.' : 'Registra un nuevo médico para tu clínica.'}
                             </DialogDescription>
                         </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                            <div className="flex gap-4">
-                                <div className="flex-1 space-y-2">
-                                    <Label>Foto de Perfil</Label>
-                                    <div className="flex items-center gap-4">
-                                        <div className="relative h-20 w-20 rounded-full overflow-hidden border bg-muted">
-                                            {previewProfile ? (
-                                                <Image src={previewProfile} alt="Profile" fill className="object-cover" />
-                                            ) : (
-                                                <User className="h-full w-full p-4 text-muted-foreground" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1">
-                                            <Input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={(e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (file) {
-                                                        setProfileFile(file);
-                                                        setPreviewProfile(URL.createObjectURL(file));
-                                                    }
-                                                }}
-                                            />
-                                            <p className="text-xs text-muted-foreground mt-1">Recomendado: 400x400px</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <form onSubmit={handleSubmit} className="space-y-6 py-4">
 
-                            <div className="space-y-2">
-                                <Label>Imagen de Portada</Label>
-                                <div className="space-y-2">
-                                    <div className="relative h-32 w-full rounded-md overflow-hidden border bg-muted">
-                                        {previewBanner ? (
-                                            <Image src={previewBanner} alt="Banner" fill className="object-cover" />
-                                        ) : (
-                                            <div className="flex items-center justify-center h-full text-muted-foreground">
-                                                Sin portada
-                                            </div>
-                                        )}
-                                    </div>
+                            {/* Sección Foto de Perfil */}
+                            <div className="flex items-start gap-5">
+                                <div className="relative h-24 w-24 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm shrink-0 bg-slate-50">
+                                    {previewProfile ? (
+                                        <Image src={previewProfile} alt="Profile" fill className="object-cover object-top" />
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full w-full bg-slate-100 text-slate-300">
+                                            <User className="h-10 w-10" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-2 flex-1">
+                                    <Label>Foto de Perfil</Label>
                                     <Input
                                         type="file"
                                         accept="image/*"
                                         onChange={(e) => {
                                             const file = e.target.files?.[0];
                                             if (file) {
-                                                setBannerFile(file);
-                                                setPreviewBanner(URL.createObjectURL(file));
+                                                setProfileFile(file);
+                                                setPreviewProfile(URL.createObjectURL(file));
                                             }
                                         }}
+                                        className="text-xs file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
                                     />
-                                    <p className="text-xs text-muted-foreground">Recomendado: 1200x400px</p>
+                                    <p className="text-[11px] text-muted-foreground">Recomendado: 400x400px. Formatos: JPG, PNG.</p>
                                 </div>
+                            </div>
+
+                            {/* Sección Banner */}
+                            <div className="space-y-2">
+                                <Label>Imagen de Portada</Label>
+                                <div className="relative h-40 w-full rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                    {previewBanner ? (
+                                        <Image src={previewBanner} alt="Banner" fill className="object-cover" />
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                            <Building2 className="h-8 w-8 mb-2 opacity-50" />
+                                            <span className="text-xs">Sin portada</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <Input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setBannerFile(file);
+                                            setPreviewBanner(URL.createObjectURL(file));
+                                        }
+                                    }}
+                                    className="text-xs file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-secondary/10 file:text-secondary hover:file:bg-secondary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
+                                />
+                                <p className="text-[11px] text-muted-foreground">Recomendado: 1200x400px. Se mostrará en el perfil público.</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -492,29 +494,32 @@ export function DoctorsTab() {
                                 )}
                             </div>
 
-                            {editingDoctor && (
-                                <div className="flex items-center space-x-2 pt-2">
-                                    <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
-                                    <Label htmlFor="changePassword">Cambiar Contraseña</Label>
-                                </div>
-                            )}
+                            <div className="pt-2 border-t">
+                                {editingDoctor && (
+                                    <div className="flex items-center space-x-2 pb-3">
+                                        <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
+                                        <Label htmlFor="changePassword" className="text-sm font-medium">Cambiar Contraseña</Label>
+                                    </div>
+                                )}
 
-                            {(!editingDoctor || changePassword) && (
-                                <div className="space-y-2">
-                                    <Label htmlFor="password">{editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional'}</Label>
-                                    <Input id="password" type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="********" required={!editingDoctor} />
-                                </div>
-                            )}
+                                {(!editingDoctor || changePassword) && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="password">{editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional'}</Label>
+                                        <Input id="password" type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="••••••••" required={!editingDoctor} />
+                                    </div>
+                                )}
+                            </div>
 
-                            <DialogFooter className="pt-4">
+                            <DialogFooter className="pt-2">
                                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                                 <Button type="submit" disabled={isSubmitting}>
                                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Guardar
+                                    Guardar Cambios
                                 </Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
+
                 </Dialog>
             </div>
 

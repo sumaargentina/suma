@@ -308,6 +308,7 @@ export type Clinic = {
   password?: string; // Required for Admin/Clinic login
   address?: string;
   city?: string;
+  sector?: string;
   bannerImage?: string;
   rating?: number;
   reviewCount?: number;

@@ -13,9 +13,10 @@ import { useToast } from '@/hooks/use-toast';
 
 interface ClinicCardProps {
     clinic: Clinic;
+    priority?: boolean;
 }
 
-export function ClinicCard({ clinic }: ClinicCardProps) {
+export function ClinicCard({ clinic, priority = false }: ClinicCardProps) {
     const { user, updateUser } = useAuth();
     const { toast } = useToast();
 
@@ -121,6 +122,8 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
                         src={clinic.bannerImage || clinic.logoUrl || ''}
                         alt={`Portada de ${clinic.name}`}
                         fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        priority={priority}
                         className="object-contain p-2 md:p-3"
                     />
                 ) : (

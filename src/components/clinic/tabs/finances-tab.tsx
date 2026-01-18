@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, DollarSign, TrendingUp, TrendingDown, PiggyBank, RefreshCw, CalendarDays, Plus, Trash2, Filter, ArrowUpRight, ArrowDownRight, Download, FileDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, DollarSign, TrendingUp, TrendingDown, PiggyBank, RefreshCw, CalendarDays, Plus, Trash2, Filter, ArrowUpRight, ArrowDownRight, Download, FileDown, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, subMonths, startOfWeek, endOfWeek, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
@@ -35,6 +35,10 @@ export function FinancesTab() {
     const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
     const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: 'Otros', date: format(new Date(), 'yyyy-MM-dd') });
     const [submittingExpense, setSubmittingExpense] = useState(false);
+
+    // Pending Details State
+    const [isPendingDetailsOpen, setIsPendingDetailsOpen] = useState(false);
+    const [isExpensesDetailsOpen, setIsExpensesDetailsOpen] = useState(false);
 
     // Transaction History State
     const [txnFilterType, setTxnFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -316,6 +320,124 @@ export function FinancesTab() {
                         </DialogContent>
                     </Dialog>
 
+                    <Dialog open={isPendingDetailsOpen} onOpenChange={setIsPendingDetailsOpen}>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Pendientes de Cobro</DialogTitle>
+                                <DialogDescription>Citas con estado de pago "Pendiente" en el periodo seleccionado.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Fecha</TableHead>
+                                            <TableHead>Paciente</TableHead>
+                                            <TableHead>Médico/Servicio</TableHead>
+                                            <TableHead>Asistencia</TableHead>
+                                            <TableHead className="text-right">Monto</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {appointments.filter(app => app.paymentStatus === 'Pendiente' && app.attendance !== 'No Asistió').length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                                    No hay cobros pendientes.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            appointments
+                                                .filter(app => app.paymentStatus === 'Pendiente' && app.attendance !== 'No Asistió')
+                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                .map(app => {
+                                                    const appDate = parseISO(app.date);
+                                                    const isPast = appDate < new Date(new Date().setHours(0, 0, 0, 0));
+                                                    return (
+                                                        <TableRow key={app.id} className={isPast ? "bg-red-50 hover:bg-red-100" : ""}>
+                                                            <TableCell>
+                                                                <div className={cn("font-medium", isPast && "text-red-700")}>
+                                                                    {format(appDate, 'dd/MM/yyyy')}
+                                                                </div>
+                                                                <div className={cn("text-xs", isPast ? "text-red-500" : "text-muted-foreground")}>
+                                                                    {app.time}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="font-medium">{app.patientName}</TableCell>
+                                                            <TableCell className="text-sm text-muted-foreground">{app.doctorName || app.serviceName || '-'}</TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="outline" className={cn(
+                                                                    app.attendance === 'Atendido' && "border-green-500 text-green-600",
+                                                                    app.attendance === 'Pendiente' && "border-slate-400 text-slate-500"
+                                                                )}>
+                                                                    {app.attendance || 'Pendiente'}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-medium text-yellow-600">
+                                                                {formatCurrency(app.totalPrice || 0)}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={() => setIsPendingDetailsOpen(false)}>Cerrar</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isExpensesDetailsOpen} onOpenChange={setIsExpensesDetailsOpen}>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Detalle de Gastos</DialogTitle>
+                                <DialogDescription>Listado de gastos registrados en el periodo seleccionado.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Fecha</TableHead>
+                                            <TableHead>Descripción</TableHead>
+                                            <TableHead>Categoría</TableHead>
+                                            <TableHead className="text-right">Monto</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {expenses.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                                    No hay gastos registrados.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            expenses.map(exp => (
+                                                <TableRow key={exp.id}>
+                                                    <TableCell>{format(parseISO(exp.date), 'dd/MM/yyyy')}</TableCell>
+                                                    <TableCell>{exp.description}</TableCell>
+                                                    <TableCell><Badge variant="outline">{exp.category}</Badge></TableCell>
+                                                    <TableCell className="text-right font-medium text-red-600">
+                                                        -{formatCurrency(Number(exp.amount))}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive/90" onClick={() => handleDeleteExpense(exp.id)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={() => setIsExpensesDetailsOpen(false)}>Cerrar</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
                     <Button variant="outline" size="icon" onClick={() => {
                         // Export to CSV
                         const headers = ["Fecha", "Tipo", "Descripción", "Monto", "Método/Categoría", "Estado"];
@@ -342,10 +464,10 @@ export function FinancesTab() {
                         <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
                     </Button>
                 </div>
-            </div>
+            </div >
 
             {/* Stats Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            < div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" >
                 <Card className="border-l-4 border-l-green-500 shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos Totales</CardTitle>
@@ -359,7 +481,10 @@ export function FinancesTab() {
                         </p>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-red-500 shadow-sm">
+                <Card
+                    className="border-l-4 border-l-red-500 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => setIsExpensesDetailsOpen(true)}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Gastos Totales</CardTitle>
                         <TrendingDown className="h-4 w-4 text-red-500" />
@@ -368,7 +493,7 @@ export function FinancesTab() {
                         <div className="text-2xl font-bold">{formatCurrency(stats.totalExpenses)}</div>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <ArrowDownRight className="h-3 w-3 text-red-500" />
-                            Gastos operativos
+                            Gastos operativos (Click para ver)
                         </p>
                     </CardContent>
                 </Card>
@@ -386,7 +511,10 @@ export function FinancesTab() {
                         </p>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-yellow-500 shadow-sm">
+                <Card
+                    className="border-l-4 border-l-yellow-500 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => setIsPendingDetailsOpen(true)}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Pendiente de Cobro</CardTitle>
                         <CalendarDays className="h-4 w-4 text-yellow-500" />
@@ -394,11 +522,11 @@ export function FinancesTab() {
                     <CardContent>
                         <div className="text-2xl font-bold">{formatCurrency(stats.pendingIncome)}</div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Citas sin pago confirmado
+                            Citas sin pago confirmado (Click para ver)
                         </p>
                     </CardContent>
                 </Card>
-            </div>
+            </div >
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
@@ -838,6 +966,6 @@ export function FinancesTab() {
                     </Card>
                 </TabsContent>
             </Tabs>
-        </div>
+        </div >
     );
 }

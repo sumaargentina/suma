@@ -17,7 +17,8 @@ import {
     Menu,
     LogOut,
     ShieldCheck,
-    Crown
+    Crown,
+    Wallet
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -35,6 +36,7 @@ import { TeamTab } from './tabs/team-tab';
 import { PatientsTab } from './tabs/patients-tab';
 import { InsurancesTab } from './tabs/insurances-tab';
 import { SubscriptionTab } from './tabs/subscription-tab';
+import { PaymentConfigTab } from './tabs/payment-config-tab';
 
 // Tab Placeholders (will be replaced by real components later)
 const PlaceholderTab = ({ title }: { title: string }) => (
@@ -77,6 +79,7 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
         { icon: ShieldCheck, label: 'Coberturas', value: 'insurances', adminOnly: true },
         { icon: Users, label: 'Equipo', value: 'team', adminOnly: true },
         { icon: CreditCard, label: 'Finanzas', value: 'finances', adminOnly: true },
+        { icon: Wallet, label: 'Métodos de Pago', value: 'payment-methods', adminOnly: true },
         { icon: MessageCircle, label: 'Chat', value: 'chat' },
         { icon: Ticket, label: 'Cupones', value: 'coupons', adminOnly: true },
         { icon: Crown, label: 'Suscripción', value: 'subscription', adminOnly: true },
@@ -99,6 +102,7 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
             case 'services': return <ServicesTab />;
             case 'team': return <TeamTab />;
             case 'finances': return <FinancesTab />;
+            case 'payment-methods': return <PaymentConfigTab />;
             case 'chat': return <ChatTab />;
             case 'coupons': return <CouponsTab />;
             case 'insurances': return <InsurancesTab />;

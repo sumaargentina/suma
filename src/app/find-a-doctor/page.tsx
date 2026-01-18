@@ -260,8 +260,8 @@ export default async function FindDoctorPage({
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
-                {filteredClinics.map(clinic => (
-                  <ClinicCard key={clinic.id} clinic={clinic} />
+                {filteredClinics.map((clinic, index) => (
+                  <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
                 ))}
               </div>
             </div>
