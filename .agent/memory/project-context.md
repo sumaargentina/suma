@@ -1,5 +1,5 @@
 # SUMA - Sistema Unificado de Medicina Avanzada
-## Memoria del Proyecto - Última actualización: 2026-01-10
+## Memoria del Proyecto - Última actualización: 2026-01-17
 
 ---
 
@@ -208,6 +208,21 @@ RESEND_API_KEY=
 - ✅ **Validaciones**:
   - DNI con límite de 12 caracteres.
   - Soporte explícito documentado para Pasaportes y otros documentos.
+
+### Módulo de Soporte para Clínicas (Enero 2026):
+- ✅ **Panel Clínica**:
+  - Pestaña "Soporte" totalmente funcional.
+  - Listado de tickets con filtros por estado.
+  - Creación de nuevos tickets (Asunto, Descripción).
+  - Modal de chat para comunicación fluida con administradores; soporte para mensajes no leídos.
+- ✅ **Panel Admin**:
+  - Filtro extra "Clínica" en la bandeja de entrada de soporte.
+  - Badge distintivo color naranja para tickets provenientes de clínicas.
+  - Lógica de conteo de tickets pendientes específica para clínicas.
+- ✅ **Backend & DB**:
+  - Funciones dedicadas `createClinicSupportTicket` y `getClinicSupportTickets`.
+  - Actualización de lógica de mensajes (`addMessageToSupportTicket`) para manejar estados de lectura (`read_by_clinic`, `read_by_admin`) según el remitente.
+  - Nueva columna `read_by_clinic` en tabla `support_tickets` (vía migración).
 
 ---
 

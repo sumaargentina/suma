@@ -1,6 +1,6 @@
 export type ChatMessage = {
   id: string;
-  sender: 'user' | 'admin' | 'patient' | 'doctor';
+  sender: 'user' | 'admin' | 'patient' | 'doctor' | 'clinic' | 'seller';
   text: string;
   timestamp: string; // ISO string
 };
@@ -522,7 +522,7 @@ export type AdminSupportTicket = {
   id: string;
   userId: string;
   userName: string;
-  userRole: 'doctor' | 'seller';
+  userRole: 'doctor' | 'seller' | 'clinic';
   subject: string;
   description: string;
   status: 'abierto' | 'cerrado';
@@ -532,6 +532,7 @@ export type AdminSupportTicket = {
   readByAdmin?: boolean;
   readBySeller?: boolean;
   readByDoctor?: boolean;
+  readByClinic?: boolean;
 };
 
 export type AdminNotification = {

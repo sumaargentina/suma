@@ -576,7 +576,8 @@ export function FamilyTab() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+
+                        <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label htmlFor="email">Email (opcional)</Label>
                                 <Input
@@ -594,13 +595,16 @@ export function FamilyTab() {
                                         value={formData.phoneCode}
                                         onValueChange={(val) => setFormData({ ...formData, phoneCode: val })}
                                     >
-                                        <SelectTrigger className="w-[100px]">
+                                        <SelectTrigger className="w-[120px]">
                                             <SelectValue placeholder="País" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {COUNTRY_CODES.map(c => (
                                                 <SelectItem key={c.code} value={c.code}>
-                                                    <span className="flex items-center gap-1"><span>{c.flag}</span> <span>{c.code}</span></span>
+                                                    <span className="flex items-center gap-2">
+                                                        <span>{c.flag}</span>
+                                                        <span>{c.code}</span>
+                                                    </span>
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -616,6 +620,7 @@ export function FamilyTab() {
                                 </div>
                             </div>
                         </div>
+
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={handleCloseDialog}>

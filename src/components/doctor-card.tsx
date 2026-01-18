@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, MapPin, Star, Share2, Copy, Send, Mail, ShieldCheck, User } from "lucide-react";
+import { Heart, MapPin, Star, Share2, Copy, Send, Mail, ShieldCheck, User, Banknote } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import type { Doctor } from "@/lib/types";
@@ -166,7 +166,7 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
 
               {/* Badges de Seguro (Visibles en móvil también) */}
               {doctor.acceptedInsurances && doctor.acceptedInsurances.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
+                <div className="flex flex-wrap gap-1 mt-1 font-sans">
                   {/* En móvil mostramos máximo 2 para no saturar, en desktop 3 */}
                   {doctor.acceptedInsurances.slice(0, 3).map((ins, index) => (
                     <span
@@ -187,6 +187,30 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
                   )}
                 </div>
               )}
+
+              {/* Precio de Consulta */}
+              <div className="mt-2 flex items-center gap-1.5 text-emerald-700 font-semibold text-xs sm:text-sm">
+                <Banknote className="h-4 w-4" />
+                {(() => {
+                  const prices: number[] = [];
+                  if (doctor.addresses && Array.isArray(doctor.addresses)) {
+                    doctor.addresses.forEach(addr => {
+                      if (addr.consultationFee) prices.push(addr.consultationFee);
+                    });
+                  }
+                  if (doctor.onlineConsultation?.enabled && doctor.onlineConsultation.consultationFee) {
+                    prices.push(doctor.onlineConsultation.consultationFee);
+                  }
+                  // Fallback: Precio base
+                  if (doctor.consultationFee) {
+                    prices.push(doctor.consultationFee);
+                  }
+
+                  if (prices.length === 0) return <span>Consultar precio</span>;
+                  const minPrice = Math.min(...prices);
+                  return <span>Desde ${new Intl.NumberFormat('es-AR').format(minPrice)}</span>;
+                })()}
+              </div>
             </div>
 
             {/* Footer: Botones de Acción */}

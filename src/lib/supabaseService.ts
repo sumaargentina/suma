@@ -1504,7 +1504,7 @@ export const addMessageToSupportTicket = async (ticketId: string, message: Omit<
 
     const updateData: Record<string, unknown> = { messages };
 
-    if (message.sender === 'user') {
+    if (message.sender === 'user' || message.sender === 'clinic') {
         updateData.read_by_admin = false;
         updateData.status = 'abierto';
     }
@@ -1515,6 +1515,8 @@ export const addMessageToSupportTicket = async (ticketId: string, message: Omit<
             updateData.read_by_seller = false;
         } else if (ticket.user_role === 'doctor') {
             updateData.read_by_doctor = false;
+        } else if (ticket.user_role === 'clinic') {
+            updateData.read_by_clinic = false;
         }
     }
 
@@ -3124,3 +3126,67 @@ export async function uploadPublicImage(file: File, bucket: string, path: string
     const { publicUrl } = await res.json();
     return publicUrl;
 }
+
+// =====================================================
+// CLINIC SUPPORT TICKETS
+// =====================================================
+
+export const createClinicSupportTicket = async (ticketData: {
+    clinicId: string;
+    clinicName: string;
+    subject: string;
+    description: string;
+}): Promise<string> => {
+    // Usar API o admin directo si es server component
+    if (typeof window !== 'undefined') {
+        const { data, error } = await supabase
+            .from('support_tickets')
+            .insert({
+                user_id: ticketData.clinicId,
+                user_name: ticketData.clinicName,
+                user_role: 'clinic',
+                subject: ticketData.subject,
+                description: ticketData.description,
+                status: 'abierto',
+                date: new Date().toISOString(),
+                messages: [],
+                read_by_admin: false,
+                read_by_seller: false,
+                read_by_doctor: false,
+                read_by_clinic: true
+            })
+            .select()
+            .single();
+
+        if (error) throw new Error(error.message);
+        return data.id;
+    }
+    return '';
+};
+
+export const getClinicSupportTickets = async (clinicId: string): Promise<AdminSupportTicket[]> => {
+    const { data, error } = await supabase
+        .from('support_tickets')
+        .select('*')
+        .eq('user_id', clinicId)
+        .order('date', { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    // Mapear snake_case a camelCase si es necesario, o usar tipos compatibles
+    return (data || []).map((ticket: any) => ({
+        id: ticket.id,
+        userId: ticket.user_id,
+        userName: ticket.user_name,
+        userRole: ticket.user_role,
+        subject: ticket.subject,
+        description: ticket.description,
+        status: ticket.status,
+        date: ticket.date,
+        createdAt: ticket.created_at || ticket.date,
+        messages: ticket.messages || [],
+        readByAdmin: ticket.read_by_admin,
+        readByClinic: ticket.read_by_clinic
+    }));
+};
+

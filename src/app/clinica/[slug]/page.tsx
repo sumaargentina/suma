@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import {
     Loader2, MapPin, Phone, Clock, Stethoscope, Building2, Users,
-    ShieldCheck, Star, ChevronRight, Sparkles, Heart, Share2
+    ShieldCheck, Star, ChevronRight, Sparkles, Heart, Share2, Banknote
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -378,6 +378,24 @@ export default function ClinicPublicProfilePage() {
                                                                     )}
                                                                 </div>
                                                             )}
+                                                            <div className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-emerald-700 mt-1.5">
+                                                                <Banknote className="h-3.5 w-3.5" />
+                                                                {(() => {
+                                                                    const prices: number[] = [];
+                                                                    if (doctor.addresses && Array.isArray(doctor.addresses)) {
+                                                                        doctor.addresses.forEach(addr => {
+                                                                            if (addr.consultationFee) prices.push(addr.consultationFee);
+                                                                        });
+                                                                    }
+                                                                    if (doctor.onlineConsultation?.enabled && doctor.onlineConsultation.consultationFee) {
+                                                                        prices.push(doctor.onlineConsultation.consultationFee);
+                                                                    }
+                                                                    if (doctor.consultationFee) prices.push(doctor.consultationFee);
+                                                                    if (prices.length === 0) return <span>Consultar</span>;
+                                                                    const minPrice = Math.min(...prices);
+                                                                    return <span>Desde ${new Intl.NumberFormat('es-AR').format(minPrice)}</span>;
+                                                                })()}
+                                                            </div>
                                                         </div>
                                                         <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-primary transition-colors shrink-0 self-center" />
                                                     </div>

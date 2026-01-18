@@ -22,7 +22,7 @@ export function SupportTab() {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'doctor' | 'seller'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'doctor' | 'seller' | 'clinic'>('all');
 
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<AdminSupportTicket | null>(null);
@@ -74,6 +74,7 @@ export function SupportTab() {
   const openTicketsCount = sortedTickets.filter(t => t.status === 'abierto').length;
   const doctorTicketsCount = sortedTickets.filter(t => t.userRole === 'doctor' && t.status === 'abierto').length;
   const sellerTicketsCount = sortedTickets.filter(t => t.userRole === 'seller' && t.status === 'abierto').length;
+  const clinicTicketsCount = sortedTickets.filter(t => t.userRole === 'clinic' && t.status === 'abierto').length;
 
   const handleViewTicket = (ticket: AdminSupportTicket) => {
     setSelectedTicket(ticket);
@@ -123,6 +124,24 @@ export function SupportTab() {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'doctor': return 'bg-blue-100 text-blue-800';
+      case 'seller': return 'bg-purple-100 text-purple-800';
+      case 'clinic': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'doctor': return 'Médico';
+      case 'seller': return 'Vendedora';
+      case 'clinic': return 'Clínica';
+      default: return role;
+    }
+  };
+
   return (
     <>
       <Card>
@@ -137,7 +156,7 @@ export function SupportTab() {
                   </Badge>
                 )}
               </CardTitle>
-              <CardDescription>Gestiona las solicitudes de soporte de médicos y vendedoras.</CardDescription>
+              <CardDescription>Gestiona las solicitudes de soporte de médicos, vendedoras y clínicas.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -155,7 +174,7 @@ export function SupportTab() {
               </SelectContent>
             </Select>
 
-            <Select value={roleFilter} onValueChange={(value: 'all' | 'doctor' | 'seller') => setRoleFilter(value)}>
+            <Select value={roleFilter} onValueChange={(value: 'all' | 'doctor' | 'seller' | 'clinic') => setRoleFilter(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Filtrar por rol" />
               </SelectTrigger>
@@ -163,17 +182,18 @@ export function SupportTab() {
                 <SelectItem value="all">Todos los roles</SelectItem>
                 <SelectItem value="doctor">Médicos</SelectItem>
                 <SelectItem value="seller">Vendedoras</SelectItem>
+                <SelectItem value="clinic">Clínicas</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Estadísticas rápidas */}
           {openTicketsCount > 0 && (
-            <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="mb-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">Total Pendientes</span>
+                  <span className="text-sm font-medium text-blue-900">Total</span>
                 </div>
                 <p className="text-2xl font-bold text-blue-600">{openTicketsCount}</p>
               </div>
@@ -190,6 +210,13 @@ export function SupportTab() {
                   <span className="text-sm font-medium text-purple-900">Vendedoras</span>
                 </div>
                 <p className="text-2xl font-bold text-purple-600">{sellerTicketsCount}</p>
+              </div>
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-orange-600" />
+                  <span className="text-sm font-medium text-orange-900">Clínicas</span>
+                </div>
+                <p className="text-2xl font-bold text-orange-600">{clinicTicketsCount}</p>
               </div>
             </div>
           )}
@@ -221,8 +248,8 @@ export function SupportTab() {
                     </TableCell>
                     <TableCell className="font-medium">{ticket.userName}</TableCell>
                     <TableCell>
-                      <Badge variant={ticket.userRole === 'doctor' ? 'default' : 'secondary'} className="capitalize">
-                        {ticket.userRole === 'doctor' ? 'Médico' : 'Vendedora'}
+                      <Badge className={cn("capitalize shadow-none border-0", getRoleBadgeColor(ticket.userRole))}>
+                        {getRoleLabel(ticket.userRole)}
                       </Badge>
                     </TableCell>
                     <TableCell className="max-w-xs truncate">{ticket.subject}</TableCell>
@@ -255,7 +282,7 @@ export function SupportTab() {
                     <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
                       {statusFilter === 'all' && roleFilter === 'all'
                         ? 'No hay tickets de soporte.'
-                        : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${roleFilter === 'doctor' ? 'médicos' : 'vendedoras'}` : ''}.`
+                        : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${getRoleLabel(roleFilter)}s` : ''}.`
                       }
                     </TableCell>
                   </TableRow>
@@ -281,8 +308,8 @@ export function SupportTab() {
                     <p className="text-xs text-muted-foreground">{ticket.userName}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <Badge variant={ticket.userRole === 'doctor' ? 'default' : 'secondary'} className="text-xs capitalize">
-                      {ticket.userRole === 'doctor' ? 'Médico' : 'Vendedora'}
+                    <Badge className={cn("text-xs capitalize shadow-none border-0", getRoleBadgeColor(ticket.userRole))}>
+                      {getRoleLabel(ticket.userRole)}
                     </Badge>
                     <Badge className={cn(
                       ticket.status === 'abierto' ? 'bg-blue-600' : 'bg-gray-500',
@@ -319,7 +346,7 @@ export function SupportTab() {
               <div className="text-center py-8 text-muted-foreground">
                 {statusFilter === 'all' && roleFilter === 'all'
                   ? 'No hay tickets de soporte.'
-                  : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${roleFilter === 'doctor' ? 'médicos' : 'vendedoras'}` : ''}.`
+                  : `No hay tickets ${statusFilter !== 'all' ? statusFilter === 'abierto' ? 'abiertos' : 'cerrados' : ''} ${roleFilter !== 'all' ? `de ${getRoleLabel(roleFilter)}s` : ''}.`
                 }
               </div>
             )}

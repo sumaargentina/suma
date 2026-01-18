@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026-01-17] - Módulo de Soporte Clínica
+### Added
+- **Panel Soporte Clínica**: Implementación completa de `SupportTab` para clínicas, permitiendo crear tickets y chatear.
+- **Panel Soporte Admin**: Actualización para filtrar y gestionar tickets de rol `clinic`.
+- **Backend**: Funciones `createClinicSupportTicket`, `getClinicSupportTickets` y actualización de `addMessageToSupportTicket` para manejo robusto de notificaciones (`read_by_clinic`).
+- **DB Migration**: Script SQL para añadir columna `read_by_clinic`.
+
 ## [2024-12-31] - Filtrado Avanzado Dashboard Clínica
 ### Added
 - **Componente DatePickerWithRange**: Selector de rango de fechas reutilizable basado en Shadcn UI + React Day Picker.
