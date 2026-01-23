@@ -92,7 +92,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           appointmentId: appt.id,
           title,
           description,
-          date: now.toISOString(),
+          date: apptDateTime.toISOString(), // Usar fecha de la cita
           read: false,
           createdAt: now.toISOString(),
           link: '/dashboard',
@@ -105,13 +105,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (appt.paymentStatus === 'Pagado') {
         const id = `payment-approved-${appt.id}`;
         if (!existingIds.has(id)) {
+          // Usar fecha de la cita, no la fecha actual
+          const eventDate = `${appt.date}T${appt.time || '00:00'}`;
           newNotificationsMap.set(id, {
             id,
             type: 'payment_approved',
             appointmentId: appt.id,
             title: '¡Pago Aprobado!',
             description: `El Dr. ${appt.doctorName} ha confirmado tu pago para la cita.`,
-            date: now.toISOString(),
+            date: eventDate,
             read: false,
             createdAt: now.toISOString(),
             link: '/dashboard',
@@ -142,13 +144,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (appt.attendance === 'Atendido' && (appt.clinicalNotes || appt.prescription)) {
         const id = `record-added-${appt.id}`;
         if (!existingIds.has(id)) {
+          const eventDate = `${appt.date}T${appt.time || '00:00'}`;
           newNotificationsMap.set(id, {
             id,
             type: 'record_added',
             appointmentId: appt.id,
             title: `Resumen de Cita Disponible`,
             description: `El Dr. ${appt.doctorName} ha añadido notas o un récipe a tu cita pasada.`,
-            date: now.toISOString(),
+            date: eventDate,
             read: false,
             createdAt: now.toISOString(),
             link: '/dashboard',
@@ -160,13 +163,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (appt.attendance !== 'Pendiente' && appt.readByPatient === false) {
         const id = `attendance-marked-${appt.id}`;
         if (!existingIds.has(id)) {
+          const eventDate = `${appt.date}T${appt.time || '00:00'}`;
           newNotificationsMap.set(id, {
             id,
             type: 'attendance_marked',
             appointmentId: appt.id,
             title: `Cita Finalizada`,
             description: `El Dr. ${appt.doctorName} ha marcado tu cita como "${appt.attendance}".`,
-            date: now.toISOString(),
+            date: eventDate,
             read: false,
             createdAt: now.toISOString(),
             link: '/dashboard',

@@ -95,19 +95,32 @@ export function MedicalRecordTimeline({ patientId, familyMemberId }: MedicalReco
                     <CardContent className="space-y-4">
                         {record.diagnosis && (
                             <div>
-                                <h4 className="font-semibold text-sm text-foreground/80">Diagnóstico / Evaluación</h4>
+                                <h4 className="font-semibold text-sm text-blue-800">Diagnóstico</h4>
                                 <p className="text-sm mt-1">{record.diagnosis}</p>
+                            </div>
+                        )}
+                        {record.evaluation && (
+                            <div>
+                                <h4 className="font-semibold text-sm text-purple-800">Evaluación Clínica</h4>
+                                <p className="text-sm mt-1">{record.evaluation}</p>
+                            </div>
+                        )}
+                        {record.requested_studies && (
+                            <div>
+                                <h4 className="font-semibold text-sm text-amber-800">Estudios Solicitados</h4>
+                                <p className="text-sm mt-1">{record.requested_studies}</p>
                             </div>
                         )}
                         {record.treatment_plan && (
                             <div>
-                                <h4 className="font-semibold text-sm text-foreground/80">Plan / Tratamiento</h4>
+                                <h4 className="font-semibold text-sm text-green-800">Plan de Tratamiento</h4>
                                 <p className="text-sm mt-1">{record.treatment_plan}</p>
                             </div>
                         )}
-                        {record.notes && (
-                            <div className="bg-muted/50 p-3 rounded-md text-sm italic">
-                                "{record.notes}"
+                        {(record.evolution || record.notes) && (
+                            <div className="bg-slate-50 p-3 rounded-md">
+                                <h4 className="font-semibold text-sm text-slate-700 mb-1">Evolución / Historia de la Enfermedad</h4>
+                                <p className="text-sm">{record.evolution || record.notes}</p>
                             </div>
                         )}
                     </CardContent>

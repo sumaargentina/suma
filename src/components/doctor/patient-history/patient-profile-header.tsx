@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, Calendar, MapPin, Phone, Mail, Users } from 'lucide-react';
+import { User, Calendar, MapPin, Phone, Mail, Users, Heart, Briefcase, GraduationCap, IdCard, Church, UserCheck } from 'lucide-react';
 import { differenceInYears, parseISO } from 'date-fns';
 
 interface PatientProfileHeaderProps {
@@ -14,8 +14,6 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
     const displayData = familyMember || patient;
     const isDependent = !!familyMember;
 
-    console.log("Header Patient Data:", patient); // Debug titular name
-
     // Normalización de campos (API devuelve snake_case, supabaseService camelCase)
     const firstName = displayData.firstName || displayData.first_name || '';
     const lastName = displayData.lastName || displayData.last_name || '';
@@ -25,6 +23,15 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
     const gender = displayData.gender;
     const city = displayData.city;
     const profileImage = displayData.profileImage || displayData.profile_image;
+    const cedula = displayData?.cedula || patient?.cedula;
+
+    // Nuevos campos adicionales - usar displayData primero (familiar), luego patient
+    const bloodType = displayData?.bloodType || displayData?.blood_type || patient?.bloodType || patient?.blood_type;
+    const religion = displayData?.religion || patient?.religion;
+    const maritalStatus = displayData?.maritalStatus || displayData?.marital_status || patient?.maritalStatus || patient?.marital_status;
+    const education = displayData?.education || patient?.education;
+    const occupation = displayData?.occupation || patient?.occupation;
+    const displayCity = displayData?.city || city;
 
     // Datos del titular (solo si es dependiente)
     const holderFirstName = patient?.first_name || patient?.firstName || patient?.name || '';
@@ -38,7 +45,31 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
         }
     };
 
-    const age = birthDate ? calculateAge(birthDate) : 'N/A';
+    const age = birthDate ? calculateAge(birthDate) : (patient?.age || 'N/A');
+
+    // Formatear estado civil
+    const formatMaritalStatus = (status: string) => {
+        const statusMap: Record<string, string> = {
+            'soltero': 'Soltero/a',
+            'casado': 'Casado/a',
+            'divorciado': 'Divorciado/a',
+            'viudo': 'Viudo/a',
+            'union_libre': 'Unión Libre'
+        };
+        return statusMap[status] || status;
+    };
+
+    // Formatear nivel de estudios
+    const formatEducation = (edu: string) => {
+        const eduMap: Record<string, string> = {
+            'primario': 'Primario',
+            'secundario': 'Secundario',
+            'terciario': 'Terciario',
+            'universitario': 'Universitario',
+            'posgrado': 'Posgrado'
+        };
+        return eduMap[edu] || edu;
+    };
 
     return (
         <Card className={`border-l-4 ${isDependent ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-primary'}`}>
@@ -60,6 +91,11 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
                                 <Badge variant="secondary" className="text-sm">Paciente Titular</Badge>
                             )}
                             {gender && <Badge variant="outline" className="capitalize">{gender}</Badge>}
+                            {bloodType && (
+                                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                    <Heart className="h-3 w-3 mr-1" /> {bloodType}
+                                </Badge>
+                            )}
                         </div>
 
                         {/* Información de Dependencia */}
@@ -73,6 +109,7 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
                             </div>
                         )}
 
+                        {/* Datos principales */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-2">
                                 <Calendar className="h-4 w-4 text-primary/70" />
@@ -88,8 +125,42 @@ export function PatientProfileHeader({ patient, familyMember }: PatientProfileHe
                             </div>
                             <div className="flex items-center gap-2">
                                 <MapPin className="h-4 w-4 text-primary/70" />
-                                <span>{city || patient?.city || 'Ubicación desconocida'}</span>
+                                <span>{displayCity || patient?.city || 'Ubicación desconocida'}</span>
                             </div>
+                        </div>
+
+                        {/* Datos adicionales */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mt-3 text-sm text-muted-foreground border-t pt-3">
+                            {cedula && (
+                                <div className="flex items-center gap-2">
+                                    <IdCard className="h-4 w-4 text-blue-500" />
+                                    <span>DNI: {cedula}</span>
+                                </div>
+                            )}
+                            {maritalStatus && (
+                                <div className="flex items-center gap-2">
+                                    <UserCheck className="h-4 w-4 text-purple-500" />
+                                    <span>{formatMaritalStatus(maritalStatus)}</span>
+                                </div>
+                            )}
+                            {education && (
+                                <div className="flex items-center gap-2">
+                                    <GraduationCap className="h-4 w-4 text-green-500" />
+                                    <span>{formatEducation(education)}</span>
+                                </div>
+                            )}
+                            {occupation && (
+                                <div className="flex items-center gap-2">
+                                    <Briefcase className="h-4 w-4 text-orange-500" />
+                                    <span>{occupation}</span>
+                                </div>
+                            )}
+                            {religion && (
+                                <div className="flex items-center gap-2">
+                                    <Church className="h-4 w-4 text-indigo-500" />
+                                    <span>{religion}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

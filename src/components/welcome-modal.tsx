@@ -19,7 +19,10 @@ import {
   Calendar,
   CheckCircle,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Heart,
+  Briefcase,
+  GraduationCap
 } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
@@ -43,6 +46,12 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const [cedula, setCedula] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
+  // Campos opcionales adicionales
+  const [bloodType, setBloodType] = useState('');
+  const [religion, setReligion] = useState('');
+  const [maritalStatus, setMaritalStatus] = useState('');
+  const [education, setEducation] = useState('');
+  const [occupation, setOccupation] = useState('');
 
   const steps = [
     {
@@ -62,6 +71,12 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       description: "Ayúdanos a mantenerte informado sobre tus citas y servicios.",
       icon: Phone,
       color: "text-purple-600"
+    },
+    {
+      title: "Información Adicional",
+      description: "Estos datos son opcionales pero útiles para tu atención médica.",
+      icon: Heart,
+      color: "text-rose-600"
     },
     {
       title: "¡Listo para empezar!",
@@ -126,9 +141,14 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       const updateData = {
         age: age ? parseInt(age, 10) : null,
         gender: gender || null,
-        cedula: cedula, // DNI sin transformación
+        cedula: cedula,
         phone: phone || null,
         city: city || null,
+        bloodType: bloodType || null,
+        religion: religion || null,
+        maritalStatus: maritalStatus || null,
+        education: education || null,
+        occupation: occupation || null,
         profileCompleted: true
       };
 
@@ -140,7 +160,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         description: "Tu información ha sido guardada correctamente.",
       });
 
-      setCurrentStep(3); // Ir al paso final
+      setCurrentStep(4); // Ir al paso final
       // Cerrar la modal tras un pequeño delay para UX
       setTimeout(() => {
         onClose();
@@ -316,6 +336,113 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
       case 3:
         return (
+          <div className="space-y-6">
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4">
+                <Heart className="w-8 h-8 text-rose-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Información Adicional
+              </h3>
+              <p className="text-gray-600 text-sm">
+                Estos datos son opcionales pero útiles para tu atención médica.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Heart className="w-4 h-4" />
+                  Tipo de Sangre
+                </label>
+                <select
+                  value={bloodType}
+                  onChange={(e) => setBloodType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Seleccionar (opcional)</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Estado Civil
+                </label>
+                <select
+                  value={maritalStatus}
+                  onChange={(e) => setMaritalStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Seleccionar (opcional)</option>
+                  <option value="soltero">Soltero/a</option>
+                  <option value="casado">Casado/a</option>
+                  <option value="divorciado">Divorciado/a</option>
+                  <option value="viudo">Viudo/a</option>
+                  <option value="union_libre">Unión Libre</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4" />
+                  Nivel de Estudios
+                </label>
+                <select
+                  value={education}
+                  onChange={(e) => setEducation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Seleccionar (opcional)</option>
+                  <option value="primario">Primario</option>
+                  <option value="secundario">Secundario</option>
+                  <option value="terciario">Terciario</option>
+                  <option value="universitario">Universitario</option>
+                  <option value="posgrado">Posgrado</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4" />
+                  Ocupación / Trabajo
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Contador, Docente..."
+                  value={occupation}
+                  onChange={(e) => setOccupation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Religión
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Católica, Evangélica... (opcional)"
+                value={religion}
+                onChange={(e) => setReligion(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        );
+
+      case 4:
+        return (
           <div className="text-center space-y-6">
             <div className="mx-auto w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
               <CheckCircle className="w-10 h-10 text-emerald-600" />
@@ -390,27 +517,27 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
           </div>
 
           <div className="flex gap-2">
-            {currentStep > 0 && currentStep < 3 && (
+            {currentStep > 0 && currentStep < 4 && (
               <Button variant="outline" onClick={handleBack}>
                 Atrás
               </Button>
             )}
 
-            {currentStep < 2 && (
+            {currentStep < 3 && (
               <Button onClick={handleNext} className="flex items-center gap-2">
                 Continuar
                 <ArrowRight className="w-4 h-4" />
               </Button>
             )}
 
-            {currentStep === 2 && (
+            {currentStep === 3 && (
               <Button onClick={handleCompleteProfile} className="flex items-center gap-2">
                 Completar Perfil
                 <CheckCircle className="w-4 h-4" />
               </Button>
             )}
 
-            {currentStep === 3 && (
+            {currentStep === 4 && (
               <Button onClick={handleFinish} className="flex items-center gap-2">
                 ¡Empezar!
                 <ArrowRight className="w-4 h-4" />

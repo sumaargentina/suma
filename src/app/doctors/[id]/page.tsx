@@ -831,6 +831,11 @@ export default function DoctorProfile() {
               {/* Opción: Para mí */}
               <div
                 onClick={() => {
+                  if (!user) {
+                    // Si no hay usuario, redirigir a login
+                    router.push(`/login?redirect=/doctors/${params.id}`);
+                    return;
+                  }
                   setBookingFor('myself');
                   setSelectedFamilyMember(null);
                 }}
@@ -844,11 +849,26 @@ export default function DoctorProfile() {
                     }`}>
                     <CheckCircle className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold">Para mí</p>
-                    <p className="text-sm text-muted-foreground">
-                      {user ? user.name : 'Inicia sesión para continuar'}
-                    </p>
+                    {user ? (
+                      <p className="text-sm text-muted-foreground">{user.name}</p>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-amber-600">Inicia sesión para continuar</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs border-primary text-primary hover:bg-primary/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/login?redirect=/doctors/${params.id}`);
+                          }}
+                        >
+                          Iniciar sesión
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

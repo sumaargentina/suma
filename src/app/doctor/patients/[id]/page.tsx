@@ -96,7 +96,7 @@ export default function PatientHistoryPage() {
         }
     };
 
-    if (loading || isLoadingPatient) {
+    if (loading || isLoadingPatient || !user) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -152,15 +152,27 @@ export default function PatientHistoryPage() {
                                                 Ver Completo
                                             </Button>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="bg-slate-50 p-3 rounded-lg">
-                                                <span className="text-xs font-bold text-slate-500 uppercase">Diagnóstico</span>
-                                                <p className="text-sm mt-1">{lastRecord.diagnosis || 'Sin diagnóstico'}</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            <div className="bg-blue-50 p-3 rounded-lg">
+                                                <span className="text-xs font-bold text-blue-700 uppercase">Diagnóstico</span>
+                                                <p className="text-sm mt-1 line-clamp-2">{lastRecord.diagnosis || 'Sin diagnóstico'}</p>
                                             </div>
-                                            <div className="bg-slate-50 p-3 rounded-lg">
-                                                <span className="text-xs font-bold text-slate-500 uppercase">Tratamiento</span>
-                                                <p className="text-sm mt-1">{lastRecord.treatment_plan || 'Sin tratamiento'}</p>
+                                            {lastRecord.evaluation && (
+                                                <div className="bg-purple-50 p-3 rounded-lg">
+                                                    <span className="text-xs font-bold text-purple-700 uppercase">Evaluación</span>
+                                                    <p className="text-sm mt-1 line-clamp-2">{lastRecord.evaluation}</p>
+                                                </div>
+                                            )}
+                                            <div className="bg-green-50 p-3 rounded-lg">
+                                                <span className="text-xs font-bold text-green-700 uppercase">Tratamiento</span>
+                                                <p className="text-sm mt-1 line-clamp-2">{lastRecord.treatment_plan || 'Sin tratamiento'}</p>
                                             </div>
+                                            {lastRecord.requested_studies && (
+                                                <div className="bg-amber-50 p-3 rounded-lg">
+                                                    <span className="text-xs font-bold text-amber-700 uppercase">Estudios Solicitados</span>
+                                                    <p className="text-sm mt-1 line-clamp-2">{lastRecord.requested_studies}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ) : (

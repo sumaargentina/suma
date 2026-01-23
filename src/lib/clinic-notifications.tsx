@@ -132,7 +132,7 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
                         id, type: appt.patientConfirmationStatus === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
                         title: `Cita ${appt.patientConfirmationStatus}`,
                         description: `${appt.patientName} ha ${appt.patientConfirmationStatus.toLowerCase()} su cita.`,
-                        date: new Date().toISOString(), createdAt: now.toISOString(), read: false,
+                        date: `${appt.date}T${appt.time || '00:00'}`, createdAt: now.toISOString(), read: false,
                         link: `/clinic/dashboard?tab=agenda`
                     });
                 }

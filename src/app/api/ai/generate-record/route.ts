@@ -43,14 +43,17 @@ export async function POST(req: Request) {
 
       Formato JSON requerido:
       {
-        "reason": "Motivo de consulta técnico (breve)",
-        "diagnosis": "Diagnóstico presuntivo o definitivo",
-        "treatment": "Plan de tratamiento detallado (medicación, dosis, estudios)",
-        "notes": "Evolución técnica y observaciones formales"
+        "reason": "Motivo de consulta técnico (breve, 1-2 frases)",
+        "diagnosis": "Diagnóstico presuntivo o definitivo (CIE-10 si aplica)",
+        "evaluation": "Evaluación clínica: examen físico, signos vitales, hallazgos",
+        "requested_studies": "Estudios solicitados: laboratorios, imágenes, interconsultas (separados por coma)",
+        "treatment": "Plan de tratamiento detallado (medicación, dosis, indicaciones)",
+        "evolution": "Historia actual de la enfermedad: evolución, antecedentes relevantes, observaciones"
       }
 
       Contexto del paciente: ${context || 'General'}
       Usa terminología médica estándar en español (Argentina).
+      Si no hay información para algún campo, deja una cadena vacía.
     `;
 
         const completion = await openai.chat.completions.create({

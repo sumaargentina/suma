@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,57 +30,136 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
     // ... (rest of voice code is fine) ...
 
-    const startListening = () => {
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'es-AR'; // Español Argentina
-            recognition.continuous = true;
-            recognition.interimResults = true;
+    const recognitionRef = useRef<any>(null);
 
-            recognition.onstart = () => setIsListening(true);
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
+        };
+    }, []);
 
-            recognition.onresult = (event: any) => {
-                let finalTranscript = '';
-                // Construir el texto final
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript + ' ';
-                    }
-                }
-                const current = Array.from(event.results)
-                    .map((result: any) => result[0].transcript)
-                    .join('');
-                setAiPrompt(current);
-            };
-
-            recognition.onerror = (event: any) => {
-                const errorType = String(event.error).toLowerCase();
-                // Ignorar errores comunes de interrupción o silencio
-                if (['aborted', 'no-speech', 'network', 'audio-capture'].includes(errorType)) {
-                    setIsListening(false);
-                    return;
-                }
-                console.error('Speech recognition error:', errorType);
-                setIsListening(false);
-                toast({ variant: 'destructive', title: 'Error de micrófono', description: 'Por favor verifica los permisos del micrófono.' });
-            };
-
-            recognition.onend = () => setIsListening(false);
-
-            recognition.start();
-            (window as any).recognitionInstance = recognition;
-        } else {
+    const startListening = async () => {
+        // Verificar soporte del navegador
+        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
             toast({ variant: 'destructive', title: 'Navegador no soportado', description: 'Tu navegador no soporta dictado por voz. Usa Chrome o Edge.' });
+            return;
         }
-    };
 
-    const stopListening = () => {
-        if ((window as any).recognitionInstance) {
-            (window as any).recognitionInstance.stop();
+        // Solicitar permiso de micrófono explícitamente primero
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Detener el stream inmediatamente, solo lo usamos para obtener permiso
+            stream.getTracks().forEach(track => track.stop());
+        } catch (permissionError: any) {
+            console.error('Microphone permission error:', permissionError);
+
+            if (permissionError.name === 'NotAllowedError' || permissionError.name === 'PermissionDeniedError') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Micrófono Bloqueado',
+                    description: 'Haz clic en el icono 🔒 en la barra de dirección y permite el acceso al micrófono.'
+                });
+            } else if (permissionError.name === 'NotFoundError') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Sin Micrófono',
+                    description: 'No se detectó ningún micrófono. Conecta uno e intenta de nuevo.'
+                });
+            } else {
+                toast({
+                    variant: 'destructive',
+                    title: 'Error de Audio',
+                    description: `No se pudo acceder al micrófono: ${permissionError.message}`
+                });
+            }
+            return;
+        }
+
+        // Ahora iniciar Speech Recognition
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+        // Detener instancia previa si existe
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.abort();
+            } catch (e) {
+                console.error("Error stopping previous recognition:", e);
+            }
+        }
+
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+
+        recognition.lang = 'es-AR'; // Español Argentina
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onstart = () => setIsListening(true);
+
+        recognition.onresult = (event: any) => {
+            let finalTranscript = '';
+            // Construir el texto final
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript + ' ';
+                }
+            }
+            const current = Array.from(event.results)
+                .map((result: any) => result[0].transcript)
+                .join('');
+            setAiPrompt(current);
+        };
+
+        recognition.onerror = (event: any) => {
+            const errorType = String(event.error).toLowerCase();
+            // Ignorar errores comunes de interrupción o silencio
+            if (['aborted', 'no-speech', 'network', 'audio-capture'].includes(errorType)) {
+                setIsListening(false);
+                return;
+            }
+            if (errorType === 'not-allowed') {
+                console.warn('Speech recognition not allowed.');
+                setIsListening(false);
+                toast({
+                    variant: 'destructive',
+                    title: 'Micrófono Bloqueado',
+                    description: 'Habilita el permiso de micrófono en la barra de dirección para usar el dictado.'
+                });
+                return;
+            }
+
+            console.error('Speech recognition error:', errorType);
+            setIsListening(false);
+            toast({ variant: 'destructive', title: 'Error de micrófono', description: `Error: ${errorType}. Verifica tu conexión.` });
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+            recognitionRef.current = null;
+        };
+
+        try {
+            recognition.start();
+        } catch (error) {
+            console.error("Error starting recognition:", error);
             setIsListening(false);
         }
     };
+
+
+    const stopListening = () => {
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.stop();
+            } catch (e) {
+                console.error(e);
+            }
+            setIsListening(false);
+        }
+    };
+
 
     const toggleMic = () => {
         if (isListening) {
@@ -94,8 +173,10 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         record_type: 'consultation',
         reason_for_visit: '',
         diagnosis: '',
+        evaluation: '',
+        requested_studies: '',
         treatment_plan: '',
-        notes: ''
+        evolution: ''
     });
 
     const handleAiGenerate = async () => {
@@ -127,8 +208,10 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 ...prev,
                 reason_for_visit: data.reason || prev.reason_for_visit,
                 diagnosis: data.diagnosis || prev.diagnosis,
+                evaluation: data.evaluation || prev.evaluation,
+                requested_studies: data.requested_studies || prev.requested_studies,
                 treatment_plan: data.treatment || prev.treatment_plan,
-                notes: data.notes || prev.notes
+                evolution: data.evolution || prev.evolution
             }));
 
             toast({
@@ -313,21 +396,43 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label className="text-blue-900 font-medium">Diagnóstico</Label>
+                        <Textarea
+                            placeholder="Diagnóstico presuntivo o definitivo..."
+                            className="min-h-[80px] border-blue-100 focus:border-blue-300"
+                            value={formData.diagnosis}
+                            onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
+                            required
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label className="text-purple-900 font-medium">Evaluación Clínica</Label>
+                        <Textarea
+                            placeholder="Examen físico, signos vitales, hallazgos..."
+                            className="min-h-[80px] border-purple-100 focus:border-purple-300"
+                            value={formData.evaluation}
+                            onChange={(e) => setFormData({ ...formData, evaluation: e.target.value })}
+                        />
+                    </div>
+                </div>
+
                 <div className="space-y-2">
-                    <Label className="text-blue-900 font-medium">Diagnóstico / Evaluación</Label>
+                    <Label className="text-amber-900 font-medium">Estudios Solicitados</Label>
                     <Textarea
-                        placeholder="Descripción clínica..."
-                        className="min-h-[100px] border-blue-100 focus:border-blue-300"
-                        value={formData.diagnosis}
-                        onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
-                        required
+                        placeholder="Laboratorios, imágenes, interconsultas solicitadas..."
+                        className="min-h-[60px] border-amber-100 focus:border-amber-300"
+                        value={formData.requested_studies}
+                        onChange={(e) => setFormData({ ...formData, requested_studies: e.target.value })}
                     />
                 </div>
 
                 <div className="space-y-2">
                     <Label className="text-green-900 font-medium">Plan de Tratamiento</Label>
                     <Textarea
-                        placeholder="Indicaciones y recetas..."
+                        placeholder="Indicaciones, medicación, dosis..."
                         className="min-h-[100px] border-green-100 focus:border-green-300"
                         value={formData.treatment_plan}
                         onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
@@ -336,11 +441,12 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 </div>
 
                 <div className="space-y-2">
-                    <Label>Notas Internas (Opcional)</Label>
+                    <Label className="text-slate-700 font-medium">Evolución (Historia Actual de la Enfermedad)</Label>
                     <Textarea
-                        placeholder="Notas privadas..."
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                        placeholder="Antecedentes relevantes, evolución del cuadro, observaciones..."
+                        className="min-h-[80px]"
+                        value={formData.evolution}
+                        onChange={(e) => setFormData({ ...formData, evolution: e.target.value })}
                     />
                 </div>
 

@@ -106,6 +106,13 @@ export function FamilyTab() {
         phoneNum: '',
         relationship: '' as FamilyRelationship | '',
         relationshipDetail: '',
+        // Campos médicos adicionales
+        bloodType: '',
+        religion: '',
+        maritalStatus: '',
+        education: '',
+        occupation: '',
+        city: '',
     });
 
     useEffect(() => {
@@ -145,6 +152,12 @@ export function FamilyTab() {
             phoneNum: '',
             relationship: '',
             relationshipDetail: '',
+            bloodType: '',
+            religion: '',
+            maritalStatus: '',
+            education: '',
+            occupation: '',
+            city: '',
         });
         setEditingMember(null);
     };
@@ -168,6 +181,12 @@ export function FamilyTab() {
                 phoneNum: num,
                 relationship: member.relationship,
                 relationshipDetail: member.relationshipDetail || '',
+                bloodType: member.bloodType || '',
+                religion: member.religion || '',
+                maritalStatus: member.maritalStatus || '',
+                education: member.education || '',
+                occupation: member.occupation || '',
+                city: member.city || '',
             });
         } else {
             resetForm();
@@ -199,7 +218,13 @@ export function FamilyTab() {
                     phone: formData.phoneNum ? `${formData.phoneCode} ${formData.phoneNum}`.trim() : undefined,
                     relationship: formData.relationship as FamilyRelationship,
                     relationshipDetail: formData.relationshipDetail || undefined,
-                });
+                    bloodType: formData.bloodType || undefined,
+                    religion: formData.religion || undefined,
+                    maritalStatus: formData.maritalStatus || undefined,
+                    education: formData.education || undefined,
+                    occupation: formData.occupation || undefined,
+                    city: formData.city || undefined,
+                } as any);
                 toast({
                     title: "Familiar actualizado",
                     description: `${formData.firstName} ha sido actualizado correctamente.`
@@ -221,7 +246,13 @@ export function FamilyTab() {
                     canViewHistory: true,
                     canBookAppointments: true,
                     status: 'active',
-                });
+                    bloodType: formData.bloodType || undefined,
+                    religion: formData.religion || undefined,
+                    maritalStatus: formData.maritalStatus || undefined,
+                    education: formData.education || undefined,
+                    occupation: formData.occupation || undefined,
+                    city: formData.city || undefined,
+                } as any);
                 toast({
                     title: "Familiar agregado",
                     description: `${formData.firstName} ha sido agregado a tu núcleo familiar.`
@@ -454,7 +485,7 @@ export function FamilyTab() {
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
                             {editingMember ? 'Editar Familiar' : 'Agregar Familiar'}
@@ -621,6 +652,98 @@ export function FamilyTab() {
                             </div>
                         </div>
 
+                        {/* Información Médica Adicional (Opcional) */}
+                        <div className="border-t pt-4 mt-4">
+                            <p className="text-sm font-medium text-muted-foreground mb-3">Información Médica (Opcional)</p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="bloodType">Tipo de Sangre</Label>
+                                    <Select
+                                        value={formData.bloodType}
+                                        onValueChange={(val) => setFormData({ ...formData, bloodType: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="A+">A+</SelectItem>
+                                            <SelectItem value="A-">A-</SelectItem>
+                                            <SelectItem value="B+">B+</SelectItem>
+                                            <SelectItem value="B-">B-</SelectItem>
+                                            <SelectItem value="AB+">AB+</SelectItem>
+                                            <SelectItem value="AB-">AB-</SelectItem>
+                                            <SelectItem value="O+">O+</SelectItem>
+                                            <SelectItem value="O-">O-</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="maritalStatus">Estado Civil</Label>
+                                    <Select
+                                        value={formData.maritalStatus}
+                                        onValueChange={(val) => setFormData({ ...formData, maritalStatus: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="soltero">Soltero/a</SelectItem>
+                                            <SelectItem value="casado">Casado/a</SelectItem>
+                                            <SelectItem value="divorciado">Divorciado/a</SelectItem>
+                                            <SelectItem value="viudo">Viudo/a</SelectItem>
+                                            <SelectItem value="union_libre">Unión Libre</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="education">Nivel de Estudios</Label>
+                                    <Select
+                                        value={formData.education}
+                                        onValueChange={(val) => setFormData({ ...formData, education: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="primario">Primario</SelectItem>
+                                            <SelectItem value="secundario">Secundario</SelectItem>
+                                            <SelectItem value="terciario">Terciario</SelectItem>
+                                            <SelectItem value="universitario">Universitario</SelectItem>
+                                            <SelectItem value="posgrado">Posgrado</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="occupation">Ocupación</Label>
+                                    <Input
+                                        id="occupation"
+                                        value={formData.occupation}
+                                        onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                                        placeholder="Ej: Docente"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="religion">Religión</Label>
+                                    <Input
+                                        id="religion"
+                                        value={formData.religion}
+                                        onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
+                                        placeholder="Ej: Católica"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="city">Ciudad</Label>
+                                    <Input
+                                        id="city"
+                                        value={formData.city}
+                                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                                        placeholder="Ej: Buenos Aires"
+                                    />
+                                </div>
+                            </div>
+                        </div>
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={handleCloseDialog}>

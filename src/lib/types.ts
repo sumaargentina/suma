@@ -77,6 +77,13 @@ export interface FamilyMember {
   createdAt: string;
   updatedAt: string;
   status: 'active' | 'inactive' | 'pending_verification';
+  // Campos adicionales médicos
+  bloodType?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
+  religion?: string | null;
+  maritalStatus?: 'soltero' | 'casado' | 'divorciado' | 'viudo' | 'union_libre' | null;
+  education?: string | null;
+  occupation?: string | null;
+  city?: string | null;
   // Computed fields (not stored in DB)
   fullName?: string;
   age?: number;
@@ -432,6 +439,12 @@ export type Patient = {
   favoriteClinicIds?: string[];
   profileImage: string | null;
   profileCompleted?: boolean;
+  // Campos adicionales opcionales
+  bloodType?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
+  religion?: string | null;
+  maritalStatus?: 'soltero' | 'casado' | 'divorciado' | 'viudo' | 'union_libre' | null;
+  education?: string | null;
+  occupation?: string | null;
 };
 
 export type Appointment = {

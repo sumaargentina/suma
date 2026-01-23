@@ -134,7 +134,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
             id, type: appt.patientConfirmationStatus === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
             title: `Cita ${appt.patientConfirmationStatus}`,
             description: `${appt.patientName} ha ${appt.patientConfirmationStatus.toLowerCase()} su cita.`,
-            date: new Date().toISOString(), createdAt: now.toISOString(), read: false,
+            date: `${appt.date}T${appt.time || '00:00'}`, createdAt: now.toISOString(), read: false,
             link: `/doctor/dashboard?view=appointments`
           });
         }
@@ -299,7 +299,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
                 type: status === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
                 title: `Cita ${status}`,
                 description: `${appt.patient_name || 'El paciente'} ha ${status.toLowerCase()} su cita.`,
-                date: now.toISOString(),
+                date: `${appt.date}T${appt.time || '00:00'}` || now.toISOString(),
                 createdAt: now.toISOString(),
                 read: false,
                 link: `/doctor/dashboard?view=appointments`
@@ -319,7 +319,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
                 type: 'new_message',
                 title: `Nuevo Mensaje de ${appt.patient_name || 'Paciente'}`,
                 description: String(lastMessage.text || '').substring(0, 50) + '...',
-                date: now.toISOString(),
+                date: String(lastMessage.timestamp || now.toISOString()),
                 createdAt: now.toISOString(),
                 read: false,
                 link: `/doctor/dashboard?view=appointments`
@@ -350,7 +350,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
               type: 'subscription_update',
               title: `Suscripción ${payment.status === 'Paid' ? 'Aprobada' : 'Rechazada'}`,
               description: `Tu pago de $${Number(payment.amount || 0).toFixed(2)} ha sido ${payment.status === 'Paid' ? 'aprobado' : 'rechazado'}.`,
-              date: now.toISOString(),
+              date: String(payment.date || now.toISOString()),
               createdAt: now.toISOString(),
               read: false,
               link: '/doctor/dashboard?view=subscription'
