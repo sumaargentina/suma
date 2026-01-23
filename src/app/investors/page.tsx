@@ -25,10 +25,17 @@ import {
     Megaphone,
     FileText,
     BrainCircuit,
-    CheckCircle2
+    CheckCircle2,
+    PieChart,
+    Target,
+    Flag,
+    Briefcase,
+    XCircle,
+    Check
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import Image from "next/image"; // Added for founder image
 import { useToast } from "@/hooks/use-toast";
 
 export default function InvestorsPage() {
@@ -73,6 +80,15 @@ export default function InvestorsPage() {
                             Contactar a Salvatore (Founder)
                             <ArrowRight className="ml-2 h-5 w-5" />
                         </Button>
+                        <Link href="/ai-assistant">
+                            <Button
+                                size="lg"
+                                className="bg-white/10 text-white hover:bg-white/20 border border-white/30 text-lg px-8 h-14 rounded-full shadow-lg backdrop-blur-md transition-all transform hover:-translate-y-1"
+                            >
+                                <Bot className="mr-2 h-5 w-5" />
+                                Probar Asistente IA
+                            </Button>
+                        </Link>
                     </div>
 
                     {/* Key Metrics */}
@@ -251,6 +267,65 @@ export default function InvestorsPage() {
                 </div>
             </section>
 
+            {/* COMPARISON TABLE: THE MOAT */}
+            <section className="py-24 bg-white">
+                <div className="container mx-auto px-4 max-w-5xl">
+                    <div className="text-center mb-16">
+                        <Badge className="bg-slate-100 text-slate-700 mb-4">Ventaja Competitiva</Badge>
+                        <h2 className="text-3xl md:text-4xl font-bold text-slate-900">¿Qué nos hace únicos?</h2>
+                        <p className="text-slate-500 mt-2">Nuestra arquitectura "All-in-One" crea barreras de entrada imposibles de replicar rápidamente.</p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-200">
+                                    <th className="p-4 text-left font-medium text-slate-500 w-1/4">Característica</th>
+                                    <th className="p-4 text-center font-medium text-slate-400 w-1/4">Gestión Manual</th>
+                                    <th className="p-4 text-center font-medium text-slate-400 w-1/4">Apps de Turnos</th>
+                                    <th className="p-4 text-center font-bold text-primary w-1/4 bg-blue-50/50 rounded-t-xl">
+                                        <span className="flex items-center justify-center gap-2"><HeartPulse className="h-5 w-5" /> SUMA</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[
+                                    { feature: "Agendamiento 24/7", old: false, app: true, suma: true },
+                                    { feature: "Triaje Médico con IA", old: false, app: false, suma: true },
+                                    { feature: "Gestión de Pagos & Caja", old: false, app: false, suma: true },
+                                    { feature: "Historia Clínica Unificada", old: true, app: false, suma: true },
+                                    { feature: "Marketing & Cupones", old: false, app: false, suma: true },
+                                    { feature: "Integración WhatsApp", old: false, app: "Básica", suma: "Inteligente" }
+                                ].map((row, i) => (
+                                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="p-4 font-medium text-slate-700">{row.feature}</td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex justify-center">
+                                                {row.old === true ? <Check className="h-5 w-5 text-slate-400" /> : <XCircle className="h-5 w-5 text-slate-300" />}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex justify-center">
+                                                {row.app === true ? <Check className="h-5 w-5 text-slate-600" /> : (row.app === false ? <XCircle className="h-5 w-5 text-slate-300" /> : <span className="text-xs font-bold text-slate-500">{row.app}</span>)}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-center bg-blue-50/30">
+                                            <div className="flex justify-center">
+                                                {row.suma === "Inteligente" ? <Badge className="bg-primary">Inteligente</Badge> : <CheckCircle2 className="h-6 w-6 text-primary fill-blue-100" />}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="mt-12 text-center text-sm text-slate-400">
+                        <p>SUMA reemplaza a 4 herramientas diferentes (SaaS, Excel, Terminal de Pagos y Agencia de Marketing) por el precio de una.</p>
+                    </div>
+                </div>
+            </section>
+
             {/* PROJECTED IMPACT */}
             <section className="py-24 bg-slate-50">
                 <div className="container mx-auto px-4">
@@ -324,7 +399,193 @@ export default function InvestorsPage() {
                 </div>
             </section>
 
-            {/* INVESTMENT OPPORTUNITY */}
+            {/* INVESTMENT ROADMAP PLAN */}
+            <section className="py-24 bg-white border-t border-slate-100">
+                <div className="container mx-auto px-4">
+                    <div className="text-center mb-16">
+                        <Badge className="bg-emerald-100 text-emerald-700 mb-4">Plan Estratégico</Badge>
+                        <h2 className="text-3xl md:text-5xl font-bold text-slate-900">Hoja de Ruta de Inversión</h2>
+                        <p className="text-slate-500 mt-4 max-w-2xl mx-auto">
+                            Sabemos exactamente dónde poner el capital para maximizar el crecimiento. Sin improvisación.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row gap-12 justify-center items-start">
+
+                        {/* 1. Use of Funds */}
+                        <Card className="w-full lg:w-1/3 border-none shadow-xl bg-slate-50">
+                            <CardHeader>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <PieChart className="h-6 w-6 text-indigo-600" />
+                                    <CardTitle className="text-xl">Uso de Fondos</CardTitle>
+                                </div>
+                                <CardDescription>Distribución eficiente del capital seed.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span>Crecimiento y Ventas</span>
+                                        <span className="text-indigo-600">30%</span>
+                                    </div>
+                                    <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                        <div className="h-full bg-indigo-600 w-[30%] rounded-full"></div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">Equipo comercial B2B & Marketing.</p>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span>Producto & IA</span>
+                                        <span className="text-cyan-600">28%</span>
+                                    </div>
+                                    <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                        <div className="h-full bg-cyan-600 w-[28%] rounded-full"></div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">Nuevos features y WhatsApp API.</p>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span>R&D / IP Transfer</span>
+                                        <span className="text-emerald-600">20%</span>
+                                    </div>
+                                    <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                        <div className="h-full bg-emerald-600 w-[20%] rounded-full"></div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">Amortización de desarrollo y activos.</p>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm font-bold mb-2">
+                                        <span>Capital de Trabajo</span>
+                                        <span className="text-slate-600">22%</span>
+                                    </div>
+                                    <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                        <div className="h-full bg-slate-600 w-[22%] rounded-full"></div>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">Costos operativos y administrativos.</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* 2. Timeline Roadmap */}
+                        <div className="w-full lg:w-1/2 space-y-8">
+                            <div className="relative border-l-2 border-indigo-100 pl-8 ml-4 lg:ml-0 space-y-12">
+
+                                {/* Milestone 1 */}
+                                <div className="relative">
+                                    <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-indigo-600 border-4 border-white flex items-center justify-center"></span>
+                                    <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <Target className="h-4 w-4 text-indigo-600" /> Fase 1: Go-to-Market
+                                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Corto Plazo</span>
+                                    </h4>
+                                    <p className="text-slate-600 text-sm mt-2">
+                                        Lanzamiento oficial para Early Adopters. Validación de producto y onboarding de los primeros centros médicos aliados.
+                                    </p>
+                                </div>
+
+                                {/* Milestone 2 */}
+                                <div className="relative">
+                                    <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-slate-300 border-4 border-white flex items-center justify-center"></span>
+                                    <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <Briefcase className="h-4 w-4 text-slate-600" /> Fase 2: Tracción & Monetización
+                                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Mediano Plazo</span>
+                                    </h4>
+                                    <p className="text-slate-600 text-sm mt-2">
+                                        Activación completa de SaaS para clínicas y fees de Marketplace. Alcance de breakeven operativo.
+                                    </p>
+                                </div>
+
+                                {/* Milestone 3 */}
+                                <div className="relative">
+                                    <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-slate-300 border-4 border-white flex items-center justify-center"></span>
+                                    <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <Flag className="h-4 w-4 text-slate-600" /> Fase 3: Expansión Regional
+                                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Largo Plazo</span>
+                                    </h4>
+                                    <p className="text-slate-600 text-sm mt-2">
+                                        Replicar modelo en nuevos mercados de LatAm y preparación y levantamiento para Serie A.
+                                    </p>
+                                </div>
+
+                            </div>
+
+                            {/* Deal Structure Box */}
+                            <div className="bg-indigo-900 text-white p-6 rounded-xl shadow-lg border-2 border-indigo-500/30">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h4 className="font-bold flex items-center gap-2">
+                                        <Rocket className="h-5 w-5 text-yellow-400" /> Estructura del Deal
+                                    </h4>
+                                    <Badge className="bg-yellow-400 text-indigo-900 hover:bg-yellow-500">Seed Round</Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <p className="text-indigo-300 text-xs uppercase">Instrumento</p>
+                                        <p className="font-medium">SAFE (Simple Agreement)</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-indigo-300 text-xs uppercase">Beneficio</p>
+                                        <p className="font-medium">Acceso a Data Room</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            {/* FOUNDER NOTE: STORYTELLING */}
+            <section className="py-24 bg-slate-50 relative overflow-hidden">
+                <div className="container mx-auto px-4 relative z-10">
+                    <div className="bg-white rounded-[2rem] p-8 md:p-12 shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-12 max-w-5xl mx-auto">
+                        <div className="md:w-1/3 relative">
+                            <div className="aspect-[3/4] rounded-2xl overflow-hidden relative shadow-lg bg-slate-100">
+                                <Image
+                                    src="/salvatore-founder.png"
+                                    alt="Salvatore Perozzi"
+                                    fill
+                                    className="object-cover"
+                                />
+                            </div>
+                            <div className="absolute -bottom-4 -right-4 bg-white p-4 rounded-xl shadow-lg border border-slate-100">
+                                <p className="font-bold text-slate-900">Salvatore Perozzi</p>
+                                <p className="text-xs text-slate-500">Founder & CEO</p>
+                            </div>
+                        </div>
+                        <div className="md:w-2/3">
+                            <QuoteIcon className="h-12 w-12 text-primary/20 mb-6" />
+                            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6">
+                                "No busco inversores para intentar. <br />Busco socios para escalar."
+                            </h3>
+                            <div className="space-y-4 text-slate-600 leading-relaxed">
+                                <p>
+                                    Mi experiencia como <strong>Gerente General de una clínica en Venezuela</strong> me enseñó que la salud florece cuando la gestión es fluida y eficiente, permitiendo que la vocación médica sea la protagonista.
+                                </p>
+                                <p>
+                                    Como <strong>graduado en Informática</strong>, canalicé esa visión en SUMA. Creamos un entorno digital armónico donde la tecnología cuida los detalles operativos con precisión, para que los médicos puedan dedicarse a lo más importante: cuidar a las personas.
+                                </p>
+                                <p>
+                                    Durante los últimos meses, hemos invertido <strong>miles de horas de ingeniería</strong> para construir SUMA desde cero. No dependemos de software de terceros. Somos dueños de nuestra tecnología, de nuestra IA y de nuestro futuro.
+                                </p>
+                                <p>
+                                    La oportunidad en Latinoamérica es gigantesca y la ventana de tiempo es ahora. Únete a nosotros y redefinamos la salud digital juntos.
+                                </p>
+                            </div>
+                            <div className="mt-8 pt-8 border-t border-slate-100 flex items-center gap-4">
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-900">Compromiso Total</span>
+                                    <span className="text-xs text-slate-500">Full Time Dedication</span>
+                                </div>
+                                <div className="h-8 w-px bg-slate-200"></div>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-900">+10k Horas</span>
+                                    <span className="text-xs text-slate-500">Desarrollo e I+D</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* INVESTMENT CTA */}
             <section id="contact-form" className="py-24 bg-white relative">
                 <div className="container mx-auto px-4 max-w-5xl">
                     <div className="bg-slate-900 rounded-[2.5rem] p-1 md:p-16 shadow-2xl overflow-hidden relative">
@@ -334,7 +595,7 @@ export default function InvestorsPage() {
 
                         <div className="relative z-10 flex flex-col md:flex-row items-center gap-16">
                             <div className="md:w-1/2 text-white">
-                                <h3 className="text-3xl md:text-4xl font-bold mb-6">Buscamos "Smart Capital"</h3>
+                                <h3 className="text-3xl md:text-4xl font-bold mb-6">Únete a nosotros</h3>
                                 <ul className="space-y-6">
                                     <li className="flex gap-4">
                                         <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
@@ -425,4 +686,21 @@ export default function InvestorsPage() {
             </footer>
         </div>
     );
+}
+
+function QuoteIcon(props: any) {
+    return (
+        <svg
+            {...props}
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            stroke="none"
+        >
+            <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z" />
+            <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z" />
+        </svg>
+    )
 }
