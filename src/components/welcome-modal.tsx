@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import {
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
+import { supabase } from '@/lib/supabase';
+import { COUNTRY_CODES } from '@/lib/types';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -35,15 +37,46 @@ interface WelcomeModalProps {
 
 export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const { user, updateUser } = useAuth();
-  const { cities } = useSettings();
+  const { cities, isLoading } = useSettings();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
+
+
   const { toast } = useToast();
+  const [fetchedCities, setFetchedCities] = useState<any[]>([]);
+  const [isFetchingCities, setIsFetchingCities] = useState(false);
+
+  // Fallback: Fetch cities via API if settings context is empty
+  useEffect(() => {
+    const fetchCitiesDirectly = async () => {
+      if (cities.length === 0 && !isLoading) {
+        setIsFetchingCities(true);
+        try {
+          const response = await fetch('/api/settings/cities');
+          const data = await response.json();
+
+          if (data?.cities && Array.isArray(data.cities)) {
+            console.log("Cities fetched via API:", data.cities);
+            setFetchedCities(data.cities);
+          }
+        } catch (err) {
+          console.error("Error fetching cities fallback:", err);
+        } finally {
+          setIsFetchingCities(false);
+        }
+      }
+    };
+    fetchCitiesDirectly();
+  }, [cities.length, isLoading]);
+
+  const displayCities = cities.length > 0 ? cities : fetchedCities;
+  const loadingCities = isLoading || isFetchingCities;
 
   // Estado para el formulario de perfil
   const [age, setAge] = useState<string>('');
   const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
   const [cedula, setCedula] = useState('');
+  const [countryCode, setCountryCode] = useState('+54');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   // Campos opcionales adicionales
@@ -142,7 +175,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         age: age ? parseInt(age, 10) : null,
         gender: gender || null,
         cedula: cedula,
-        phone: phone || null,
+        phone: phone ? `${countryCode} ${phone}` : null,
         city: city || null,
         bloodType: bloodType || null,
         religion: religion || null,
@@ -305,13 +338,26 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   <Phone className="w-4 h-4" />
                   Teléfono
                 </label>
-                <input
-                  type="tel"
-                  placeholder="Ej: 1123456789"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="w-[110px] px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm"
+                  >
+                    {COUNTRY_CODES.map((country) => (
+                      <option key={`${country.country}-${country.code}`} value={country.code}>
+                        {country.flag} {country.code}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    placeholder="11 2345 6789"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -322,13 +368,26 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 <select
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={loadingCities}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
                 >
-                  <option value="" disabled>Selecciona tu ciudad para búsquedas</option>
-                  {cities.map((cityObj) => (
-                    <option key={cityObj.name} value={cityObj.name}>{cityObj.name}</option>
-                  ))}
+                  <option value="" disabled>
+                    {loadingCities ? "Cargando ciudades..." : "Selecciona tu ciudad para búsquedas"}
+                  </option>
+                  {!loadingCities && displayCities.length > 0 ? (
+                    displayCities.map((cityObj: any) => {
+                      const cityName = typeof cityObj === 'string' ? cityObj : cityObj.name;
+                      return (
+                        <option key={cityName} value={cityName}>
+                          {cityName}
+                        </option>
+                      );
+                    })
+                  ) : (
+                    !loadingCities && <option value="" disabled>No hay ciudades disponibles</option>
+                  )}
                 </select>
+                {loadingCities && <p className="text-xs text-blue-500 animate-pulse">Sincronizando ciudades...</p>}
               </div>
             </div>
           </div>

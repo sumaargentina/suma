@@ -26,6 +26,7 @@ interface SettingsContextType {
   addListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => Promise<void>;
   updateListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemId: string, newItem: City | string | BankDetail | CompanyExpense | Coupon) => Promise<void>;
   deleteListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemToDeleteIdOrName: string) => Promise<void>;
+  isLoading: boolean;
 }
 
 const skeletonContextValue: SettingsContextType = {
@@ -46,6 +47,7 @@ const skeletonContextValue: SettingsContextType = {
   addListItem: async () => { },
   updateListItem: async () => { },
   deleteListItem: async () => { },
+  isLoading: true,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -254,6 +256,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     addListItem,
     updateListItem,
     deleteListItem,
+    isLoading, // Expose loading state
   };
 
   if (isLoading) {
