@@ -65,6 +65,7 @@ import {
   Menu,
   Building2,
 } from 'lucide-react';
+import { MobileMenuBackground } from "@/components/MobileMenuBackground";
 
 
 export function Header() {
@@ -227,7 +228,6 @@ export function Header() {
 
   const patientNavLinks = [
     { href: "/find-a-doctor", label: "Buscar Médico" },
-    { href: "/dashboard/family", label: "Mi Familia" },
     { href: "/ai-assistant", label: "Asistente IA" },
   ];
 
@@ -816,11 +816,12 @@ export function Header() {
                 <span className="sr-only">Abrir Menú</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="overflow-y-auto">
-              <SheetHeader className="text-left">
+            <SheetContent side="right" className="overflow-y-auto bg-background/95 backdrop-blur-xl">
+              <MobileMenuBackground />
+              <SheetHeader className="text-left relative z-10">
                 <SheetTitle className="sr-only">Menú</SheetTitle>
               </SheetHeader>
-              <div className="flex flex-col gap-4 py-6 px-2">
+              <div className="flex flex-col gap-4 py-6 px-2 relative z-10">
                 <div className="flex items-center gap-2 font-bold text-base mb-3">
                   <Stethoscope className="h-5 w-5 text-primary" />
                   <span className="font-headline text-base">SUMA</span>

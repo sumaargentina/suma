@@ -11,6 +11,7 @@ import { Doctor, Clinic } from "@/lib/types";
 
 import { SearchFilters } from "@/components/search-filters";
 import { SpecialtyPills } from "@/components/specialty-pills";
+import { HealthBackground } from "@/components/HealthBackground";
 
 // Force dynamic rendering to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -144,8 +145,8 @@ export default async function FindDoctorPage({
       <main className="pb-28 md:pb-20">
         {/* HERO & SEARCH SECTION - Compacto en móvil */}
         <section className="relative overflow-hidden bg-white pt-4 pb-4 md:pt-16 md:pb-12 shadow-sm border-b border-gray-100">
-          {/* Simple Background Pattern */}
-          <div className="absolute inset-0 -z-10 h-full w-full bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+          {/* Background Animation */}
+          <HealthBackground />
 
           <div className="container mx-auto px-3 md:px-4 max-w-6xl space-y-3 md:space-y-6 relative z-10">
             {/* Título - más pequeño en móvil */}

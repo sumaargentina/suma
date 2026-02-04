@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { z } from 'zod';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
@@ -41,8 +41,9 @@ export default function LoginPage() {
   const logoUrl = "/images/logo_suma.png";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [resetEmail, setResetEmail] = useState("");
   const [isResetLoading, setIsResetLoading] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -50,41 +51,41 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     const result = LoginSchema.safeParse({ email, password });
-    
+
     if (!result.success) {
       const errorMessage = result.error.errors.map(err => err.message).join(' ');
       toast({ variant: 'destructive', title: 'Error de Validación', description: errorMessage });
       setIsLoading(false);
       return;
     }
-    
+
     try {
       await login(email, password);
     } catch {
-       toast({ variant: 'destructive', title: 'Error', description: "Ocurrió un error inesperado." });
+      toast({ variant: 'destructive', title: 'Error', description: "Ocurrió un error inesperado." });
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const handleResetPassword = async () => {
-      if (!resetEmail) {
-          toast({ variant: 'destructive', title: 'Correo Requerido', description: 'Por favor, ingresa tu correo electrónico.' });
-          return;
-      }
-      const emailValidation = z.string().email("Correo electrónico inválido.").safeParse(resetEmail);
-      if (!emailValidation.success) {
-          toast({ variant: 'destructive', title: 'Error de Validación', description: 'Por favor, ingresa un correo electrónico válido.' });
-          return;
-      }
-      
-      setIsResetLoading(true);
-      await sendPasswordReset(resetEmail);
-      setIsResetLoading(false);
-      setIsResetDialogOpen(false);
-      setResetEmail("");
+    if (!resetEmail) {
+      toast({ variant: 'destructive', title: 'Correo Requerido', description: 'Por favor, ingresa tu correo electrónico.' });
+      return;
+    }
+    const emailValidation = z.string().email("Correo electrónico inválido.").safeParse(resetEmail);
+    if (!emailValidation.success) {
+      toast({ variant: 'destructive', title: 'Error de Validación', description: 'Por favor, ingresa un correo electrónico válido.' });
+      return;
+    }
+
+    setIsResetLoading(true);
+    await sendPasswordReset(resetEmail);
+    setIsResetLoading(false);
+    setIsResetDialogOpen(false);
+    setResetEmail("");
   };
 
 
@@ -93,11 +94,11 @@ export default function LoginPage() {
       <Card className="mx-auto max-w-sm w-full">
         <CardHeader className="text-center">
           <div className="mx-auto mb-6 flex items-center justify-center">
-            <Image 
-              src={logoUrl} 
-              alt="SUMA Logo" 
-              width={200} 
-              height={80} 
+            <Image
+              src={logoUrl}
+              alt="SUMA Logo"
+              width={200}
+              height={80}
               className="h-16 w-auto object-contain"
               priority
               data-ai-hint="logo"
@@ -126,50 +127,70 @@ export default function LoginPage() {
               <div className="grid gap-2">
                 <div className="flex items-center">
                   <Label htmlFor="password">Contraseña</Label>
-                   <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                  <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="link" type="button" className="ml-auto inline-block text-sm underline h-auto p-0">
-                            ¿Olvidaste tu contraseña?
-                        </Button>
+                      <Button variant="link" type="button" className="ml-auto inline-block text-sm underline h-auto p-0">
+                        ¿Olvidaste tu contraseña?
+                      </Button>
                     </DialogTrigger>
                     <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Restablecer Contraseña</DialogTitle>
-                            <DialogDescription>
-                                Ingresa tu correo electrónico y te enviaremos un enlace para que puedas restablecer tu contraseña.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="py-4 space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="reset-email">Correo Electrónico</Label>
-                                <Input
-                                    id="reset-email"
-                                    type="email"
-                                    placeholder="m@example.com"
-                                    value={resetEmail}
-                                    onChange={(e) => setResetEmail(e.target.value)}
-                                    disabled={isResetLoading}
-                                />
-                            </div>
+                      <DialogHeader>
+                        <DialogTitle>Restablecer Contraseña</DialogTitle>
+                        <DialogDescription>
+                          Ingresa tu correo electrónico y te enviaremos un enlace para que puedas restablecer tu contraseña.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="reset-email">Correo Electrónico</Label>
+                          <Input
+                            id="reset-email"
+                            type="email"
+                            placeholder="m@example.com"
+                            value={resetEmail}
+                            onChange={(e) => setResetEmail(e.target.value)}
+                            disabled={isResetLoading}
+                          />
                         </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
-                            <Button type="button" onClick={handleResetPassword} disabled={isResetLoading}>
-                                {isResetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Enviar Correo
-                            </Button>
-                        </DialogFooter>
+                      </div>
+                      <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+                        <Button type="button" onClick={handleResetPassword} disabled={isResetLoading}>
+                          {isResetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Enviar Correo
+                        </Button>
+                      </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                />
+
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="sr-only">
+                      {showPassword ? "Ocultar" : "Mostrar"} contraseña
+                    </span>
+                  </Button>
+                </div>
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -177,7 +198,7 @@ export default function LoginPage() {
               </Button>
             </form>
           </div>
-          
+
           <div className="mt-4 text-center text-sm">
             ¿No tienes una cuenta?{" "}
             <Link href="/auth/register" className="underline">
@@ -187,12 +208,12 @@ export default function LoginPage() {
           <Separator className="my-4" />
           <Button variant="ghost" asChild className="w-full text-muted-foreground">
             <Link href="/">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Volver a la página de inicio
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver a la página de inicio
             </Link>
           </Button>
-        </CardContent>
-      </Card>
-    </div>
+        </CardContent >
+      </Card >
+    </div >
   );
 }

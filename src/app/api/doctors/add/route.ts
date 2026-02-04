@@ -72,14 +72,34 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (error) {
-            console.error('API: Supabase error:', JSON.stringify({
-                code: error.code,
-                message: error.message,
-            }, null, 2));
+            // Log the complete raw error for debugging
+            console.error('API: RAW Supabase error object:', error);
+            console.error('API: Stringified error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
 
-            // 🔐 SEGURIDAD: No exponer detalles internos de errores
+            // Safely extract error details 
+            const errorCode = error?.code || 'UNKNOWN';
+            const errorMessage = error?.message || error?.hint || error?.details || '';
+
+            console.error('API: Error code:', errorCode);
+            console.error('API: Error message:', errorMessage);
+
+            // Determine client-facing message
+            let clientMessage = 'Error al registrar médico';
+
+            if (errorCode === '42703') {
+                clientMessage = 'Faltan columnas en la base de datos. Por favor ejecute la migración 009_update_doctors_patients_schema.sql';
+            } else if (errorCode === '42P01') {
+                clientMessage = 'La tabla de médicos no existe. Por favor ejecute las migraciones de base de datos.';
+            } else if (errorCode === '23505') {
+                clientMessage = 'Ya existe un registro con estos datos (email o cédula duplicados).';
+            } else if (errorCode === '23502') {
+                clientMessage = 'Faltan campos requeridos en el formulario.';
+            } else if (errorMessage) {
+                clientMessage = `Error de base de datos: ${errorMessage}`;
+            }
+
             return NextResponse.json(
-                { error: error.message || 'Failed to add doctor' },
+                { error: clientMessage, code: errorCode, details: errorMessage },
                 { status: 500 }
             );
         }
@@ -88,11 +108,17 @@ export async function POST(request: NextRequest) {
         console.log('API: Doctor added successfully with ID:', data.id);
         return NextResponse.json({ id: data.id, success: true });
     } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error('API: Exception caught:', errorMessage);
+        // Log full error details
+        console.error('API: Exception caught:', error);
+        if (error instanceof Error) {
+            console.error('API: Error name:', error.name);
+            console.error('API: Error message:', error.message);
+            console.error('API: Error stack:', error.stack);
+        }
 
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         return NextResponse.json(
-            { error: 'Internal server error' },
+            { error: `Error interno del servidor: ${errorMessage}` },
             { status: 500 }
         );
     }

@@ -73,7 +73,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const loadingCities = isLoading || isFetchingCities;
 
   // Estado para el formulario de perfil
-  const [age, setAge] = useState<string>('');
+  const [birthDate, setBirthDate] = useState<string>('');
   const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
   const [cedula, setCedula] = useState('');
   const [countryCode, setCountryCode] = useState('+54');
@@ -135,7 +135,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
     if (!user) return;
 
     // Validación de campos obligatorios
-    if (!age || !gender || !cedula || !phone || !city) {
+    if (!birthDate || !gender || !cedula || !phone || !city) {
       toast({
         variant: 'destructive',
         title: 'Campos incompletos',
@@ -171,8 +171,18 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         return;
       }
 
+      // Calcular edad
+      const today = new Date();
+      const birth = new Date(birthDate);
+      let calculatedAge = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        calculatedAge--;
+      }
+
       const updateData = {
-        age: age ? parseInt(age, 10) : null,
+        age: calculatedAge,
+        birthDate: birthDate,
         gender: gender || null,
         cedula: cedula,
         phone: phone ? `${countryCode} ${phone}` : null,
@@ -263,15 +273,33 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  Edad
+                  Fecha de Nacimiento
                 </label>
                 <input
-                  type="number"
-                  placeholder="Ej: 25"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => {
+                    setBirthDate(e.target.value);
+                    if (e.target.value) {
+                      const ageCalc = new Date().getFullYear() - new Date(e.target.value).getFullYear();
+                      // Ajuste simple, una librería como date-fns es más precisa pero esto sirve para feedback visual inmediato
+                      /* const today = new Date();
+                      const birth = new Date(e.target.value);
+                      let ageCalc = today.getFullYear() - birth.getFullYear();
+                      const m = today.getMonth() - birth.getMonth();
+                      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                          ageCalc--;
+                      } */
+                    }
+                  }}
+                  max={new Date().toISOString().split('T')[0]}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+                {birthDate && (
+                  <p className="text-sm text-green-600 font-medium">
+                    Edad calculada: {new Date().getFullYear() - new Date(birthDate).getFullYear() - (new Date().getMonth() < new Date(birthDate).getMonth() || (new Date().getMonth() === new Date(birthDate).getMonth() && new Date().getDate() < new Date(birthDate).getDate()) ? 1 : 0)} años
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

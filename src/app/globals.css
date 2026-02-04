@@ -16,8 +16,8 @@
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
     
-    /* Secondary/Accent: Refined Copper */
-    --secondary: 25 85% 55%;
+    /* Secondary/Accent: Brand Teal (#077a7a) */
+    --secondary: 180 89% 25%;
     --secondary-foreground: 210 40% 98%;
     
     --muted: 210 40% 96.1%;
@@ -28,10 +28,10 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 25 85% 55%; /* Copper Ring Focus */
+    --ring: 180 89% 25%; /* Teal Ring Focus */
     --radius: 0.75rem; /* More rounded, modern */
 
-    --chart-1: 25 85% 55%; /* Copper */
+    --chart-1: 180 89% 25%; /* Teal */
     --chart-2: 222.2 47.4% 11.2%; /* Dark */
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
@@ -50,8 +50,8 @@
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
     
-    /* Secondary: Copper stays vibrant */
-    --secondary: 25 85% 60%;
+    /* Secondary: Brand Teal Bright */
+    --secondary: 180 89% 40%; /* Lighter for dark mode visibility */
     --secondary-foreground: 222.2 47.4% 11.2%;
     
     --muted: 217.2 32.6% 17.5%;
@@ -62,9 +62,9 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 25 85% 60%;
+    --ring: 180 89% 40%;
     
-    --chart-1: 25 85% 60%;
+    --chart-1: 180 89% 40%;
     --chart-2: 210 40% 98%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;

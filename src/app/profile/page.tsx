@@ -34,7 +34,7 @@ import { validateName, validatePhone, validateCedula, validateCity, validateAge 
 
 const PatientProfileSchema = z.object({
   fullName: z.string().min(3, "El nombre completo es requerido."),
-  age: z.number().int().positive("La edad debe ser un número positivo.").optional().nullable(),
+  birthDate: z.string().optional().nullable(),
   gender: z.enum(['masculino', 'femenino', 'otro', '']).optional().nullable(),
   cedula: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
@@ -65,7 +65,7 @@ export default function ProfilePage() {
 
   // State for profile info
   const [fullName, setFullName] = useState('');
-  const [age, setAge] = useState<string>('');
+  const [birthDate, setBirthDate] = useState<string>('');
   const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
   const [cedula, setCedula] = useState('');
   const [documentType, setDocumentType] = useState<DocumentType>('DNI');
@@ -73,12 +73,10 @@ export default function ProfilePage() {
   const [city, setCity] = useState('');
   const [countryCode, setCountryCode] = useState('+54');
 
-  // State for password change
+  // ... (Password state and profileImage state remain unchanged)
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
-  // State for profile image
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -89,7 +87,7 @@ export default function ProfilePage() {
     } else {
       // Actualizar SIEMPRE los campos del formulario cuando el usuario cambie
       setFullName(user.name ?? '');
-      setAge(user.age !== undefined && user.age !== null ? String(user.age) : '');
+      setBirthDate(user.birthDate ?? '');
       setGender(user.gender ?? '');
       setCedula(user.cedula ?? '');
       setDocumentType((user as { documentType?: DocumentType }).documentType ?? 'DNI');
@@ -110,9 +108,11 @@ export default function ProfilePage() {
         setPhone(user.phone ?? '');
       }
     }
-  }, [user?.name, user?.age, user?.gender, user?.cedula, user?.phone, user?.city, user?.profileImage, user, router]);
+  }, [user?.name, user?.birthDate, user?.gender, user?.cedula, user?.phone, user?.city, user?.profileImage, user, router]);
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // ... (handleImageUpload, handleImageSave, removeProfileImage remain unchanged)
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -136,11 +136,51 @@ export default function ProfilePage() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setProfileImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      // Resize and compress image
+      const resizedImage = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = document.createElement("img");
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+            const MAX_WIDTH = 800; // Good balance for avatar quality vs size
+            const MAX_HEIGHT = 800;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx?.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.7)); // Compress to JPEG 70%
+          };
+          img.src = e.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      setProfileImage(resizedImage);
+    } catch (error) {
+      console.error("Error resizing image:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error al procesar imagen',
+        description: 'No se pudo procesar la imagen seleccionada.',
+      });
+    }
   };
 
   const handleImageSave = async () => {
@@ -183,16 +223,16 @@ export default function ProfilePage() {
     const phoneSan = validatePhone(fullPhone);
     const cedulaSan = validateCedula(cedula, documentType);
     const citySan = validateCity(city);
-    const ageSan = validateAge(age);
-    if (!nameSan.isValid || (cedula && !cedulaSan.isValid) || (phone && !phoneSan.isValid) || (city && !citySan.isValid) || (age && !ageSan.isValid)) {
+    //const ageSan = validateAge(age); // Ya no validamos edad manual, se calcula
+
+    if (!nameSan.isValid || (cedula && !cedulaSan.isValid) || (phone && !phoneSan.isValid) || (city && !citySan.isValid)) {
       toast({ variant: 'destructive', title: 'Error de Validación', description: 'Datos inválidos o peligrosos.' });
       return;
     }
 
-    const parsedAge = age ? parseInt(age, 10) : null;
     const result = PatientProfileSchema.safeParse({
       fullName: nameSan.sanitized,
-      age: parsedAge,
+      birthDate: birthDate, // Pasamos birthDate
       gender,
       cedula: cedulaSan.sanitized,
       phone: phoneSan.sanitized,
@@ -229,9 +269,22 @@ export default function ProfilePage() {
       }
     }
 
+    // Calcular edad
+    let calculatedAge = null;
+    if (result.data.birthDate) {
+      const today = new Date();
+      const birth = new Date(result.data.birthDate);
+      calculatedAge = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        calculatedAge--;
+      }
+    }
+
     await updateUser({
       name: result.data.fullName,
-      age: result.data.age,
+      age: calculatedAge,
+      birthDate: result.data.birthDate,
       gender: result.data.gender === '' ? null : result.data.gender,
       cedula: finalCedula, // Mantener la cédula original si ya existe
       documentType: documentType,
@@ -242,8 +295,11 @@ export default function ProfilePage() {
     // Refrescar usuario desde Firestore y actualizar estado global y localStorage
     const freshUser = await supabaseService.findUserByEmail(user.email);
     if (freshUser) {
-      await updateUser(freshUser); // Actualiza el contexto
-      localStorage.setItem('user', JSON.stringify(freshUser));
+      // Necesitamos una manera de obtener el birthDate actualizado si no vino en el fetch inicial (depende de cómo supabaseService construye el objeto)
+      // Pero como updateUser actualiza el estado local también, debería estar bien.
+      const updatedUserWithLocalData = { ...freshUser, birthDate: result.data.birthDate };
+      await updateUser(updatedUserWithLocalData); // Actualiza el contexto
+      localStorage.setItem('user', JSON.stringify(updatedUserWithLocalData));
     }
 
     toast({
@@ -251,6 +307,9 @@ export default function ProfilePage() {
       description: "Tu información personal ha sido guardada correctamente.",
     });
   };
+
+  // ... (JSX continues)
+
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -489,14 +548,19 @@ export default function ProfilePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="age">Edad</Label>
+                    <Label htmlFor="birthDate">Fecha de Nacimiento</Label>
                     <Input
-                      id="age"
-                      type="number"
-                      value={age}
-                      onChange={(e) => setAge(e.target.value)}
-                      placeholder="ej., 30"
+                      id="birthDate"
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
                     />
+                    {birthDate && (
+                      <p className="text-sm text-green-600 font-medium">
+                        Edad: {new Date().getFullYear() - new Date(birthDate).getFullYear() - (new Date().getMonth() < new Date(birthDate).getMonth() || (new Date().getMonth() === new Date(birthDate).getMonth() && new Date().getDate() < new Date(birthDate).getDate()) ? 1 : 0)} años
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="gender">Sexo</Label>

@@ -430,6 +430,7 @@ export type Patient = {
   email: string;
   password: string;
   age: number | null;
+  birthDate?: string | null; // YYYY-MM-DD
   gender: 'masculino' | 'femenino' | 'otro' | null;
   phone: string | null;
   cedula: string | null;

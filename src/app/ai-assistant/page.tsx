@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import Link from "next/link";
+import { AiChatBackground } from "@/components/AiChatBackground";
 
 type Message = {
   sender: "user" | "assistant";
@@ -244,9 +245,10 @@ export default function AiAssistantPage() {
               </div>
             </CardHeader>
 
-            <CardContent className="flex-1 overflow-hidden p-0 flex flex-col bg-gray-50">
+            <CardContent className="flex-1 overflow-hidden p-0 flex flex-col bg-[#f8fbfc] relative">
+              <AiChatBackground />
               {/* Área de mensajes */}
-              <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4">
+              <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 relative z-10">
                 {messages.map((message, index) => (
                   <div
                     key={index}

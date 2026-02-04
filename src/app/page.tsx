@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Search, UserCheck, CalendarDays, Bot, ArrowRight, Star, Building2 } from "lucide-react";
 import React from "react";
 import { InstallPwaBanner } from "@/components/install-pwa-banner";
+import { HealthBackground } from "@/components/HealthBackground";
 
 export default function Home() {
   const heroImageUrl = "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=2000";
@@ -18,7 +19,8 @@ export default function Home() {
         {/* HERO SECTION */}
         <section className="relative overflow-hidden bg-background pt-16 md:pt-32 pb-32">
           {/* Background Decor */}
-          <div className="absolute inset-0 -z-10 h-full w-full bg-white bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-30 dark:bg-black dark:opacity-20 dark:bg-[radial-gradient(#333_1px,transparent_1px)]"></div>
+          <div className="absolute inset-0 -z-20 h-full w-full bg-white bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-30 dark:bg-black dark:opacity-20 dark:bg-[radial-gradient(#333_1px,transparent_1px)]"></div>
+          <HealthBackground />
 
           <div className="container relative mx-auto px-4 text-center">
 
@@ -30,7 +32,7 @@ export default function Home() {
 
             <h1 className="mx-auto max-w-4xl text-5xl font-extrabold tracking-tight text-primary sm:text-7xl md:leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
               Sistema Unificado de <br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-secondary to-orange-600">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-secondary to-teal-500">
                 Medicina Avanzada
               </span>
             </h1>
