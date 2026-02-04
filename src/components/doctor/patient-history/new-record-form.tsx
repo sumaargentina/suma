@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, Sparkles, Wand2 } from 'lucide-react';
+import { Loader2, Save, Sparkles, Wand2, Mic, MicOff } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
 
@@ -26,186 +25,161 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
     // AI States
     const [aiPrompt, setAiPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [isListening, setIsListening] = useState(false);
 
-    // ... (rest of voice code is fine) ...
+    // WHISPER-BASED VOICE RECORDING
+    const [isRecording, setIsRecording] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
 
-    const recognitionRef = useRef<any>(null);
-
-    useEffect(() => {
-        return () => {
-            if (recognitionRef.current) {
-                recognitionRef.current.stop();
-            }
-        };
-    }, []);
-
-    const startListening = async () => {
-        // Verificar soporte del navegador
-        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-            toast({ variant: 'destructive', title: 'Navegador no soportado', description: 'Tu navegador no soporta dictado por voz. Usa Chrome o Edge.' });
-            return;
-        }
-
-        // Verificar que estemos en HTTPS (requerido para micrófono)
-        if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-            toast({
-                variant: 'destructive',
-                title: 'Conexión no segura',
-                description: 'El dictado por voz requiere una conexión HTTPS segura.'
-            });
-            return;
-        }
-
-        // Solicitar permiso de micrófono explícitamente primero
+    const startRecording = async () => {
         try {
-            console.log('🎙️ Solicitando permiso de micrófono...');
+            console.log('🎙️ Solicitando acceso al micrófono...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log('✅ Permiso de micrófono concedido');
-            // Detener el stream inmediatamente, solo lo usamos para obtener permiso
-            stream.getTracks().forEach(track => track.stop());
 
-            // Pequeña pausa para que el navegador procese el cierre del stream
-            await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (permissionError: any) {
-            console.error('❌ Microphone permission error:', permissionError);
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+            });
 
-            if (permissionError.name === 'NotAllowedError' || permissionError.name === 'PermissionDeniedError') {
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                console.log('⏹️ Grabación detenida. Procesando audio...');
+
+                // Stop all tracks
+                stream.getTracks().forEach(track => track.stop());
+
+                // Create audio blob
+                const audioBlob = new Blob(audioChunksRef.current, {
+                    type: mediaRecorder.mimeType
+                });
+
+                console.log('📦 Audio blob creado:', audioBlob.size, 'bytes');
+
+                if (audioBlob.size < 1000) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'Grabación muy corta',
+                        description: 'Por favor, habla un poco más tiempo.'
+                    });
+                    return;
+                }
+
+                // Send to Whisper API
+                await transcribeAudio(audioBlob);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+
+            toast({
+                title: '🎙️ Grabando...',
+                description: 'Habla ahora. Presiona el botón nuevamente para detener.',
+            });
+
+            console.log('🔴 Grabación iniciada');
+
+        } catch (error: any) {
+            console.error('❌ Error accessing microphone:', error);
+
+            if (error.name === 'NotAllowedError') {
                 toast({
                     variant: 'destructive',
                     title: 'Micrófono Bloqueado',
-                    description: 'Haz clic en el icono 🔒 en la barra de dirección y permite el acceso al micrófono. Luego recarga la página.'
-                });
-            } else if (permissionError.name === 'NotFoundError') {
-                toast({
-                    variant: 'destructive',
-                    title: 'Sin Micrófono',
-                    description: 'No se detectó ningún micrófono. Conecta uno e intenta de nuevo.'
-                });
-            } else if (permissionError.name === 'NotReadableError' || permissionError.name === 'AbortError') {
-                toast({
-                    variant: 'destructive',
-                    title: 'Micrófono Ocupado',
-                    description: 'El micrófono está siendo usado por otra aplicación. Ciérrala e intenta de nuevo.'
+                    description: 'Permite el acceso al micrófono en el navegador.'
                 });
             } else {
                 toast({
                     variant: 'destructive',
                     title: 'Error de Audio',
-                    description: `No se pudo acceder al micrófono: ${permissionError.message || permissionError.name}`
+                    description: 'No se pudo acceder al micrófono.'
                 });
             }
-            return;
         }
+    };
 
-        // Ahora iniciar Speech Recognition
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            console.log('⏹️ Deteniendo grabación...');
+        }
+    };
+
+    const transcribeAudio = async (audioBlob: Blob) => {
+        setIsTranscribing(true);
+
         try {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            console.log('🚀 Enviando audio a Whisper API...');
 
-            // Detener instancia previa si existe
-            if (recognitionRef.current) {
-                try {
-                    recognitionRef.current.abort();
-                    recognitionRef.current = null;
-                } catch (e) {
-                    console.warn("Error stopping previous recognition:", e);
-                }
-                // Esperar un poco antes de crear nueva instancia
-                await new Promise(resolve => setTimeout(resolve, 200));
+            const formData = new FormData();
+            // Whisper needs a file with proper extension
+            const audioFile = new File([audioBlob], 'recording.webm', {
+                type: audioBlob.type
+            });
+            formData.append('audio', audioFile);
+
+            const response = await fetch('/api/transcribe', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Transcription failed');
             }
 
-            const recognition = new SpeechRecognition();
-            recognitionRef.current = recognition;
+            const data = await response.json();
+            console.log('✅ Transcripción recibida:', data.text);
 
-            recognition.lang = 'es-AR'; // Español Argentina
-            recognition.continuous = true;
-            recognition.interimResults = true;
+            if (data.text) {
+                setAiPrompt(prev => {
+                    const spacer = prev && !prev.endsWith(' ') ? ' ' : '';
+                    return prev + spacer + data.text;
+                });
 
-            recognition.onstart = () => {
-                console.log('🎤 Speech recognition iniciado');
-                setIsListening(true);
-            };
+                toast({
+                    title: '✅ Texto transcrito',
+                    description: data.text.substring(0, 60) + (data.text.length > 60 ? '...' : ''),
+                    className: 'bg-green-50 border-green-200'
+                });
+            }
 
-            recognition.onresult = (event: any) => {
-                const current = Array.from(event.results)
-                    .map((result: any) => result[0].transcript)
-                    .join('');
-                setAiPrompt(current);
-            };
-
-            recognition.onerror = (event: any) => {
-                const errorType = String(event.error).toLowerCase();
-                console.warn('⚠️ Speech recognition error:', errorType);
-
-                // Ignorar errores comunes de interrupción o silencio
-                if (['aborted', 'no-speech', 'network'].includes(errorType)) {
-                    setIsListening(false);
-                    return;
-                }
-
-                if (errorType === 'not-allowed') {
-                    setIsListening(false);
-                    toast({
-                        variant: 'destructive',
-                        title: 'Micrófono Bloqueado',
-                        description: 'Habilita el permiso de micrófono en la configuración del navegador y recarga la página.'
-                    });
-                    return;
-                }
-
-                if (errorType === 'audio-capture') {
-                    setIsListening(false);
-                    toast({
-                        variant: 'destructive',
-                        title: 'Error de Captura',
-                        description: 'No se pudo capturar audio. Verifica que el micrófono funcione correctamente.'
-                    });
-                    return;
-                }
-
-                setIsListening(false);
-                toast({ variant: 'destructive', title: 'Error de micrófono', description: `Error: ${errorType}. Recarga la página e intenta de nuevo.` });
-            };
-
-            recognition.onend = () => {
-                console.log('🎤 Speech recognition terminado');
-                setIsListening(false);
-                recognitionRef.current = null;
-            };
-
-            console.log('🎤 Iniciando Speech Recognition...');
-            recognition.start();
         } catch (error: any) {
-            console.error("❌ Error starting speech recognition:", error);
-            setIsListening(false);
+            console.error('❌ Transcription error:', error);
             toast({
                 variant: 'destructive',
-                title: 'Error al iniciar dictado',
-                description: error.message || 'No se pudo iniciar el reconocimiento de voz. Recarga la página.'
+                title: 'Error de Transcripción',
+                description: error.message || 'No se pudo transcribir el audio.'
             });
+        } finally {
+            setIsTranscribing(false);
         }
     };
 
-
-    const stopListening = () => {
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.stop();
-            } catch (e) {
-                console.error(e);
-            }
-            setIsListening(false);
-        }
-    };
-
-
-    const toggleMic = () => {
-        if (isListening) {
-            stopListening();
+    const toggleRecording = () => {
+        if (isRecording) {
+            stopRecording();
         } else {
-            startListening();
+            startRecording();
         }
     };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+            }
+        };
+    }, []);
 
     const [formData, setFormData] = useState({
         record_type: 'consultation',
@@ -277,7 +251,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             setLoading(true);
             let validDoctorId = initialDoctorId;
 
-            // 1. Verificar ID Doctor (Cliente - Lectura permitida)
             const { data: checkId } = await supabase.from('doctors').select('id').eq('id', initialDoctorId).maybeSingle();
 
             if (!checkId) {
@@ -291,7 +264,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             }
 
             if (!validDoctorId) {
-                throw new Error('No se pudo identificar tu usuario como doctor. Revisa tu conexión o perfil.');
+                throw new Error('No se pudo identificar tu usuario como doctor.');
             }
 
             const payload = {
@@ -304,7 +277,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
             console.log('🚀 Enviando a API Backend:', payload);
 
-            // USAR API SERVER-SIDE (BYPASS RLS)
             const response = await fetch('/api/medical-records', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -323,7 +295,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             onSuccess();
         } catch (error: any) {
             console.error('❌ Error saving record:', error);
-
             toast({
                 variant: 'destructive',
                 title: 'Error al Guardar',
@@ -333,8 +304,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             setLoading(false);
         }
     };
-
-
 
     return (
         <div className="max-w-2xl mx-auto p-1 space-y-8">
@@ -347,25 +316,32 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                             <Sparkles className="h-5 w-5 fill-indigo-200" />
                             <h3>Escriba Médico Inteligente (AI)</h3>
                         </div>
-                        {/* MIC BUTTON */}
+                        {/* MIC BUTTON - WHISPER BASED */}
                         <Button
                             size="sm"
-                            variant={isListening ? "destructive" : "secondary"}
-                            onClick={toggleMic}
-                            className={`gap-2 ${isListening ? 'animate-pulse' : 'bg-white text-indigo-700 hover:bg-indigo-100'}`}
-                            type="button" // Prevent submitting form
+                            variant={isRecording ? "destructive" : "secondary"}
+                            onClick={toggleRecording}
+                            disabled={isTranscribing}
+                            className={`gap-2 ${isRecording ? 'animate-pulse' : 'bg-white text-indigo-700 hover:bg-indigo-100'}`}
+                            type="button"
                         >
-                            {isListening ? (
+                            {isTranscribing ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Procesando...
+                                </>
+                            ) : isRecording ? (
                                 <>
                                     <span className="relative flex h-3 w-3">
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                         <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                                     </span>
-                                    Escuchando...
+                                    Detener
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-xl">🎙️</span> Dictar
+                                    <Mic className="h-4 w-4" />
+                                    Dictar
                                 </>
                             )}
                         </Button>
@@ -373,8 +349,8 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
                     <div className="space-y-2">
                         <Textarea
-                            placeholder="Presiona 'Dictar' y habla naturalmente..."
-                            className={`bg-white/80 border-indigo-200 focus:border-indigo-400 min-h-[80px] transition-colors ${isListening ? 'border-red-400 ring-2 ring-red-100' : ''}`}
+                            placeholder="Presiona 'Dictar', habla, y presiona 'Detener' cuando termines..."
+                            className={`bg-white/80 border-indigo-200 focus:border-indigo-400 min-h-[80px] transition-colors ${isRecording ? 'border-red-400 ring-2 ring-red-100' : ''}`}
                             value={aiPrompt}
                             onChange={(e) => setAiPrompt(e.target.value)}
                         />
