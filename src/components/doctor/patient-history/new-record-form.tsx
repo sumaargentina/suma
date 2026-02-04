@@ -47,19 +47,34 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             return;
         }
 
+        // Verificar que estemos en HTTPS (requerido para micrófono)
+        if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+            toast({
+                variant: 'destructive',
+                title: 'Conexión no segura',
+                description: 'El dictado por voz requiere una conexión HTTPS segura.'
+            });
+            return;
+        }
+
         // Solicitar permiso de micrófono explícitamente primero
         try {
+            console.log('🎙️ Solicitando permiso de micrófono...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('✅ Permiso de micrófono concedido');
             // Detener el stream inmediatamente, solo lo usamos para obtener permiso
             stream.getTracks().forEach(track => track.stop());
+
+            // Pequeña pausa para que el navegador procese el cierre del stream
+            await new Promise(resolve => setTimeout(resolve, 100));
         } catch (permissionError: any) {
-            console.error('Microphone permission error:', permissionError);
+            console.error('❌ Microphone permission error:', permissionError);
 
             if (permissionError.name === 'NotAllowedError' || permissionError.name === 'PermissionDeniedError') {
                 toast({
                     variant: 'destructive',
                     title: 'Micrófono Bloqueado',
-                    description: 'Haz clic en el icono 🔒 en la barra de dirección y permite el acceso al micrófono.'
+                    description: 'Haz clic en el icono 🔒 en la barra de dirección y permite el acceso al micrófono. Luego recarga la página.'
                 });
             } else if (permissionError.name === 'NotFoundError') {
                 toast({
@@ -67,84 +82,107 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     title: 'Sin Micrófono',
                     description: 'No se detectó ningún micrófono. Conecta uno e intenta de nuevo.'
                 });
+            } else if (permissionError.name === 'NotReadableError' || permissionError.name === 'AbortError') {
+                toast({
+                    variant: 'destructive',
+                    title: 'Micrófono Ocupado',
+                    description: 'El micrófono está siendo usado por otra aplicación. Ciérrala e intenta de nuevo.'
+                });
             } else {
                 toast({
                     variant: 'destructive',
                     title: 'Error de Audio',
-                    description: `No se pudo acceder al micrófono: ${permissionError.message}`
+                    description: `No se pudo acceder al micrófono: ${permissionError.message || permissionError.name}`
                 });
             }
             return;
         }
 
         // Ahora iniciar Speech Recognition
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-        // Detener instancia previa si existe
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.abort();
-            } catch (e) {
-                console.error("Error stopping previous recognition:", e);
-            }
-        }
-
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-
-        recognition.lang = 'es-AR'; // Español Argentina
-        recognition.continuous = true;
-        recognition.interimResults = true;
-
-        recognition.onstart = () => setIsListening(true);
-
-        recognition.onresult = (event: any) => {
-            let finalTranscript = '';
-            // Construir el texto final
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript + ' ';
-                }
-            }
-            const current = Array.from(event.results)
-                .map((result: any) => result[0].transcript)
-                .join('');
-            setAiPrompt(current);
-        };
-
-        recognition.onerror = (event: any) => {
-            const errorType = String(event.error).toLowerCase();
-            // Ignorar errores comunes de interrupción o silencio
-            if (['aborted', 'no-speech', 'network', 'audio-capture'].includes(errorType)) {
-                setIsListening(false);
-                return;
-            }
-            if (errorType === 'not-allowed') {
-                console.warn('Speech recognition not allowed.');
-                setIsListening(false);
-                toast({
-                    variant: 'destructive',
-                    title: 'Micrófono Bloqueado',
-                    description: 'Habilita el permiso de micrófono en la barra de dirección para usar el dictado.'
-                });
-                return;
-            }
-
-            console.error('Speech recognition error:', errorType);
-            setIsListening(false);
-            toast({ variant: 'destructive', title: 'Error de micrófono', description: `Error: ${errorType}. Verifica tu conexión.` });
-        };
-
-        recognition.onend = () => {
-            setIsListening(false);
-            recognitionRef.current = null;
-        };
-
         try {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+            // Detener instancia previa si existe
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.abort();
+                    recognitionRef.current = null;
+                } catch (e) {
+                    console.warn("Error stopping previous recognition:", e);
+                }
+                // Esperar un poco antes de crear nueva instancia
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            const recognition = new SpeechRecognition();
+            recognitionRef.current = recognition;
+
+            recognition.lang = 'es-AR'; // Español Argentina
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onstart = () => {
+                console.log('🎤 Speech recognition iniciado');
+                setIsListening(true);
+            };
+
+            recognition.onresult = (event: any) => {
+                const current = Array.from(event.results)
+                    .map((result: any) => result[0].transcript)
+                    .join('');
+                setAiPrompt(current);
+            };
+
+            recognition.onerror = (event: any) => {
+                const errorType = String(event.error).toLowerCase();
+                console.warn('⚠️ Speech recognition error:', errorType);
+
+                // Ignorar errores comunes de interrupción o silencio
+                if (['aborted', 'no-speech', 'network'].includes(errorType)) {
+                    setIsListening(false);
+                    return;
+                }
+
+                if (errorType === 'not-allowed') {
+                    setIsListening(false);
+                    toast({
+                        variant: 'destructive',
+                        title: 'Micrófono Bloqueado',
+                        description: 'Habilita el permiso de micrófono en la configuración del navegador y recarga la página.'
+                    });
+                    return;
+                }
+
+                if (errorType === 'audio-capture') {
+                    setIsListening(false);
+                    toast({
+                        variant: 'destructive',
+                        title: 'Error de Captura',
+                        description: 'No se pudo capturar audio. Verifica que el micrófono funcione correctamente.'
+                    });
+                    return;
+                }
+
+                setIsListening(false);
+                toast({ variant: 'destructive', title: 'Error de micrófono', description: `Error: ${errorType}. Recarga la página e intenta de nuevo.` });
+            };
+
+            recognition.onend = () => {
+                console.log('🎤 Speech recognition terminado');
+                setIsListening(false);
+                recognitionRef.current = null;
+            };
+
+            console.log('🎤 Iniciando Speech Recognition...');
             recognition.start();
-        } catch (error) {
-            console.error("Error starting recognition:", error);
+        } catch (error: any) {
+            console.error("❌ Error starting speech recognition:", error);
             setIsListening(false);
+            toast({
+                variant: 'destructive',
+                title: 'Error al iniciar dictado',
+                description: error.message || 'No se pudo iniciar el reconocimiento de voz. Recarga la página.'
+            });
         }
     };
 
