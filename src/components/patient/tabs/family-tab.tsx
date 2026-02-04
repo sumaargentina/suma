@@ -583,9 +583,14 @@ export function FamilyTab() {
                                     <Input
                                         id="cedula"
                                         value={formData.cedula}
-                                        onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
+                                        onChange={(e) => {
+                                            // Solo permitir números y máximo 9 dígitos
+                                            const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 9);
+                                            setFormData({ ...formData, cedula: val });
+                                        }}
                                         placeholder="Número"
                                         className="flex-1"
+                                        maxLength={9}
                                     />
                                 </div>
                             </div>
@@ -602,6 +607,7 @@ export function FamilyTab() {
                                         <SelectItem value="masculino">Masculino</SelectItem>
                                         <SelectItem value="femenino">Femenino</SelectItem>
                                         <SelectItem value="otro">Otro</SelectItem>
+                                        <SelectItem value="no_especificar">No especificar</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

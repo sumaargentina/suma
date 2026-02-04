@@ -1,130 +1,244 @@
-
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Clock, User } from "lucide-react";
-import { format, parseISO } from 'date-fns';
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MessageSquare, Clock, User, Loader2, Search } from "lucide-react";
+import { formatDistanceToNow, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '@/lib/auth';
-import type { Appointment } from '@/lib/types';
+import { DoctorPatientChat } from "@/components/chat/DoctorPatientChat";
 
-interface ChatTabProps {
-  appointments?: Appointment[];
-  onOpenChat?: (appointment: Appointment) => void;
+interface Conversation {
+  doctorId: string;
+  patientId: string;
+  patientName: string;
+  patientImage?: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  lastMessageSender: string;
+  unreadCount: number;
 }
 
-export function ChatTab({ appointments = [], onOpenChat }: ChatTabProps) {
-  const { } = useAuth();
-  
-  // Filtrar solo citas que tienen mensajes
-  const chatAppointments = useMemo(() => {
-    return appointments.filter(appt => 
-      appt.messages && appt.messages.length > 0
-    );
-  }, [appointments]);
+interface ChatTabProps {
+  doctorId?: string;
+}
 
-  const getLastMessage = (appointment: Appointment) => {
-    if (!appointment.messages || appointment.messages.length === 0) return null;
-    return appointment.messages[appointment.messages.length - 1];
+export function ChatTab({ doctorId }: ChatTabProps) {
+  const { user } = useAuth();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const effectiveDoctorId = doctorId || user?.id;
+
+  // Filter conversations based on search term
+  const filteredConversations = conversations.filter(conversation =>
+    conversation.patientName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Fetch conversations
+  const fetchConversations = useCallback(async () => {
+    if (!effectiveDoctorId) return;
+
+    try {
+      const response = await fetch(`/api/chat/conversations?doctorId=${effectiveDoctorId}`);
+      if (!response.ok) throw new Error('Error fetching conversations');
+
+      const data = await response.json();
+      setConversations(data);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [effectiveDoctorId]);
+
+  useEffect(() => {
+    fetchConversations();
+
+    // Poll for updates every 30 seconds
+    const interval = setInterval(fetchConversations, 30000);
+    return () => clearInterval(interval);
+  }, [fetchConversations]);
+
+  const handleOpenChat = (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    setIsChatOpen(true);
   };
 
-  const getUnreadCount = (appointment: Appointment) => {
-    if (!appointment.messages) return 0;
-    // Contar mensajes del paciente que no han sido leídos
-    return appointment.messages.filter(msg => 
-      msg.sender === 'patient' && !appointment.readByDoctor
-    ).length;
+  const handleCloseChat = () => {
+    setIsChatOpen(false);
+    setSelectedConversation(null);
+    // Refresh conversations to update unread counts
+    fetchConversations();
   };
 
-  if (chatAppointments.length === 0) {
+  if (isLoading) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Chat con Pacientes</CardTitle>
-          <CardDescription>Aquí puedes comunicarte directamente con tus pacientes.</CardDescription>
+          <CardDescription>Cargando conversaciones...</CardDescription>
         </CardHeader>
-        <CardContent className="text-center text-muted-foreground py-12">
-          <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-          <p>No hay conversaciones activas.</p>
-          <p className="text-sm mt-2">Los chats aparecerán aquí cuando los pacientes envíen mensajes.</p>
+        <CardContent className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            Chat con Pacientes ({chatAppointments.length})
-          </CardTitle>
-          <CardDescription>
-            Conversaciones activas con tus pacientes
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {chatAppointments.map((appointment) => {
-              const lastMessage = getLastMessage(appointment);
-              const unreadCount = getUnreadCount(appointment);
-              
-              return (
-                <div key={appointment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3 flex-1">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        <User className="h-5 w-5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium truncate">{appointment.patientName}</h4>
-                        {unreadCount > 0 && (
-                          <Badge variant="destructive" className="text-xs">
-                            {unreadCount} nuevo{unreadCount > 1 ? 's' : ''}
-                          </Badge>
+    <>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Chat con Pacientes ({conversations.length})
+                </CardTitle>
+                <CardDescription>
+                  Conversaciones continuas con tus pacientes
+                </CardDescription>
+              </div>
+
+              {conversations.length > 0 && (
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Buscar paciente..."
+                    className="pl-8"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {conversations.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12">
+                <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p>No hay conversaciones activas.</p>
+                <p className="text-sm mt-2">Los chats aparecerán aquí cuando los pacientes envíen mensajes.</p>
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12">
+                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p>No se encontraron pacientes con ese nombre.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredConversations.map((conversation) => (
+                  <div
+                    key={`${conversation.doctorId}-${conversation.patientId}`}
+                    className="flex items-center justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer overflow-hidden"
+                    onClick={() => handleOpenChat(conversation)}
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
+                      <Avatar className="h-10 w-10 flex-shrink-0">
+                        {conversation.patientImage ? (
+                          <AvatarImage src={conversation.patientImage} />
+                        ) : (
+                          <AvatarFallback>
+                            <User className="h-5 w-5" />
+                          </AvatarFallback>
                         )}
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        Cita: {format(parseISO(appointment.date), 'dd/MM/yyyy', { locale: es })} - {appointment.time}
-                      </p>
-                      {lastMessage && (
-                        <p className="text-sm text-muted-foreground truncate mt-1">
+                      </Avatar>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium truncate">
+                            {conversation.patientName}
+                          </h4>
+                          {conversation.unreadCount > 0 && (
+                            <Badge variant="destructive" className="text-xs flex-shrink-0">
+                              {conversation.unreadCount} nuevo{conversation.unreadCount > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate mt-1 max-w-full">
                           <span className="font-medium">
-                            {lastMessage.sender === 'doctor' ? 'Tú' : appointment.patientName}:
-                          </span> {lastMessage.text}
+                            {conversation.lastMessageSender === 'doctor' ? 'Tú' : conversation.patientName}:
+                          </span>{' '}
+                          {conversation.lastMessage}
                         </p>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    {lastMessage && (
+                    <div className="flex flex-col items-end gap-2">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        {format(parseISO(lastMessage.timestamp), 'HH:mm', { locale: es })}
+                        {formatDistanceToNow(parseISO(conversation.lastMessageAt), {
+                          locale: es,
+                          addSuffix: true
+                        })}
                       </div>
-                    )}
-                    <Button 
-                      size="sm" 
-                      onClick={() => onOpenChat?.(appointment)}
-                      className="whitespace-nowrap"
-                    >
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      {unreadCount > 0 ? 'Ver mensajes' : 'Abrir chat'}
-                    </Button>
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenChat(conversation);
+                        }}
+                        className="whitespace-nowrap"
+                      >
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        {conversation.unreadCount > 0 ? 'Ver mensajes' : 'Abrir chat'}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Chat Dialog */}
+      <Dialog open={isChatOpen} onOpenChange={(open) => !open && handleCloseChat()}>
+        <DialogContent className="sm:max-w-[500px] h-[80vh] flex flex-col p-0">
+          <DialogHeader className="p-4 border-b">
+            <DialogTitle className="flex items-center gap-2">
+              <Avatar className="h-8 w-8">
+                {selectedConversation?.patientImage ? (
+                  <AvatarImage src={selectedConversation.patientImage} />
+                ) : (
+                  <AvatarFallback>
+                    {selectedConversation?.patientName?.charAt(0) || '?'}
+                  </AvatarFallback>
+                )}
+              </Avatar>
+              <span>Chat con {selectedConversation?.patientName}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedConversation && effectiveDoctorId && (
+            <DoctorPatientChat
+              doctorId={effectiveDoctorId}
+              patientId={selectedConversation.patientId}
+              currentUserType="doctor"
+              otherPartyName={selectedConversation.patientName}
+              otherPartyImage={selectedConversation.patientImage}
+              currentUserName={user?.name || 'Doctor'}
+              currentUserImage={undefined}
+              className="flex-1"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

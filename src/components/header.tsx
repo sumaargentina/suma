@@ -589,6 +589,12 @@ export function Header() {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
+                      <Link href="/patient/chats">
+                        <MessageSquare className="mr-2 h-4 w-4" />
+                        <span>Mis Mensajes</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link href="/favorites">
                         <Heart className="mr-2 h-4 w-4" />
                         <span>Mis Favoritos</span>
@@ -896,6 +902,11 @@ export function Header() {
                           <SheetClose asChild>
                             <Link href="/profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
                               <User className="h-4 w-4 text-primary" /> Mi Perfil
+                            </Link>
+                          </SheetClose>
+                          <SheetClose asChild>
+                            <Link href="/patient/chats" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
+                              <MessageSquare className="h-4 w-4 text-primary" /> Mis Mensajes
                             </Link>
                           </SheetClose>
                           <SheetClose asChild>

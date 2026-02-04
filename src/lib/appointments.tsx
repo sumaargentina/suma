@@ -8,7 +8,7 @@ import { useAuth } from './auth';
 
 interface AppointmentContextType {
   appointments: Appointment[];
-  addAppointment: (newAppointmentData: Omit<Appointment, 'id'| 'patientId' | 'patientName'>) => Promise<void>;
+  addAppointment: (newAppointmentData: Omit<Appointment, 'id' | 'patientId' | 'patientName'>) => Promise<void>;
   updateAppointmentConfirmation: (appointmentId: string, status: 'Confirmada' | 'Cancelada') => Promise<void>;
   refreshAppointments: () => Promise<void>;
 }
@@ -35,25 +35,25 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
   // Actualización automática cada 30 segundos para pacientes
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
-    
+
     if (user?.role === 'patient' && user.id) {
       interval = setInterval(fetchAppointments, 30000); // cada 30 segundos
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [user, fetchAppointments]);
 
   const addAppointment = useCallback(async (newAppointmentData: Omit<Appointment, 'id' | 'patientId' | 'patientName'>) => {
-    if (!user || user.role !== 'patient') return; 
+    if (!user || user.role !== 'patient') return;
 
     const newAppointment: Omit<Appointment, 'id'> = {
       ...newAppointmentData,
       patientId: user.id,
       patientName: user.name,
     };
-    
+
     await supabaseService.addAppointment(newAppointment);
     // Enviar correo de confirmación al paciente
     try {
@@ -67,7 +67,12 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
       const safeServices = newAppointment.services || [];
       const safeTotalPrice = newAppointment.totalPrice ?? 0;
       const safePaymentMethod = newAppointment.paymentMethod || 'efectivo';
-      const safePaymentStatus = newAppointment.paymentStatus || 'Pendiente';
+      const safeDiscountAmount = newAppointment.discountAmount ?? 0;
+      const safeAppliedCoupon = newAppointment.appliedCoupon || '';
+      const safeConsultationType = (newAppointment as any).consultationType || 'presencial';
+      const safeAddress = newAppointment.doctorAddress || '';
+      // Si es cita para familiar, el patientName es el nombre del familiar
+      const safeFamilyMemberName = (newAppointment as any).familyMemberId ? newAppointment.patientName : '';
 
       console.log('Datos para correo de cita:', {
         email: safeEmail,
@@ -80,10 +85,15 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
         services: safeServices,
         totalPrice: safeTotalPrice,
         paymentMethod: safePaymentMethod,
-        paymentStatus: safePaymentStatus,
+        discountAmount: safeDiscountAmount,
+        appliedCoupon: safeAppliedCoupon,
+        consultationType: safeConsultationType,
+        address: safeAddress,
+        familyMemberName: safeFamilyMemberName,
       });
 
-      await fetch('/api/send-appointment-email', {
+      console.log('📧 Enviando correo de confirmación a:', safeEmail);
+      const emailResponse = await fetch('/api/send-appointment-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -97,12 +107,23 @@ export function AppointmentProvider({ children }: { children: ReactNode }) {
           services: safeServices,
           totalPrice: safeTotalPrice,
           paymentMethod: safePaymentMethod,
-          paymentStatus: safePaymentStatus,
+          discountAmount: safeDiscountAmount,
+          appliedCoupon: safeAppliedCoupon,
+          consultationType: safeConsultationType,
+          address: safeAddress,
+          familyMemberName: safeFamilyMemberName,
         }),
       });
+
+      if (emailResponse.ok) {
+        console.log('✅ Correo de confirmación enviado exitosamente');
+      } else {
+        const errorData = await emailResponse.json().catch(() => ({}));
+        console.error('❌ Error al enviar correo:', emailResponse.status, errorData);
+      }
     } catch (e) {
       // No bloquear el flujo si falla el correo
-      console.error('Error enviando correo de cita:', e);
+      console.error('❌ Error enviando correo de cita:', e);
     }
     await fetchAppointments();
   }, [user, fetchAppointments]);

@@ -126,22 +126,60 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ API: Appointment created successfully with ID:', data.id);
 
-        // Send confirmation notification (email/WhatsApp/push)
+        // Send confirmation email via Gmail endpoint
         try {
-            const notificationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/notifications/confirmation`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ appointmentId: data.id }),
-            });
+            // Fetch patient and doctor info for the email
+            const { data: patient } = await supabaseAdmin
+                .from('patients')
+                .select('email, name')
+                .eq('id', data.patient_id)
+                .single();
 
-            if (notificationResponse.ok) {
-                console.log('📧 Confirmation notification sent for appointment:', data.id);
+            const { data: doctor } = await supabaseAdmin
+                .from('doctors')
+                .select('name, specialty, address')
+                .eq('id', data.doctor_id)
+                .single();
+
+            if (patient?.email) {
+                console.log('📧 Sending confirmation email to:', patient.email);
+
+                const emailPayload = {
+                    email: patient.email,
+                    name: patient.name || data.patient_name,
+                    date: data.date,
+                    time: data.time,
+                    doctor: doctor?.name || data.doctor_name,
+                    specialty: doctor?.specialty || data.specialty,
+                    consultationFee: data.consultation_fee,
+                    services: data.services || [],
+                    totalPrice: data.total_price,
+                    paymentMethod: data.payment_method,
+                    discountAmount: data.discount_amount || 0,
+                    appliedCoupon: data.applied_coupon || null,
+                    consultationType: data.consultation_type || 'presencial',
+                    address: doctor?.address || data.doctor_address || '',
+                    familyMemberName: data.family_member_name || null,
+                };
+
+                const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/send-appointment-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(emailPayload),
+                });
+
+                if (emailResponse.ok) {
+                    console.log('✅ Confirmation email sent successfully for appointment:', data.id);
+                } else {
+                    const errorData = await emailResponse.json().catch(() => ({}));
+                    console.warn('⚠️ Failed to send confirmation email:', emailResponse.status, errorData);
+                }
             } else {
-                console.warn('⚠️ Failed to send confirmation notification, but appointment was created');
+                console.warn('⚠️ No patient email found for appointment:', data.id);
             }
-        } catch (notifError) {
-            // Don't fail the appointment creation if notification fails
-            console.warn('⚠️ Error sending confirmation notification:', notifError);
+        } catch (emailError) {
+            // Don't fail the appointment creation if email fails
+            console.warn('⚠️ Error sending confirmation email:', emailError);
         }
 
         return NextResponse.json(toCamelCase(data as Record<string, unknown>));

@@ -35,6 +35,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { WelcomeModal } from '@/components/welcome-modal';
+import { DoctorPatientChat } from '@/components/chat/DoctorPatientChat';
 
 
 function AppointmentCard({
@@ -138,10 +139,23 @@ function AppointmentCard({
         <Separator orientation="vertical" className="h-auto hidden sm:block mx-2" />
         <Separator orientation="horizontal" className="w-full block sm:hidden my-2" />
         <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between gap-2">
-          <div className="text-right">
-            <p className="font-bold text-base sm:text-lg text-primary">${appointment.totalPrice.toFixed(2)}</p>
+          <div className="text-right space-y-1">
+            {/* Desglose de precios */}
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <p>Consulta: <span className="font-mono">${(appointment.consultationFee || 0).toFixed(2)}</span></p>
+              {appointment.services && appointment.services.length > 0 && (
+                <p>Servicios: <span className="font-mono">${appointment.services.reduce((sum, s) => sum + (s.price || 0), 0).toFixed(2)}</span></p>
+              )}
+              {appointment.discountAmount && appointment.discountAmount > 0 && (
+                <p className="text-green-600">
+                  Descuento: <span className="font-mono">-${appointment.discountAmount.toFixed(2)}</span>
+                  {appointment.appliedCoupon && <span className="ml-1">({appointment.appliedCoupon})</span>}
+                </p>
+              )}
+            </div>
+            <p className="font-bold text-base sm:text-lg text-primary">Total: ${appointment.totalPrice.toFixed(2)}</p>
             <p className="text-xs text-muted-foreground">
-              {appointment.paymentMethod === 'efectivo' ? 'Pago en efectivo' : 'Transferencia bancaria'}
+              {appointment.paymentMethod === 'efectivo' ? '💵 Pago en efectivo' : '💳 Transferencia'}
             </p>
           </div>
           {isPast ? (
@@ -800,128 +814,122 @@ export default function DashboardPage() {
           setClinicChatMessages([]);
         }
       }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <Avatar>
-                {isClinicChat && selectedClinic ? (
-                  <>
-                    <AvatarImage src={selectedClinic.logoUrl} alt={selectedClinic.name} />
-                    <AvatarFallback>{selectedClinic.name?.charAt(0)}</AvatarFallback>
-                  </>
-                ) : (
-                  <>
+        <DialogContent className={isClinicChat ? "sm:max-w-[425px]" : "sm:max-w-[500px] h-[80vh] flex flex-col p-0"}>
+          {isClinicChat ? (
+            // Clinic Chat - Keep existing implementation
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-3">
+                  <Avatar>
+                    <AvatarImage src={selectedClinic?.logoUrl} alt={selectedClinic?.name} />
+                    <AvatarFallback>{selectedClinic?.name?.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  Chat con {selectedClinic?.name}
+                </DialogTitle>
+                <DialogDescription>
+                  Comunicación directa con la clínica.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="p-4 h-96 flex flex-col gap-4 bg-muted/50 rounded-lg">
+                <div className="flex-1 space-y-4 overflow-y-auto pr-2 relative">
+                  {clinicChatMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <MessageSquare className="h-8 w-8 mb-2 opacity-50" />
+                      <p className="text-sm">Inicia la conversación con la clínica</p>
+                    </div>
+                  ) : (
+                    clinicChatMessages.map((msg, idx, arr) => {
+                      const isLast = idx === arr.length - 1;
+                      return (
+                        <div
+                          key={msg.id}
+                          ref={isLast ? chatEndRef : undefined}
+                          className={cn("flex items-end gap-2", msg.senderType === 'patient' && 'justify-end')}
+                        >
+                          {msg.senderType === 'clinic' && (
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={selectedClinic?.logoUrl} />
+                              <AvatarFallback>{selectedClinic?.name?.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                          )}
+                          <div className={cn("p-3 rounded-lg max-w-xs shadow-sm", msg.senderType === 'patient' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-background rounded-bl-none')}>
+                            <p className="text-sm">{msg.message}</p>
+                            <p className="text-xs text-right mt-1 opacity-70">{formatDistanceToNow(new Date(msg.createdAt), { locale: es, addSuffix: true })}</p>
+                          </div>
+                          {msg.senderType === 'patient' && (
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={(user as any).profileImage ?? undefined} />
+                              <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleScrollToEnd}
+                    className="absolute bottom-2 right-2 bg-primary text-primary-foreground rounded-full p-2 shadow-lg hover:bg-primary/80 focus:outline-none"
+                    aria-label="Ir al último mensaje"
+                  >
+                    <ArrowDown className="h-5 w-5" />
+                  </button>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center gap-2">
+                  <Input
+                    placeholder="Escribe tu mensaje..."
+                    className="flex-1"
+                    value={chatMessage}
+                    onChange={(e) => setChatMessage(e.target.value)}
+                    disabled={isSendingMessage}
+                  />
+                  <Button type="submit" disabled={isSendingMessage || !chatMessage.trim()}>
+                    {isSendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </form>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cerrar
+                  </Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          ) : (
+            // Doctor Chat - Use new continuous chat system
+            <>
+              <DialogHeader className="p-4 border-b">
+                <DialogTitle className="flex items-center gap-3">
+                  <Avatar>
                     <AvatarImage src={selectedChatDoctor?.profileImage} alt={selectedChatDoctor?.name} />
                     <AvatarFallback>{selectedChatDoctor?.name?.charAt(0)}</AvatarFallback>
-                  </>
-                )}
-              </Avatar>
-              {isClinicChat && selectedClinic ? `Chat con ${selectedClinic.name}` : `Chat con Dr. ${selectedChatDoctor?.name}`}
-            </DialogTitle>
-            <DialogDescription>
-              {isClinicChat && selectedClinic
-                ? `Comunicación directa con la clínica.`
-                : `Conversación sobre la cita del ${selectedChatAppointment && format(new Date(selectedChatAppointment.date + 'T00:00:00'), 'dd/MM/yyyy', { locale: es })}.`
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <div className="p-4 h-96 flex flex-col gap-4 bg-muted/50 rounded-lg">
-            <div className="flex-1 space-y-4 overflow-y-auto pr-2 relative">
-              {isClinicChat ? (
-                // Clinic Chat Messages
-                clinicChatMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                    <MessageSquare className="h-8 w-8 mb-2 opacity-50" />
-                    <p className="text-sm">Inicia la conversación con la clínica</p>
+                  </Avatar>
+                  <div>
+                    <span>Chat con Dr. {selectedChatDoctor?.name}</span>
+                    {selectedChatDoctor?.specialty && (
+                      <p className="text-xs font-normal text-muted-foreground">
+                        {selectedChatDoctor.specialty}
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  clinicChatMessages.map((msg, idx, arr) => {
-                    const isLast = idx === arr.length - 1;
-                    return (
-                      <div
-                        key={msg.id}
-                        ref={isLast ? chatEndRef : undefined}
-                        className={cn("flex items-end gap-2", msg.senderType === 'patient' && 'justify-end')}
-                      >
-                        {msg.senderType === 'clinic' && (
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={selectedClinic?.logoUrl} />
-                            <AvatarFallback>{selectedClinic?.name?.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className={cn("p-3 rounded-lg max-w-xs shadow-sm", msg.senderType === 'patient' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-background rounded-bl-none')}>
-                          <p className="text-sm">{msg.message}</p>
-                          <p className="text-xs text-right mt-1 opacity-70">{formatDistanceToNow(new Date(msg.createdAt), { locale: es, addSuffix: true })}</p>
-                        </div>
-                        {msg.senderType === 'patient' && (
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={(user as any).profileImage ?? undefined} />
-                            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                        )}
-                      </div>
-                    );
-                  })
-                )
-              ) : (
-                // Doctor Chat Messages (existing)
-                (selectedChatAppointment?.messages || []).map((msg, idx, arr) => {
-                  const isLast = idx === arr.length - 1;
-                  return (
-                    <div
-                      key={msg.id}
-                      ref={isLast ? chatEndRef : undefined}
-                      className={cn("flex items-end gap-2", msg.sender === 'patient' && 'justify-end')}
-                    >
-                      {msg.sender === 'doctor' && (
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={selectedChatDoctor?.profileImage} />
-                          <AvatarFallback>{selectedChatDoctor?.name?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className={cn("p-3 rounded-lg max-w-xs shadow-sm", msg.sender === 'patient' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-background rounded-bl-none')}>
-                        <p className="text-sm">{msg.text}</p>
-                        <p className="text-xs text-right mt-1 opacity-70">{formatDistanceToNow(new Date(msg.timestamp), { locale: es, addSuffix: true })}</p>
-                      </div>
-                      {msg.sender === 'patient' && (
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={(user as any).profileImage ?? undefined} />
-                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  );
-                })
+                </DialogTitle>
+              </DialogHeader>
+
+              {selectedChatAppointment?.doctorId && user?.id && (
+                <DoctorPatientChat
+                  doctorId={selectedChatAppointment.doctorId}
+                  patientId={user.id}
+                  currentUserType="patient"
+                  otherPartyName={selectedChatDoctor?.name || 'Doctor'}
+                  otherPartyImage={selectedChatDoctor?.profileImage}
+                  currentUserName={user.name}
+                  currentUserImage={(user as any).profileImage}
+                  className="flex-1"
+                />
               )}
-              <button
-                type="button"
-                onClick={handleScrollToEnd}
-                className="absolute bottom-2 right-2 bg-primary text-primary-foreground rounded-full p-2 shadow-lg hover:bg-primary/80 focus:outline-none"
-                aria-label="Ir al último mensaje"
-              >
-                <ArrowDown className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center gap-2">
-              <Input
-                placeholder="Escribe tu mensaje..."
-                className="flex-1"
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                disabled={isSendingMessage}
-              />
-              <Button type="submit" disabled={isSendingMessage || !chatMessage.trim()}>
-                {isSendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </form>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cerrar
-              </Button>
-            </DialogClose>
-          </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

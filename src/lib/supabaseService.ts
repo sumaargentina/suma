@@ -3206,3 +3206,59 @@ export const getClinicSupportTickets = async (clinicId: string): Promise<AdminSu
     }));
 };
 
+
+export const getDoctorAppointmentsWithPatientData = async (doctorId: string): Promise<Appointment[]> => {
+    try {
+        const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+
+        // 1. Obtener citas primero (sin JOIN para evitar errores de FK ambigua)
+        const { data: appointmentsData, error: apptError } = await client
+            .from('appointments')
+            .select('*')
+            .eq('doctor_id', doctorId);
+
+        if (apptError) throw new Error(apptError.message || String(apptError));
+
+        if (!appointmentsData || appointmentsData.length === 0) return [];
+
+        // 2. Obtener IDs únicos de pacientes para buscar sus teléfonos actuales
+        // Filtramos nulls o undefineds por seguridad
+        const patientIds = [...new Set(appointmentsData
+            .map((a: any) => a.patient_id)
+            .filter((id: any) => id)
+        )];
+
+        let patientPhoneMap = new Map<string, string>();
+
+        if (patientIds.length > 0) {
+            const { data: patientsData, error: patError } = await client
+                .from('patients')
+                .select('id, phone')
+                .in('id', patientIds);
+
+            if (patError) {
+                console.error('Error fetching patient phones (continuing with stored phones):', patError);
+            } else if (patientsData) {
+                patientsData.forEach((p: any) => {
+                    if (p.phone) patientPhoneMap.set(p.id, p.phone);
+                });
+            }
+        }
+
+        // 3. Combinar y retornar
+        return appointmentsData.map((item: any) => {
+            const appointment = toCamelCase(item) as Appointment;
+
+            // Si tenemos el teléfono actualizado del paciente, lo usamos
+            // De lo contrario, queda el que ya tenía la cita (appointment.patientPhone)
+            if (item.patient_id && patientPhoneMap.has(item.patient_id)) {
+                appointment.patientPhone = patientPhoneMap.get(item.patient_id);
+            }
+
+            return appointment;
+        });
+    } catch (error) {
+        console.error('Error fetching doctor appointments with patient data:', error);
+        return [];
+    }
+};

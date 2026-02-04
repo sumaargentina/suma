@@ -18,11 +18,14 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText, Users, Phone } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText, Users, Phone, User } from "lucide-react";
 import { format, parseISO, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
 import Image from 'next/image';
+import { DoctorPatientChat } from "@/components/chat/DoctorPatientChat";
+import { useAuth } from "@/lib/auth";
 
 interface AppointmentDetailDialogProps {
     isOpen: boolean;
@@ -30,7 +33,9 @@ interface AppointmentDetailDialogProps {
     appointment: Appointment | null;
     doctorServices: Service[];
     onUpdateAppointment: (id: string, data: Partial<Appointment>) => void;
-    onOpenChat: (type: 'chat', appointment: Appointment) => void;
+    onOpenChat?: (type: 'chat', appointment: Appointment) => void;
+    doctorId?: string;
+    doctorName?: string;
 }
 
 export function AppointmentDetailDialog({
@@ -40,13 +45,22 @@ export function AppointmentDetailDialog({
     doctorServices,
     onUpdateAppointment,
     onOpenChat,
+    doctorId: propDoctorId,
+    doctorName: propDoctorName,
 }: AppointmentDetailDialogProps) {
+    const { user } = useAuth();
     const [clinicalNotes, setClinicalNotes] = useState("");
     const [prescription, setPrescription] = useState("");
     const [editableServices, setEditableServices] = useState<Service[]>([]);
     const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+    const [isChatDialogOpen, setIsChatDialogOpen] = useState(false);
     const [familyMemberInfo, setFamilyMemberInfo] = useState<FamilyMember | null>(null);
     const [patientInfo, setPatientInfo] = useState<any>(null);
+
+    // Use the account holder's patient ID for chat (bookedByPatientId), not the family member
+    const chatPatientId = appointment?.bookedByPatientId || appointment?.patientId;
+    const effectiveDoctorId = propDoctorId || appointment?.doctorId || user?.id;
+    const effectiveDoctorName = propDoctorName || user?.name || 'Doctor';
 
     const editableTotalPrice =
         (appointment?.consultationFee || 0) +
@@ -171,12 +185,12 @@ export function AppointmentDetailDialog({
                                         <div className="flex items-center gap-2">
                                             <p className="font-medium text-lg">{appointment.patientName}</p>
                                             {patientAge !== null && (
-                                                <Badge variant="secondary" className="text-[10px] ml-2 h-5">
+                                                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
                                                     {patientAge} años
-                                                </Badge>
+                                                </span>
                                             )}
                                             {(appointment.familyMemberId || (appointment.bookedByPatientId && appointment.bookedByPatientId !== appointment.patientId)) && (
-                                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+                                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
                                                     Familiar
                                                 </Badge>
                                             )}
@@ -379,7 +393,9 @@ export function AppointmentDetailDialog({
 
                     </div>
                     <DialogFooter className="gap-2 sm:justify-end pt-4 border-t">
-                        <Button type="button" variant="ghost" onClick={() => { onOpenChat('chat', appointment); onOpenChange(false); }}><MessageSquare className="mr-2 h-4 w-4" />Abrir Chat</Button>
+                        <Button type="button" variant="ghost" onClick={() => setIsChatDialogOpen(true)}>
+                            <MessageSquare className="mr-2 h-4 w-4" />Abrir Chat
+                        </Button>
                         <DialogClose asChild><Button type="button" variant="outline">Cerrar</Button></DialogClose>
                     </DialogFooter>
                 </DialogContent>
@@ -428,6 +444,40 @@ export function AppointmentDetailDialog({
                             <Button variant="outline">Cerrar</Button>
                         </DialogClose>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Chat Dialog - Uses continuous chat system */}
+            <Dialog open={isChatDialogOpen} onOpenChange={setIsChatDialogOpen}>
+                <DialogContent className="sm:max-w-[500px] h-[80vh] flex flex-col p-0">
+                    <DialogHeader className="p-4 border-b">
+                        <DialogTitle className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                                <AvatarFallback>
+                                    <User className="h-4 w-4" />
+                                </AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <span>Chat con {patientInfo?.name || appointment?.bookedByName || appointment?.patientName}</span>
+                                {appointment?.familyMemberId && (
+                                    <p className="text-xs font-normal text-muted-foreground">
+                                        (Titular de cuenta - Cita para: {appointment.patientName})
+                                    </p>
+                                )}
+                            </div>
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {chatPatientId && effectiveDoctorId && (
+                        <DoctorPatientChat
+                            doctorId={effectiveDoctorId}
+                            patientId={chatPatientId}
+                            currentUserType="doctor"
+                            otherPartyName={patientInfo?.name || appointment?.bookedByName || appointment?.patientName || 'Paciente'}
+                            currentUserName={effectiveDoctorName}
+                            className="flex-1"
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
         </>

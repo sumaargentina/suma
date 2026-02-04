@@ -594,32 +594,42 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                   Distribución
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Ingresos</span>
-                    <span className="font-medium">${selectedStats.totalRevenue.toFixed(2)}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-green-600 h-2 rounded-full"
-                      style={{ width: `${selectedStats.totalRevenue > 0 ? 100 : 0}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Gastos</span>
-                    <span className="font-medium">${selectedStats.totalExpenses.toFixed(2)}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-red-600 h-2 rounded-full"
-                      style={{ width: `${selectedStats.totalRevenue > 0 ? (selectedStats.totalExpenses / selectedStats.totalRevenue) * 100 : 0}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </CardContent>
+              <div className="space-y-4">
+                {(() => {
+                  const maxValue = Math.max(selectedStats.totalRevenue, selectedStats.totalExpenses) || 1;
+                  const revenuePercentage = (selectedStats.totalRevenue / maxValue) * 100;
+                  const expensesPercentage = (selectedStats.totalExpenses / maxValue) * 100;
+
+                  return (
+                    <>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Ingresos</span>
+                          <span className="font-medium">${selectedStats.totalRevenue.toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-green-600 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${revenuePercentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Gastos</span>
+                          <span className="font-medium">${selectedStats.totalExpenses.toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-red-600 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${expensesPercentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
             </Card>
           </div>
         </TabsContent>

@@ -16,6 +16,7 @@ import Image from 'next/image';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { uploadPublicImage } from '@/lib/supabaseService';
+import { CountryCodeSelect } from '@/components/ui/country-code-select';
 
 const DoctorProfileSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
@@ -45,14 +46,31 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
 
   const [documentType, setDocumentType] = useState<DocumentType>(doctorData.documentType || 'DNI');
 
-  // Logic for phone parsing
-  const getInitialPhoneData = (fullPhone: string) => {
+  // Logic for phone parsing - ordenar códigos por longitud descendente para evitar conflictos
+  const getInitialPhoneData = (fullPhone: string | undefined | null): { code: string; number: string } => {
     if (!fullPhone) return { code: '+54', number: '' };
-    const found = COUNTRY_CODES.find(c => fullPhone.startsWith(c.code));
-    if (found) {
-      return { code: found.code, number: fullPhone.replace(found.code, '').trim() };
+
+    if (fullPhone.startsWith('+')) {
+      // Ordenar códigos por longitud descendente para evitar que +5 coincida antes que +58
+      const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+
+      for (const c of sortedCodes) {
+        if (fullPhone.startsWith(c.code)) {
+          // Limpiar espacios y caracteres no numéricos del número
+          const numberPart = fullPhone.slice(c.code.length).replace(/\D/g, '');
+          return { code: c.code, number: numberPart };
+        }
+      }
+
+      // Fallback: tomar los primeros caracteres como código
+      const possibleCode = fullPhone.substring(0, 3);
+      if (possibleCode.match(/^\+\d{1,2}$/)) {
+        return { code: possibleCode, number: fullPhone.slice(3).replace(/\D/g, '') };
+      }
     }
-    return { code: '+54', number: fullPhone };
+
+    // Si no comienza con +, es solo el número
+    return { code: '+54', number: fullPhone.replace(/\D/g, '') };
   };
 
   const initialPhone = getInitialPhoneData(doctorData.whatsapp);
@@ -72,7 +90,7 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
         cedula: formData.get('cedula') as string,
         documentType: documentType,
         medicalLicense: formData.get('medicalLicense') as string,
-        whatsapp: `${countryCode} ${phoneNumber}`.trim(),
+        whatsapp: phoneNumber ? `${countryCode}${phoneNumber}` : '',
         address: formData.get('address') as string,
         sector: formData.get('sector') as string,
         description: formData.get('description') as string,
@@ -187,23 +205,22 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
             <div className="space-y-1 md:space-y-2">
               <Label htmlFor="whatsapp" className="text-xs md:text-sm">Nro. WhatsApp</Label>
               <div className="flex gap-2">
-                <Select value={countryCode} onValueChange={setCountryCode}>
-                  <SelectTrigger className="w-[100px] h-9 md:h-10 text-xs md:text-sm">
-                    <SelectValue placeholder="País" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COUNTRY_CODES.map(c => (
-                      <SelectItem key={c.code} value={c.code}>
-                        <span className="flex items-center gap-1"><span>{c.flag}</span> <span>{c.code}</span></span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CountryCodeSelect
+                  value={countryCode}
+                  onChange={setCountryCode}
+                  className="w-[120px] h-9 md:h-10"
+                />
                 <Input
                   id="whatsapp"
                   name="whatsapp-number"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onChange={(e) => {
+                    // Solo números, sin ceros iniciales
+                    let val = e.target.value.replace(/\D/g, '');
+                    if (val.startsWith('0')) val = val.slice(1);
+                    setPhoneNumber(val);
+                  }}
+                  placeholder="123456789"
                   className="h-9 md:h-10 text-xs md:text-sm flex-1"
                   maxLength={15}
                 />

@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
 import { supabase } from '@/lib/supabase';
 import { COUNTRY_CODES } from '@/lib/types';
+import { CountryCodeSelect } from '@/components/ui/country-code-select';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -74,7 +75,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
   // Estado para el formulario de perfil
   const [birthDate, setBirthDate] = useState<string>('');
-  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
+  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | 'no_especificar' | ''>('');
   const [cedula, setCedula] = useState('');
   const [countryCode, setCountryCode] = useState('+54');
   const [phone, setPhone] = useState('');
@@ -185,7 +186,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         birthDate: birthDate,
         gender: gender || null,
         cedula: cedula,
-        phone: phone ? `${countryCode} ${phone}` : null,
+        phone: phone ? `${countryCode}${phone}` : null,
         city: city || null,
         bloodType: bloodType || null,
         religion: religion || null,
@@ -309,13 +310,14 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </label>
                 <select
                   value={gender}
-                  onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | '')}
+                  onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | 'no_especificar' | '')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="" disabled>Selecciona tu sexo</option>
                   <option value="masculino">Masculino</option>
                   <option value="femenino">Femenino</option>
                   <option value="otro">Otro</option>
+                  <option value="no_especificar">Prefiero no especificar</option>
                 </select>
               </div>
             </div>
@@ -367,22 +369,21 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   Teléfono
                 </label>
                 <div className="flex gap-2">
-                  <select
+                  <CountryCodeSelect
                     value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    className="w-[110px] px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-sm"
-                  >
-                    {COUNTRY_CODES.map((country) => (
-                      <option key={`${country.country}-${country.code}`} value={country.code}>
-                        {country.flag} {country.code}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCountryCode}
+                    className="w-[120px]"
+                  />
                   <input
                     type="tel"
-                    placeholder="11 2345 6789"
+                    placeholder="123456789"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      // Solo números, sin ceros iniciales
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.startsWith('0')) val = val.slice(1);
+                      setPhone(val);
+                    }}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>

@@ -31,6 +31,7 @@ import { useSettings } from '@/lib/settings';
 import Image from 'next/image';
 import { NotificationSettings } from '@/components/notification-settings';
 import { validateName, validatePhone, validateCedula, validateCity, validateAge } from '@/lib/validation-utils';
+import { CountryCodeSelect } from '@/components/ui/country-code-select';
 
 const PatientProfileSchema = z.object({
   fullName: z.string().min(3, "El nombre completo es requerido."),
@@ -66,7 +67,7 @@ export default function ProfilePage() {
   // State for profile info
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState<string>('');
-  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | ''>('');
+  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | 'no_especificar' | ''>('');
   const [cedula, setCedula] = useState('');
   const [documentType, setDocumentType] = useState<DocumentType>('DNI');
   const [phone, setPhone] = useState('');
@@ -85,7 +86,7 @@ export default function ProfilePage() {
     if (user === null) {
       router.push('/auth/login');
     } else {
-      // Actualizar SIEMPRE los campos del formulario cuando el usuario cambie
+      // Actualizar campos del formulario cuando el usuario cambie (excepto phone que se maneja aparte)
       setFullName(user.name ?? '');
       setBirthDate(user.birthDate ?? '');
       setGender(user.gender ?? '');
@@ -93,22 +94,65 @@ export default function ProfilePage() {
       setDocumentType((user as { documentType?: DocumentType }).documentType ?? 'DNI');
       setCity(user.city ?? '');
       setProfileImage(user.profileImage ?? null);
-      // Separar código de país y número si ya existe
-      if (user.phone && user.phone.startsWith('+')) {
-        const match = user.phone.match(/^(\+\d{1,4})(\d{7,15})$/);
-        if (match) {
-          setCountryCode(match[1]);
-          setPhone(match[2]);
+      // El teléfono se parsea en un efecto separado para evitar re-parseo innecesario
+    }
+  }, [user, router]);
+
+  // Efecto separado para parsear el teléfono - solo cuando user.phone cambie
+  const lastParsedPhone = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+
+    if (!user.phone) {
+      // Sin teléfono, solo resetear si es la primera vez
+      if (lastParsedPhone.current !== 'NO_PHONE') {
+        setCountryCode('+54');
+        setPhone('');
+        lastParsedPhone.current = 'NO_PHONE';
+      }
+      return;
+    }
+
+    // Evitar re-parsear el mismo teléfono
+    if (lastParsedPhone.current === user.phone) {
+      return;
+    }
+    lastParsedPhone.current = user.phone;
+
+    if (user.phone.startsWith('+')) {
+      // Intentar coincidir con códigos de país conocidos (ordenados por longitud descendente)
+      const knownCodes = COUNTRY_CODES.map(c => c.code).sort((a, b) => b.length - a.length);
+      let foundKnownCode = false;
+
+      for (const code of knownCodes) {
+        if (user.phone.startsWith(code)) {
+          setCountryCode(code);
+          const numberPart = user.phone.slice(code.length).replace(/\D/g, '');
+          setPhone(numberPart);
+          foundKnownCode = true;
+          break;
+        }
+      }
+
+      if (!foundKnownCode) {
+        // Fallback: tomar los primeros 3 caracteres como código
+        const possibleCode = user.phone.substring(0, 3);
+        if (possibleCode.match(/^\+\d{1,2}$/)) {
+          setCountryCode(possibleCode);
+          setPhone(user.phone.slice(3).replace(/\D/g, ''));
         } else {
           setCountryCode('+54');
-          setPhone(user.phone);
+          setPhone(user.phone.replace(/[^\d]/g, ''));
         }
-      } else {
-        setCountryCode('+54');
-        setPhone(user.phone ?? '');
       }
+    } else {
+      // Teléfono sin código de país
+      setCountryCode('+54');
+      let cleanPhone = user.phone.replace(/\D/g, '');
+      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.slice(1);
+      setPhone(cleanPhone);
     }
-  }, [user?.name, user?.birthDate, user?.gender, user?.cedula, user?.phone, user?.city, user?.profileImage, user, router]);
+  }, [user?.phone]);
 
   // ... (handleImageUpload, handleImageSave, removeProfileImage remain unchanged)
 
@@ -292,12 +336,15 @@ export default function ProfilePage() {
       city: result.data.city,
     });
 
-    // Refrescar usuario desde Firestore y actualizar estado global y localStorage
+    // Refrescar usuario desde la base de datos y actualizar estado global y localStorage
     const freshUser = await supabaseService.findUserByEmail(user.email);
     if (freshUser) {
-      // Necesitamos una manera de obtener el birthDate actualizado si no vino en el fetch inicial (depende de cómo supabaseService construye el objeto)
-      // Pero como updateUser actualiza el estado local también, debería estar bien.
-      const updatedUserWithLocalData = { ...freshUser, birthDate: result.data.birthDate };
+      // Preservar los datos que acabamos de guardar (el phone correcto)
+      const updatedUserWithLocalData = {
+        ...freshUser,
+        birthDate: result.data.birthDate,
+        phone: fullPhone // Usar el teléfono que acabamos de guardar
+      };
       await updateUser(updatedUserWithLocalData); // Actualiza el contexto
       localStorage.setItem('user', JSON.stringify(updatedUserWithLocalData));
     }
@@ -517,31 +564,28 @@ export default function ProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="phone">Teléfono</Label>
                     <div className="flex gap-2">
-                      <Select value={countryCode} onValueChange={setCountryCode}>
-                        <SelectTrigger className="w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {COUNTRY_CODES.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>{c.country} ({c.code})</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <CountryCodeSelect
+                        value={countryCode}
+                        onChange={setCountryCode}
+                        className="w-[130px]"
+                      />
                       <Input
                         id="phone"
                         type="tel"
                         value={phone}
                         onChange={(e) => {
                           let val = e.target.value.replace(/\D/g, '');
+                          // Eliminar 0 inicial si el usuario lo escribe, ya que el código de país lo reemplaza
                           if (val.startsWith('0')) val = val.slice(1);
                           setPhone(val);
                         }}
-                        placeholder="Ej: 4121234567"
+                        placeholder="Ej: 112345678" // Ejemplo genérico sin 0
+                        className="flex-1"
                         maxLength={15}
                       />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Ingresa solo números, sin el código de país. Ejemplo para Argentina: <span className="font-mono">1123456789</span>
+                      Selecciona el código de país e ingresa el número sin el 0 ni el 15.
                     </p>
                   </div>
                 </div>
@@ -567,13 +611,14 @@ export default function ProfilePage() {
                     <select
                       id="gender"
                       value={gender}
-                      onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | '')}
+                      onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | 'no_especificar' | '')}
                       className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="" disabled>Selecciona tu sexo</option>
                       <option value="masculino">Masculino</option>
                       <option value="femenino">Femenino</option>
                       <option value="otro">Otro</option>
+                      <option value="no_especificar">Prefiero no especificar</option>
                     </select>
                   </div>
                 </div>
