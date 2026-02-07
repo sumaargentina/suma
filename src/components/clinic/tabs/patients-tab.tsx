@@ -25,6 +25,7 @@ interface PatientWithStats extends Patient {
     lastVisit: string | null;
     totalPaid: number;
     noShowCount: number;
+    attendedByDoctors: string[];
 }
 
 export function PatientsTab() {
@@ -102,12 +103,15 @@ export function PatientsTab() {
                     new Date(b.date).getTime() - new Date(a.date).getTime()
                 );
 
+                const uniqueDoctors = Array.from(new Set(patientAppointments.map(a => a.doctorName).filter(Boolean))) as string[];
+
                 return {
                     ...patient,
                     totalAppointments: patientAppointments.length,
                     lastVisit: sortedByDate[0]?.date || null,
                     totalPaid: paidAppointments.reduce((sum, a) => sum + (a.totalPrice || 0), 0),
-                    noShowCount: noShows.length
+                    noShowCount: noShows.length,
+                    attendedByDoctors: uniqueDoctors
                 };
             });
 
@@ -425,9 +429,9 @@ export function PatientsTab() {
                             <TableRow>
                                 <TableHead>Paciente</TableHead>
                                 <TableHead>Contacto</TableHead>
+                                <TableHead>Profesionales</TableHead>
                                 <TableHead className="text-center">Citas</TableHead>
                                 <TableHead>Última Visita</TableHead>
-                                <TableHead className="text-right">Total Pagado</TableHead>
                                 <TableHead className="w-[60px]"></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -463,6 +467,23 @@ export function PatientsTab() {
                                                 {patient.phone && <p className="text-muted-foreground">{patient.phone}</p>}
                                             </div>
                                         </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                                {patient.attendedByDoctors.slice(0, 2).map((doc, i) => (
+                                                    <Badge key={i} variant="outline" className="text-xs w-fit">
+                                                        {doc}
+                                                    </Badge>
+                                                ))}
+                                                {patient.attendedByDoctors.length > 2 && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        +{patient.attendedByDoctors.length - 2} más
+                                                    </span>
+                                                )}
+                                                {patient.attendedByDoctors.length === 0 && (
+                                                    <span className="text-xs text-muted-foreground">-</span>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-center">
                                             <div className="flex items-center justify-center gap-1">
                                                 <Badge variant="secondary">{patient.totalAppointments}</Badge>
@@ -473,9 +494,6 @@ export function PatientsTab() {
                                         </TableCell>
                                         <TableCell>
                                             {patient.lastVisit ? format(parseISO(patient.lastVisit), "dd/MM/yy", { locale: es }) : '-'}
-                                        </TableCell>
-                                        <TableCell className="text-right font-medium text-green-600">
-                                            {formatCurrency(patient.totalPaid)}
                                         </TableCell>
                                         <TableCell>
                                             <Button variant="ghost" size="icon" onClick={() => { setSelectedPatient(patient); setIsDetailOpen(true); setDetailTab('info'); }}>

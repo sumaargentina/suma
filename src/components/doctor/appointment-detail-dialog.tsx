@@ -69,6 +69,8 @@ export function AppointmentDetailDialog({
 
     useEffect(() => {
         if (appointment) {
+            console.log('📋 AppointmentDetailDialog - doctorServices:', doctorServices);
+            console.log('📋 AppointmentDetailDialog - appointment.services:', appointment.services);
             setClinicalNotes(appointment.clinicalNotes || "");
             setPrescription(appointment.prescription || "");
             setEditableServices(appointment.services || []);
@@ -230,19 +232,19 @@ export function AppointmentDetailDialog({
                                     <CardTitle className="text-base">Detalles del Pago</CardTitle>
                                 </CardHeader>
                                 <CardContent className="text-sm space-y-2">
-                                    {appointment.discountAmount && appointment.discountAmount > 0 && (
+                                    {Number(appointment.discountAmount) > 0 && (
                                         <p>
                                             <strong>Subtotal:</strong>
                                             <span className="font-mono">
-                                                ${((appointment.totalPrice || 0) + (appointment.discountAmount || 0)).toFixed(2)}
+                                                {`$${((appointment.totalPrice || 0) + (appointment.discountAmount || 0)).toFixed(2)}`}
                                             </span>
                                         </p>
                                     )}
-                                    {appointment.discountAmount && appointment.discountAmount > 0 && (
+                                    {Number(appointment.discountAmount) > 0 && (
                                         <p>
                                             <strong>Descuento:</strong>
                                             <span className="font-mono text-green-600">
-                                                -${appointment.discountAmount.toFixed(2)}
+                                                {`-$${(appointment.discountAmount || 0).toFixed(2)}`}
                                             </span>
                                             {appointment.appliedCoupon && (
                                                 <span className="ml-2 text-xs text-green-700">
@@ -254,8 +256,8 @@ export function AppointmentDetailDialog({
                                     <p>
                                         <strong>Total:</strong>
                                         <span className="font-mono font-semibold">
-                                            ${(appointment.totalPrice || 0).toFixed(2)}
-                                            {appointment.discountAmount && appointment.discountAmount > 0 && (
+                                            {`$${(appointment.totalPrice || 0).toFixed(2)}`}
+                                            {Number(appointment.discountAmount) > 0 && (
                                                 <span className="ml-2 text-green-600 text-xs font-normal">
                                                     (con descuento)
                                                 </span>
@@ -321,47 +323,100 @@ export function AppointmentDetailDialog({
 
                         <div className="space-y-6">
                             <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex justify-between items-center">
-                                        <span>Servicios de la Cita</span>
+                                <CardHeader className="py-3 px-4">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-sm font-semibold">Servicios</CardTitle>
                                         {!isAppointmentLocked && (
-                                            <Button size="sm" variant="secondary" onClick={handleSaveServices}><Save className="mr-2 h-4 w-4" /> Guardar Servicios</Button>
+                                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSaveServices}>
+                                                <Save className="mr-1 h-3 w-3" /> Guardar
+                                            </Button>
                                         )}
-                                    </CardTitle>
+                                    </div>
                                 </CardHeader>
-                                <CardContent className="space-y-2">
-                                    <div className="flex justify-between items-center bg-muted p-2 rounded-md">
-                                        <Label htmlFor="consulta-base" className="font-semibold">Consulta Base</Label>
-                                        <span className="font-mono font-semibold">${(appointment.consultationFee || 0).toFixed(2)}</span>
+                                <CardContent className="px-4 pb-4 pt-0 space-y-3">
+                                    {/* Consulta Base */}
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-muted-foreground">Consulta</span>
+                                        <span className="font-mono font-medium">{`$${(appointment.consultationFee || 0).toFixed(2)}`}</span>
                                     </div>
-                                    <Separator />
-                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                                        {doctorServices.length > 0 ? doctorServices.map(service => (
-                                            <div key={service.id} className="flex justify-between items-center">
-                                                <span>{service.name}</span>
-                                                <span className="font-mono">${service.price.toFixed(2)}</span>
+
+                                    {/* Lista de Servicios */}
+                                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                                        {(() => {
+                                            const allServices = [...doctorServices];
+                                            (appointment.services || []).forEach(svc => {
+                                                if (!allServices.find(s => s.id === svc.id)) {
+                                                    allServices.push(svc);
+                                                }
+                                            });
+
+                                            if (allServices.length === 0) {
+                                                return (
+                                                    <div className="text-center py-3 bg-amber-50 rounded border border-amber-200">
+                                                        <p className="text-xs text-amber-700">
+                                                            No tienes servicios configurados.
+                                                        </p>
+                                                        <p className="text-xs text-amber-600 mt-1">
+                                                            Configúralos en Finanzas → Servicios
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return allServices.map(service => {
+                                                const isSelected = editableServices.some(s => s.id === service.id);
+                                                return (
+                                                    <div
+                                                        key={service.id}
+                                                        onClick={() => {
+                                                            if (isAppointmentLocked) return;
+                                                            if (isSelected) {
+                                                                setEditableServices(editableServices.filter(s => s.id !== service.id));
+                                                            } else {
+                                                                setEditableServices([...editableServices, service]);
+                                                            }
+                                                        }}
+                                                        className={cn(
+                                                            "flex justify-between items-center py-1.5 px-2 rounded text-sm transition-colors",
+                                                            isSelected
+                                                                ? "bg-green-50 text-green-800"
+                                                                : "hover:bg-muted/50 text-muted-foreground",
+                                                            !isAppointmentLocked && "cursor-pointer"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn(
+                                                                "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                                                                isSelected
+                                                                    ? "bg-green-500 border-green-500 text-white"
+                                                                    : "border-gray-300"
+                                                            )}>
+                                                                {isSelected && "✓"}
+                                                            </div>
+                                                            <span className={isSelected ? "font-medium" : ""}>{service.name}</span>
+                                                        </div>
+                                                        <span className="font-mono text-xs">{`$${service.price.toFixed(2)}`}</span>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+
+                                    {/* Total */}
+                                    <div className="border-t pt-2 mt-2">
+                                        {Number(appointment.discountAmount) > 0 && (
+                                            <div className="flex justify-between items-center text-xs text-green-600 mb-1">
+                                                <span>Descuento {appointment.appliedCoupon && `(${appointment.appliedCoupon})`}</span>
+                                                <span className="font-mono">{`-$${(appointment.discountAmount || 0).toFixed(2)}`}</span>
                                             </div>
-                                        )) : (
-                                            <div className="text-muted-foreground text-xs">Sin servicios adicionales</div>
                                         )}
-                                    </div>
-                                    <Separator />
-                                    {appointment.discountAmount && appointment.discountAmount > 0 && (
-                                        <div className="flex justify-between items-center text-green-600 text-sm">
-                                            <span>
-                                                Descuento:
-                                                {appointment.appliedCoupon && (
-                                                    <span className="ml-1 text-green-700">
-                                                        (Cupón: <span className="font-mono">{appointment.appliedCoupon}</span>)
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="font-mono">-${appointment.discountAmount.toFixed(2)}</span>
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-semibold">Total</span>
+                                            <span className="font-mono font-bold text-lg">{`$${editableTotalPrice.toFixed(2)}`}</span>
                                         </div>
-                                    )}
-                                    <div className="flex justify-between items-center font-bold text-lg pt-2">
-                                        <span>Total:</span>
-                                        <span className="text-primary">${appointment.totalPrice?.toFixed(2) ?? "0.00"}</span>
+                                        {!isAppointmentLocked && editableServices.length !== (appointment.services?.length || 0) && (
+                                            <p className="text-xs text-amber-600 text-center mt-1">⚠️ Cambios sin guardar</p>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>

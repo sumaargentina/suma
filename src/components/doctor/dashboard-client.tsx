@@ -28,6 +28,7 @@ import { es } from 'date-fns/locale';
 import { z } from 'zod';
 
 import { AppointmentsTab } from './dashboard/tabs/appointments-tab';
+import { PatientsTab } from './dashboard/tabs/patients-tab';
 import { FinancesTab } from './dashboard/tabs/finances-tab';
 import { SubscriptionTab } from './dashboard/tabs/subscription-tab';
 import { ProfileTab } from './dashboard/tabs/profile-tab';
@@ -118,10 +119,13 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const { user, loading, changePassword } = useAuth();
     const searchParams = useSearchParams();
     const ticketIdParam = searchParams.get('ticketId');
+    const chatPatientIdParam = searchParams.get('chatPatientId');
     const appointmentIdParam = searchParams.get('appointmentId');
     const isClinicDoctor = user?.role === 'doctor' && user?.isClinicEmployee;
 
     const { toast } = useToast();
+
+
     const { cities, settings } = useSettings();
     const { } = useDoctorNotifications();
     const { updateUnreadChatCount } = useChatNotifications();
@@ -184,6 +188,8 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
                 supabaseService.getSupportTickets(),
                 supabaseService.getDoctorPayments(),
             ]);
+            console.log('📋 Doctor data loaded:', doc?.name, 'Services:', doc?.services);
+            console.log('🏢 Doctor addresses:', doc?.addresses?.map(a => ({ id: a.id, address: a.address, services: a.services?.length || 0 })));
             setDoctorData(doc);
             setAppointments(apps);
             setSupportTickets(tickets.filter(t => t.userId === user.email));
@@ -241,6 +247,13 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
 
         return doctorData.services;
     }, [selectedWalkInOffice, doctorData]);
+
+    // Calcular nombre del paciente para chat inicial
+    const chatPatientName = useMemo(() => {
+        if (!chatPatientIdParam) return null;
+        const appt = appointments.find(a => a.patientId === chatPatientIdParam);
+        return appt ? appt.patientName : null;
+    }, [chatPatientIdParam, appointments]);
 
     // Mapa de tarifas de suscripción por ciudad
     const cityFeesMap = useMemo(() => new Map(cities.map(c => [c.name, c.subscriptionFee])), [cities]);
@@ -608,6 +621,9 @@ ID Transacción: ${transactionId}`;
                                 doctorAddresses={doctorData?.addresses || []}
                             />
                         )}
+                        {currentTab === "patients" && (
+                            <PatientsTab appointments={appointments} />
+                        )}
                         {currentTab === "finances" && (
                             !isClinicDoctor ? (
                                 <FinancesTab doctorData={doctorData} appointments={appointments} onOpenExpenseDialog={(exp) => { setEditingExpense(exp); setIsExpenseDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
@@ -660,14 +676,24 @@ ID Transacción: ${transactionId}`;
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
                         )}
-                        {currentTab === "chat" && <ChatTab appointments={appointments} onOpenChat={(appointment) => handleOpenAppointmentDialog('chat', appointment)} />}
+                        {currentTab === "chat" && <ChatTab appointments={appointments} onOpenChat={(appointment) => handleOpenAppointmentDialog('chat', appointment)} initialPatientId={chatPatientIdParam} initialPatientName={chatPatientName} />}
                         {currentTab === "online-consultation" && <OnlineConsultationTab doctorData={doctorData} onUpdate={fetchData} />}
                         {currentTab === "support" && <SupportTab supportTickets={supportTickets} onViewTicket={(t) => { setSelectedSupportTicket(t); setIsSupportDetailOpen(true); }} onOpenTicketDialog={() => setIsSupportDialogOpen(true)} onCreateTestTickets={handleCreateTestTickets} />}
                     </div>
                 </div>
             </main>
 
-            <AppointmentDetailDialog isOpen={isAppointmentDetailOpen} onOpenChange={setIsAppointmentDetailOpen} appointment={selectedAppointment} doctorServices={doctorData?.services || []} onUpdateAppointment={handleUpdateAppointment} onOpenChat={handleOpenAppointmentDialog} />
+            <AppointmentDetailDialog isOpen={isAppointmentDetailOpen} onOpenChange={setIsAppointmentDetailOpen} appointment={selectedAppointment} doctorServices={(() => {
+                // Get services from the specific address if available
+                if (selectedAppointment?.addressId && doctorData?.addresses) {
+                    const address = doctorData.addresses.find(a => a.id === selectedAppointment.addressId);
+                    if (address?.services && address.services.length > 0) {
+                        return address.services;
+                    }
+                }
+                // Fallback to doctor's general services
+                return doctorData?.services || [];
+            })()} onUpdateAppointment={handleUpdateAppointment} onOpenChat={handleOpenAppointmentDialog} />
 
             <Dialog open={isChatOpen} onOpenChange={(open) => {
                 setIsChatOpen(open);

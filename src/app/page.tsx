@@ -141,8 +141,8 @@ export default function Home() {
               </div>
               <div className="flex-1 rounded-2xl overflow-hidden shadow-2xl rotate-1 hover:rotate-0 transition-transform duration-500">
                 <Image
-                  src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=1000"
-                  alt="Doctor using tablet"
+                  src="/doctor-main.png"
+                  alt="Doctor SUMA"
                   width={800}
                   height={600}
                   className="object-cover"

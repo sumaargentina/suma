@@ -246,6 +246,7 @@ export function Header() {
 
   const doctorNavLinks = [
     { href: "/doctor/dashboard?view=appointments", label: "Citas" },
+    { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
     { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
     { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
     { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },

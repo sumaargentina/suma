@@ -31,9 +31,11 @@ interface Conversation {
 
 interface ChatTabProps {
   doctorId?: string;
+  initialPatientId?: string | null;
+  initialPatientName?: string | null;
 }
 
-export function ChatTab({ doctorId }: ChatTabProps) {
+export function ChatTab({ doctorId, initialPatientId, initialPatientName }: ChatTabProps) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +45,9 @@ export function ChatTab({ doctorId }: ChatTabProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
   const effectiveDoctorId = doctorId || user?.id;
+
+  // Ref para controlar que solo se abra una vez al cargar
+  const hasOpenedInitial = useState(false);
 
   // Filter conversations based on search term
   const filteredConversations = conversations.filter(conversation =>
@@ -73,6 +78,28 @@ export function ChatTab({ doctorId }: ChatTabProps) {
     const interval = setInterval(fetchConversations, 30000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
+
+  // Efecto para abrir chat inicial
+  useEffect(() => {
+    if (!isLoading && initialPatientId && !isChatOpen && !hasOpenedInitial[0]) {
+      const existing = conversations.find(c => c.patientId === initialPatientId);
+      if (existing) {
+        handleOpenChat(existing);
+      } else if (initialPatientName) {
+        // Crear conversación temporal/nueva
+        handleOpenChat({
+          doctorId: effectiveDoctorId!,
+          patientId: initialPatientId,
+          patientName: initialPatientName,
+          lastMessage: '',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageSender: '',
+          unreadCount: 0
+        });
+      }
+      hasOpenedInitial[1](true);
+    }
+  }, [isLoading, initialPatientId, initialPatientName, conversations, isChatOpen, effectiveDoctorId]);
 
   const handleOpenChat = (conversation: Conversation) => {
     setSelectedConversation(conversation);

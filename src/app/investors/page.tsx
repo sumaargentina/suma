@@ -54,7 +54,7 @@ export default function InvestorsPage() {
         <div className="min-h-screen bg-slate-50 font-sans">
             <HeaderWrapper />
 
-            {/* HERO SECTION */}
+            {/* HERO SECTION - EMOTIONAL OPENING */}
             <section className="relative pt-24 pb-32 overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-primary to-purple-900 opacity-95"></div>
                 <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-10"></div>
@@ -63,13 +63,21 @@ export default function InvestorsPage() {
                     <Badge className="mb-6 bg-white/10 text-white hover:bg-white/20 border-white/20 px-4 py-1 text-sm backdrop-blur-sm animate-fade-in">
                         Oportunidad Pre-Seed 🚀
                     </Badge>
-                    <h1 className="text-4xl md:text-7xl font-bold text-white tracking-tight mb-6 leading-tight">
-                        Listo para transformar la <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-cyan-200">Salud Digital en LatAm</span>
+
+                    {/* Emotional Story Opening */}
+                    <div className="max-w-4xl mx-auto mb-10">
+                        <p className="text-xl md:text-2xl text-blue-200 italic mb-6">
+                            "Son las 11 de la noche. Tu hijo tiene fiebre.<br />
+                            No sabes si ir a urgencias, esperar hasta mañana o preocuparte.<br />
+                            <span className="text-white font-medium">Buscas en Google… y terminas más angustiado que antes."</span>
+                        </p>
+                    </div>
+
+                    <h1 className="text-4xl md:text-6xl font-bold text-white tracking-tight mb-6 leading-tight">
+                        Esta es la realidad de <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-300">millones de argentinos</span> cada día.
                     </h1>
                     <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto mb-10 font-light leading-relaxed">
-                        Hemos construido la infraestructura. Tenemos la tecnología IA. <br />
-                        <strong>Solo nos faltas tú para el despegue.</strong>
+                        <strong>SUMA</strong> es el ecosistema de salud con IA que los acompaña, orienta y nunca los abandona.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
                         <Button
@@ -94,10 +102,10 @@ export default function InvestorsPage() {
                     {/* Key Metrics */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20 max-w-5xl mx-auto">
                         {[
-                            { label: "Mercado Potencial", value: "$4.2B", desc: "Digital Health TAM LatAm" },
-                            { label: "Estado", value: "MVP Listo", desc: "Tecnología Finalizada" },
-                            { label: "Tecnología", value: "Proprietary AI", desc: "Asistente Propio" },
-                            { label: "Escalabilidad", value: "LatAm Ready", desc: "Argentina, Venezuela y más" },
+                            { label: "Mercado Potencial", value: "$15B", desc: "Salud Digital LatAm 2027" },
+                            { label: "Médicos Argentina", value: "160K+", desc: "En proceso de digitalización" },
+                            { label: "Clínicas", value: "25K+", desc: "Esperando modernizarse" },
+                            { label: "Tecnología", value: "IA Propia", desc: "Asistente humanizado 24/7" },
                         ].map((stat, i) => (
                             <div key={i} className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 hover:bg-white/15 transition-colors">
                                 <p className="text-3xl font-bold text-white mb-1">{stat.value}</p>
@@ -109,160 +117,185 @@ export default function InvestorsPage() {
                 </div>
             </section>
 
-            {/* THE PROBLEM & SOLUTION */}
+            {/* THE PROBLEM - TWO BIG FAILURES */}
             <section className="py-24 bg-white">
                 <div className="container mx-auto px-4">
-                    <div className="flex flex-col md:flex-row gap-16 items-center">
-                        <div className="md:w-1/2">
-                            <div className="inline-block p-2 px-4 bg-red-100 text-red-700 rounded-full text-sm font-bold mb-6">
-                                La Oportunidad
+                    <div className="text-center mb-16">
+                        <Badge className="bg-red-100 text-red-700 mb-4">El Problema</Badge>
+                        <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-4">
+                            El sistema de salud tiene <span className="text-red-600">dos grandes fallas</span>
+                        </h2>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                        {/* Patient Problem */}
+                        <div className="bg-gradient-to-br from-red-50 to-orange-50 p-8 rounded-3xl border border-red-100">
+                            <div className="h-14 w-14 bg-red-100 rounded-2xl flex items-center justify-center mb-6">
+                                <Users className="h-7 w-7 text-red-600" />
                             </div>
-                            <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6 leading-tight">
-                                El sistema actual está roto. <br />
-                                <span className="text-primary">SUMA está listo para arreglarlo.</span>
-                            </h2>
-                            <p className="text-lg text-slate-600 mb-8 leading-relaxed">
-                                Hoy día, la experiencia médica es frustrante y desconectada. Hemos desarrollado el <strong>Sistema Operativo</strong> que unificará clínicas, médicos y pacientes desde el primer día de lanzamiento.
+                            <h3 className="text-2xl font-bold text-slate-900 mb-4">Para el Paciente</h3>
+                            <p className="text-slate-600 leading-relaxed mb-4">
+                                <strong className="text-red-700">Falta de guía confiable y acompañamiento.</strong>
                             </p>
-
-                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                                <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                    <Zap className="text-yellow-500 fill-yellow-500" /> Nuestra Propuesta de Valor
-                                </h4>
-                                <p className="text-slate-700">
-                                    No venimos con diapositivas vacías. Tenemos una <strong>plataforma funcional</strong> con pagos integrados, historia clínica digital y un asistente de IA capaz de realizar triaje médico real.
-                                </p>
-                            </div>
+                            <p className="text-slate-600 leading-relaxed">
+                                Busca síntomas en internet, se asusta, y muchas veces llega tarde o mal informado a la consulta. <strong>Está solo cuando más necesita orientación.</strong>
+                            </p>
                         </div>
 
-                        <div className="md:w-1/2 relative">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-4 translate-y-8">
-                                    <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 text-center hover:scale-105 transition-transform">
-                                        <Smartphone className="h-10 w-10 text-primary mx-auto mb-3" />
-                                        <h3 className="font-bold">App Paciente</h3>
-                                        <p className="text-xs text-slate-500">Lista para lanzamiento</p>
-                                    </div>
-                                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl text-center hover:scale-105 transition-transform">
-                                        <Bot className="h-10 w-10 text-cyan-400 mx-auto mb-3" />
-                                        <h3 className="font-bold">SUMA AI Core</h3>
-                                        <p className="text-xs text-slate-400">Motor Desarrollado</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 text-center hover:scale-105 transition-transform">
-                                        <Building2 className="h-10 w-10 text-indigo-600 mx-auto mb-3" />
-                                        <h3 className="font-bold">SaaS Clínicas</h3>
-                                        <p className="text-xs text-slate-500">Infraestructura Lista</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 text-center hover:scale-105 transition-transform">
-                                        <Stethoscope className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
-                                        <h3 className="font-bold">Portal Médico</h3>
-                                        <p className="text-xs text-slate-500">Gestión Completa</p>
-                                    </div>
-                                </div>
+                        {/* Doctor Problem */}
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-3xl border border-blue-100">
+                            <div className="h-14 w-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
+                                <Stethoscope className="h-7 w-7 text-blue-600" />
                             </div>
+                            <h3 className="text-2xl font-bold text-slate-900 mb-4">Para el Médico</h3>
+                            <p className="text-slate-600 leading-relaxed mb-4">
+                                <strong className="text-blue-700">Pérdida de tiempo en tareas administrativas.</strong>
+                            </p>
+                            <p className="text-slate-600 leading-relaxed">
+                                Reconstruye historiales desde cero, toma notas manuales y trabaja sin herramientas inteligentes. <strong>Tiempo que debería dedicar a curar.</strong>
+                            </p>
                         </div>
+                    </div>
+
+                    <div className="text-center mt-12">
+                        <p className="text-xl text-slate-700 font-medium">
+                            El resultado: <span className="text-red-600">pacientes frustrados</span>, <span className="text-blue-600">médicos agotados</span> y un <span className="text-slate-900">sistema ineficiente</span>.
+                        </p>
                     </div>
                 </div>
             </section>
 
-            {/* FEATURE SHOWCASE - WHAT MAKES US UNIQUE */}
+            {/* THE SOLUTION - SUMA + IA */}
             <section className="py-24 bg-slate-900 text-white overflow-hidden">
                 <div className="container mx-auto px-4">
-                    <div className="text-center mb-20">
-                        <Badge className="bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 mb-4 border border-cyan-500/20">Tecnología Real</Badge>
-                        <h2 className="text-3xl md:text-5xl font-bold mb-4">Más que una Agenda. <br />Un Ecosistema Completo.</h2>
-                        <p className="text-slate-400 max-w-2xl mx-auto">
-                            A diferencia de la competencia que solo ofrece turnos, SUMA gestiona el ciclo de vida completo de la salud.
+                    <div className="text-center mb-16">
+                        <Badge className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 mb-4 border border-emerald-500/20">La Solución</Badge>
+                        <h2 className="text-3xl md:text-5xl font-bold mb-4">
+                            SUMA + Inteligencia Artificial
+                        </h2>
+                        <p className="text-slate-400 max-w-3xl mx-auto text-lg">
+                            No es solo una plataforma de citas médicas. Es un <strong className="text-white">ecosistema de salud con IA</strong> que conecta pacientes, médicos y clínicas en un solo lugar.
                         </p>
                     </div>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                        {[
-                            {
-                                icon: CreditCard,
-                                color: "text-green-400",
-                                title: "Fintech Integrada",
-                                desc: "Pasarela de pagos nativa. MercadoPago, transferencias y control de caja automático para médicos."
-                            },
-                            {
-                                icon: ShieldCheck,
-                                color: "text-blue-400",
-                                title: "Seguridad Bancaria",
-                                desc: "Infraestructura RLS (Row Level Security). Auditoría de acciones y encriptación de datos sensibles."
-                            },
-                            {
-                                icon: BrainCircuit,
-                                color: "text-purple-400",
-                                title: "IA Contextual",
-                                desc: "Asistente que entiende síntomas, voz y dialectos locales. No es un chatbot, es un agente inteligente."
-                            },
-                            {
-                                icon: Megaphone,
-                                color: "text-pink-400",
-                                title: "Marketing Suite",
-                                desc: "Herramientas para que clínicas y doctores atraigan pacientes: cupones, campañas y perfil público SEO."
-                            }
-                        ].map((feature, i) => (
-                            <div key={i} className="bg-white/5 backdrop-blur-sm p-8 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors group">
-                                <div className={`h-14 w-14 rounded-2xl bg-white/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform ${feature.color}`}>
-                                    <feature.icon className="h-7 w-7" />
-                                </div>
-                                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                                <p className="text-slate-400 text-sm leading-relaxed border-t border-white/10 pt-4">
-                                    {feature.desc}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
+                    {/* Two AI Solutions */}
+                    <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto mb-16">
 
-                    {/* AI DEEP DIVE */}
-                    <div className="mt-24 p-8 md:p-12 bg-gradient-to-r from-blue-900/50 to-indigo-900/50 rounded-3xl border border-white/10 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-cyan-500/20 rounded-full blur-[100px]"></div>
-                        <div className="flex flex-col md:flex-row items-center gap-12 relative z-10">
-                            <div className="md:w-1/2">
-                                <div className="inline-flex items-center gap-2 text-cyan-400 font-bold mb-4">
-                                    <Bot className="h-5 w-5" /> SUMA AI CORE
+                        {/* Patient AI */}
+                        <div className="bg-gradient-to-br from-emerald-900/50 to-teal-900/50 p-8 rounded-3xl border border-emerald-500/20 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-emerald-500/10 rounded-full blur-[60px]"></div>
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="h-14 w-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center">
+                                        <Users className="h-7 w-7 text-emerald-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white">Para el Paciente</h3>
+                                        <p className="text-emerald-400 text-sm font-medium">Asistente IA 24/7</p>
+                                    </div>
                                 </div>
-                                <h3 className="text-3xl font-bold mb-4">El primer Asistente Médico que realmente "entiende"</h3>
-                                <p className="text-slate-300 mb-6 leading-relaxed">
-                                    Logramos lo que otros no: un asistente que escucha notas de voz, identifica urgencias médicas (Triaje) y busca el especialista correcto comparando precios en tiempo real.
+
+                                <p className="text-lg text-white font-medium mb-4">
+                                    Desde el primer síntoma hasta después de la consulta, <span className="text-emerald-400">el paciente NUNCA está solo.</span>
                                 </p>
-                                <ul className="space-y-3">
+
+                                <ul className="space-y-3 mb-6">
                                     {[
-                                        "Reconocimiento de voz natural en español.",
-                                        "Triaje médico: detecta urgencias vs consultas.",
-                                        "Agenda citas directamente en la base de datos.",
-                                        "Listo para integración con WhatsApp Business."
+                                        "Lo orienta con lenguaje cálido y humano",
+                                        "Lo ayuda a encontrar al especialista correcto",
+                                        "Le recuerda citas y medicamentos",
+                                        "Responde sus dudas post-consulta"
                                     ].map((item, i) => (
-                                        <li key={i} className="flex items-center gap-3 text-sm text-slate-300">
-                                            <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
+                                        <li key={i} className="flex items-center gap-3 text-slate-300">
+                                            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
                                             {item}
                                         </li>
                                     ))}
                                 </ul>
-                            </div>
-                            <div className="md:w-1/2 bg-slate-950 rounded-xl p-6 border border-slate-800 shadow-2xl w-full max-w-md mx-auto">
-                                {/* Fake Chat UI */}
-                                <div className="space-y-4">
-                                    <div className="flex gap-3">
-                                        <div className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center text-xs">👤</div>
-                                        <div className="bg-slate-800 rounded-2xl rounded-tl-none p-3 text-sm text-slate-300">
-                                            Tengo un dolor fuerte en el pecho y me cuesta respirar...
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 flex-row-reverse">
-                                        <div className="h-8 w-8 rounded-full bg-cyan-600 flex items-center justify-center text-xs">🤖</div>
-                                        <div className="bg-cyan-900/30 border border-cyan-800 rounded-2xl rounded-tr-none p-3 text-sm text-cyan-100">
-                                            ⚠️ <strong>Detección de Urgencia</strong><br />
-                                            Estos síntomas podrían indicar una emergencia cardíaca. Te recomiendo acudir a la guardia más cercana ahora mismo.<br /><br />
-                                            <em>Clínica Santa Fe (a 2km) - Guardia 24hs</em>
-                                        </div>
-                                    </div>
+
+                                <div className="bg-emerald-950/50 rounded-xl p-4 border border-emerald-500/20">
+                                    <p className="text-emerald-300 text-sm italic">
+                                        "Es como tener un asistente de salud personal disponible en cualquier momento."
+                                    </p>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Doctor AI */}
+                        <div className="bg-gradient-to-br from-blue-900/50 to-indigo-900/50 p-8 rounded-3xl border border-blue-500/20 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-blue-500/10 rounded-full blur-[60px]"></div>
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="h-14 w-14 bg-blue-500/20 rounded-2xl flex items-center justify-center">
+                                        <Stethoscope className="h-7 w-7 text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white">Para el Médico</h3>
+                                        <p className="text-blue-400 text-sm font-medium">IA Clínica</p>
+                                    </div>
+                                </div>
+
+                                <p className="text-lg text-white font-medium mb-4">
+                                    Analiza el historial del paciente y entrega un <span className="text-blue-400">resumen inteligente</span> antes de cada consulta.
+                                </p>
+
+                                <ul className="space-y-3 mb-6">
+                                    {[
+                                        "Antecedentes relevantes del paciente",
+                                        "Tratamientos previos y medicamentos",
+                                        "Alertas clínicas importantes",
+                                        "Sugerencias basadas en evidencia"
+                                    ].map((item, i) => (
+                                        <li key={i} className="flex items-center gap-3 text-slate-300">
+                                            <CheckCircle2 className="h-5 w-5 text-blue-400 shrink-0" />
+                                            {item}
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                <div className="bg-blue-950/50 rounded-xl p-4 border border-blue-500/20">
+                                    <p className="text-blue-300 text-sm">
+                                        <strong className="text-white">Ahorra hasta 10 minutos por paciente</strong>, permitiendo consultas más humanas y eficientes.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Clinics */}
+                    <div className="max-w-4xl mx-auto bg-white/5 backdrop-blur p-8 rounded-3xl border border-white/10 text-center mb-16">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <Building2 className="h-8 w-8 text-indigo-400" />
+                            <h3 className="text-2xl font-bold">Para Clínicas</h3>
+                        </div>
+                        <p className="text-slate-300 text-lg">
+                            Gestión centralizada de doctores, sucursales y operaciones en una sola plataforma.
+                        </p>
+                    </div>
+
+                    {/* DIFFERENTIATOR */}
+                    <div className="max-w-4xl mx-auto text-center">
+                        <div className="inline-block bg-gradient-to-r from-pink-500/20 to-purple-500/20 rounded-full px-6 py-2 border border-pink-500/30 mb-6">
+                            <span className="text-pink-400 font-bold">✨ Lo que nos hace únicos</span>
+                        </div>
+                        <h3 className="text-3xl md:text-4xl font-bold mb-6">
+                            Otras plataformas son frías y transaccionales.<br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">SUMA es cálida, humana e inteligente.</span>
+                        </h3>
+                        <div className="flex flex-col md:flex-row gap-6 justify-center items-center text-lg">
+                            <div className="flex items-center gap-2 text-slate-300">
+                                <Bot className="h-5 w-5 text-cyan-400" />
+                                <span>Nuestra IA <strong className="text-white">no reemplaza</strong> al médico — <span className="text-cyan-400">lo potencia</span></span>
+                            </div>
+                            <div className="hidden md:block h-6 w-px bg-slate-700"></div>
+                            <div className="flex items-center gap-2 text-slate-300">
+                                <HeartPulse className="h-5 w-5 text-pink-400" />
+                                <span>No abandona al paciente — <span className="text-pink-400">lo acompaña</span></span>
+                            </div>
+                        </div>
+                        <p className="text-2xl font-bold mt-8 text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400">
+                            Tecnología con corazón. ❤️
+                        </p>
                     </div>
                 </div>
             </section>
@@ -280,11 +313,11 @@ export default function InvestorsPage() {
                         <table className="w-full border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200">
-                                    <th className="p-4 text-left font-medium text-slate-500 w-1/4">Característica</th>
-                                    <th className="p-4 text-center font-medium text-slate-400 w-1/4">Gestión Manual</th>
-                                    <th className="p-4 text-center font-medium text-slate-400 w-1/4">Apps de Turnos</th>
-                                    <th className="p-4 text-center font-bold text-primary w-1/4 bg-blue-50/50 rounded-t-xl">
-                                        <span className="flex items-center justify-center gap-2"><HeartPulse className="h-5 w-5" /> SUMA</span>
+                                    <th className="p-2 md:p-4 text-left font-medium text-slate-500 w-1/4">Característica</th>
+                                    <th className="p-2 md:p-4 text-center font-medium text-slate-400 w-1/4 text-xs md:text-base">Gestión Manual</th>
+                                    <th className="p-2 md:p-4 text-center font-medium text-slate-400 w-1/4 text-xs md:text-base">Apps de Turnos</th>
+                                    <th className="p-2 md:p-4 text-center font-bold text-primary w-1/4 bg-blue-50/50 rounded-t-xl text-xs md:text-base">
+                                        <span className="flex flex-col md:flex-row items-center justify-center gap-1 md:gap-2"><HeartPulse className="h-4 w-4 md:h-5 md:w-5" /> SUMA</span>
                                     </th>
                                 </tr>
                             </thead>
@@ -298,20 +331,20 @@ export default function InvestorsPage() {
                                     { feature: "Integración WhatsApp", old: false, app: "Básica", suma: "Inteligente" }
                                 ].map((row, i) => (
                                     <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                        <td className="p-4 font-medium text-slate-700">{row.feature}</td>
-                                        <td className="p-4 text-center">
+                                        <td className="p-2 md:p-4 font-medium text-slate-700 text-xs md:text-base">{row.feature}</td>
+                                        <td className="p-2 md:p-4 text-center">
                                             <div className="flex justify-center">
-                                                {row.old === true ? <Check className="h-5 w-5 text-slate-400" /> : <XCircle className="h-5 w-5 text-slate-300" />}
+                                                {row.old === true ? <Check className="h-4 w-4 md:h-5 md:w-5 text-slate-400" /> : <XCircle className="h-4 w-4 md:h-5 md:w-5 text-slate-300" />}
                                             </div>
                                         </td>
-                                        <td className="p-4 text-center">
+                                        <td className="p-2 md:p-4 text-center">
                                             <div className="flex justify-center">
-                                                {row.app === true ? <Check className="h-5 w-5 text-slate-600" /> : (row.app === false ? <XCircle className="h-5 w-5 text-slate-300" /> : <span className="text-xs font-bold text-slate-500">{row.app}</span>)}
+                                                {row.app === true ? <Check className="h-4 w-4 md:h-5 md:w-5 text-slate-600" /> : (row.app === false ? <XCircle className="h-4 w-4 md:h-5 md:w-5 text-slate-300" /> : <span className="text-[10px] md:text-xs font-bold text-slate-500">{row.app}</span>)}
                                             </div>
                                         </td>
-                                        <td className="p-4 text-center bg-blue-50/30">
+                                        <td className="p-2 md:p-4 text-center bg-blue-50/30">
                                             <div className="flex justify-center">
-                                                {row.suma === "Inteligente" ? <Badge className="bg-primary">Inteligente</Badge> : <CheckCircle2 className="h-6 w-6 text-primary fill-blue-100" />}
+                                                {row.suma === "Inteligente" ? <Badge className="bg-primary text-[10px] md:text-xs">Inteligente</Badge> : <CheckCircle2 className="h-5 w-5 md:h-6 md:w-6 text-primary fill-blue-100" />}
                                             </div>
                                         </td>
                                     </tr>
@@ -467,17 +500,17 @@ export default function InvestorsPage() {
 
                         {/* 2. Timeline Roadmap */}
                         <div className="w-full lg:w-1/2 space-y-8">
-                            <div className="relative border-l-2 border-indigo-100 pl-8 ml-4 lg:ml-0 space-y-12">
+                            <div className="relative border-l-2 border-indigo-100 pl-8 ml-6 lg:ml-0 space-y-12">
 
                                 {/* Milestone 1 */}
                                 <div className="relative">
                                     <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-indigo-600 border-4 border-white flex items-center justify-center"></span>
                                     <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                        <Target className="h-4 w-4 text-indigo-600" /> Fase 1: Go-to-Market
+                                        <Target className="h-4 w-4 text-indigo-600" /> Escalar IA + Ventas
                                         <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Corto Plazo</span>
                                     </h4>
                                     <p className="text-slate-600 text-sm mt-2">
-                                        Lanzamiento oficial para Early Adopters. Validación de producto y onboarding de los primeros centros médicos aliados.
+                                        <strong>Escalar nuestra IA a toda Argentina</strong> y triplicar nuestro equipo comercial para capturar el mercado local.
                                     </p>
                                 </div>
 
@@ -485,11 +518,11 @@ export default function InvestorsPage() {
                                 <div className="relative">
                                     <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-slate-300 border-4 border-white flex items-center justify-center"></span>
                                     <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                        <Briefcase className="h-4 w-4 text-slate-600" /> Fase 2: Tracción & Monetización
+                                        <Briefcase className="h-4 w-4 text-slate-600" /> Expansión Geográfica
                                         <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Mediano Plazo</span>
                                     </h4>
                                     <p className="text-slate-600 text-sm mt-2">
-                                        Activación completa de SaaS para clínicas y fees de Marketplace. Alcance de breakeven operativo.
+                                        <strong>Expandir a 3 nuevas provincias</strong> clave. Consolidación de red de clínicas y doctores en regiones estratégicas.
                                     </p>
                                 </div>
 
@@ -497,11 +530,11 @@ export default function InvestorsPage() {
                                 <div className="relative">
                                     <span className="absolute -left-[41px] top-0 h-5 w-5 rounded-full bg-slate-300 border-4 border-white flex items-center justify-center"></span>
                                     <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                        <Flag className="h-4 w-4 text-slate-600" /> Fase 3: Expansión Regional
-                                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Largo Plazo</span>
+                                        <Flag className="h-4 w-4 text-slate-600" /> Proyección 18 Meses
+                                        <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 px-2 py-1 rounded">Objetivo</span>
                                     </h4>
                                     <p className="text-slate-600 text-sm mt-2">
-                                        Replicar modelo en nuevos mercados de LatAm y preparación y levantamiento para Serie A.
+                                        Alcanzar <strong>[X] Doctores Activos</strong> y un ARR de <strong>[$X]</strong>. Preparación para Serie A.
                                     </p>
                                 </div>
 
@@ -585,10 +618,63 @@ export default function InvestorsPage() {
                 </div>
             </section>
 
+            {/* THE TEAM */}
+            <section className="py-24 bg-white">
+                <div className="container mx-auto px-4">
+                    <div className="text-center mb-16">
+                        <Badge className="bg-indigo-100 text-indigo-700 mb-4">El Equipo</Badge>
+                        <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+                            Un equipo complementario
+                        </h2>
+                        <p className="text-slate-500 max-w-2xl mx-auto">
+                            Tecnología, negocio y salud — trabajando juntos.
+                        </p>
+                    </div>
+
+                    <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                        {/* CTO */}
+                        <div className="bg-gradient-to-br from-cyan-50 to-blue-50 p-8 rounded-3xl border border-cyan-100 text-center">
+                            <div className="h-20 w-20 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <BrainCircuit className="h-10 w-10 text-cyan-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">CTO</h3>
+                            <p className="text-cyan-600 font-medium text-sm mb-4">Liderazgo Tecnológico</p>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                Experiencia construyendo plataformas tecnológicas de alta escala. Arquitectura cloud-native y sistemas de IA.
+                            </p>
+                        </div>
+
+                        {/* Business Lead */}
+                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-8 rounded-3xl border border-emerald-100 text-center">
+                            <div className="h-20 w-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <TrendingUp className="h-10 w-10 text-emerald-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">Líder de Negocios</h3>
+                            <p className="text-emerald-600 font-medium text-sm mb-4">Estrategia Comercial</p>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                Experiencia en scaling startups y estrategia comercial en el sector salud. Conexiones clave en el ecosistema.
+                            </p>
+                        </div>
+
+                        {/* CEO */}
+                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-3xl border border-indigo-100 text-center">
+                            <div className="h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Rocket className="h-10 w-10 text-indigo-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">CEO</h3>
+                            <p className="text-indigo-600 font-medium text-sm mb-4">Visión de Producto</p>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                Combina visión de producto con profundo conocimiento del ecosistema médico argentino y latinoamericano.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* INVESTMENT CTA */}
             <section id="contact-form" className="py-24 bg-white relative">
                 <div className="container mx-auto px-4 max-w-5xl">
-                    <div className="bg-slate-900 rounded-[2.5rem] p-1 md:p-16 shadow-2xl overflow-hidden relative">
+                    <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-16 shadow-2xl overflow-hidden relative">
                         {/* Background effects */}
                         <div className="absolute top-0 right-0 -mr-32 -mt-32 w-96 h-96 bg-primary/20 rounded-full blur-[100px]"></div>
                         <div className="absolute bottom-0 left-0 -ml-32 -mb-32 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px]"></div>
@@ -684,7 +770,7 @@ export default function InvestorsPage() {
                     <p className="mt-8 text-xs text-slate-400">© 2026 SUMA Health Technologies. Todos los derechos reservados.</p>
                 </div>
             </footer>
-        </div>
+        </div >
     );
 }
 
