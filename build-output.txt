@@ -1,0 +1,244 @@
+﻿node.exe : ΓÜá `eslint` 
+configuration in 
+next.config.ts is no longer 
+supported. See more info 
+here: https://nextjs.org/doc
+s/app/api-reference/cli/next
+#next-lint-options
+En C:\Program 
+Files\nodejs\npx.ps1: 29 
+Carácter: 3
++   & $NODE_EXE $NPX_CLI_JS 
+$args
++   ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo          
+    : NotSpecified: (ΓÜá `  
+  eslint` co...xt-lint-op   
+ tions:String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+ΓÜá Invalid next.config.ts 
+options detected: 
+ΓÜá     Unrecognized key(s) 
+in object: 'eslint'
+ΓÜá See more info here: http
+s://nextjs.org/docs/messages
+/invalid-next-config
+ΓÜá Warning: Next.js 
+inferred your workspace 
+root, but it may not be 
+correct.
+ We detected multiple 
+lockfiles and selected the 
+directory of C:\Users\peroz\
+package-lock.json as the 
+root directory.
+ To silence this warning, 
+set `outputFileTracingRoot` 
+in your Next.js config, or 
+consider removing one of 
+the lockfiles if it's not 
+needed.
+   See https://nextjs.org/do
+cs/app/api-reference/config/
+next-config-js/output#caveat
+s for more information.
+ Detected additional 
+lockfiles: 
+   * C:\Users\peroz\OneDrive
+\Escritorio\suma - 
+argentina\package-lock.json
+
+Γû▓ Next.js 16.1.1 (webpack)
+- Environments: .env.local, .env
+
+ΓÜá The "middleware" file 
+convention is deprecated. 
+Please use "proxy" instead. 
+Learn more: https://nextjs.o
+rg/docs/messages/middleware-
+to-proxy
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 56s
+  Skipping validation of types
+  Collecting page data using 15 workers ...
+Γ£à MercadoPago client initialized
+ΓÜá∩╕Å Twilio credentials 
+not configured. WhatsApp 
+notifications will not work.
+Γ£à MercadoPago client initialized
+ΓÜá∩╕Å Twilio credentials 
+not configured. WhatsApp 
+notifications will not work.
+ΓÜá∩╕Å Resend API key not 
+configured. Email 
+notifications will not work.
+ΓÜá∩╕Å Resend API key not 
+configured. Email 
+notifications will not work.
+ΓÜá∩╕Å VAPID keys not 
+configured. Push 
+notifications will not work.
+ΓÜá∩╕Å VAPID keys not 
+configured. Push 
+notifications will not work.
+ΓÜá∩╕Å Twilio credentials 
+not configured. WhatsApp 
+notifications will not work.
+ΓÜá∩╕Å Resend API key not 
+configured. Email 
+notifications will not work.
+ΓÜá∩╕Å VAPID keys not 
+configured. Push 
+notifications will not work.
+  Generating static pages using 15 workers (0/96) ...
+Γ£à MercadoPago client initialized
+ΓÜá∩╕Å Twilio credentials 
+not configured. WhatsApp 
+notifications will not work.
+ΓÜá∩╕Å Resend API key not 
+configured. Email 
+notifications will not work.
+ΓÜá∩╕Å VAPID keys not 
+configured. Push 
+notifications will not work.
+ΓÜá∩╕Å Twilio credentials 
+not configured. WhatsApp 
+notifications will not work.
+ΓÜá∩╕Å Resend API key not 
+configured. Email 
+notifications will not work.
+ΓÜá∩╕Å VAPID keys not 
+configured. Push 
+notifications will not work.
+  Generating static pages using 15 workers (24/96) 
+  Generating static pages using 15 workers (48/96) 
+  Generating static pages using 15 workers (72/96) 
+Γ£ô Generating static pages using 15 workers (96/96) in 3.5s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ Γùï /admin/dashboard
+Γö£ Γùï /admin/dashboard/analytics
+Γö£ Γùï /admin/password-migration
+Γö£ Γùï /admin/specialties-cities
+Γö£ Γùï /ai-assistant
+Γö£ ╞Æ /api/admin/debug-settings
+Γö£ ╞Æ /api/admin/stats
+Γö£ ╞Æ /api/ai/assistant
+Γö£ ╞Æ /api/ai/generate-record
+Γö£ ╞Æ /api/appointments/add-message
+Γö£ ╞Æ /api/appointments/by-service
+Γö£ ╞Æ /api/appointments/create
+Γö£ ╞Æ /api/appointments/doctor
+Γö£ ╞Æ /api/appointments/get-patient-appointments
+Γö£ ╞Æ /api/appointments/update
+Γö£ ╞Æ /api/auth/clear-token
+Γö£ ╞Æ /api/auth/find-admin
+Γö£ ╞Æ /api/auth/find-user
+Γö£ ╞Æ /api/auth/set-token
+Γö£ ╞Æ /api/chat/conversations
+Γö£ ╞Æ /api/chat/doctor-patient
+Γö£ ╞Æ /api/clinics
+Γö£ ╞Æ /api/clinics/add
+Γö£ ╞Æ /api/clinics/appointments
+Γö£ ╞Æ /api/clinics/branches
+Γö£ ╞Æ /api/clinics/branches/add
+Γö£ ╞Æ /api/clinics/branches/delete
+Γö£ ╞Æ /api/clinics/branches/update
+Γö£ ╞Æ /api/clinics/by-slug
+Γö£ ╞Æ /api/clinics/chat/conversations
+Γö£ ╞Æ /api/clinics/chat/messages
+Γö£ ╞Æ /api/clinics/chat/read
+Γö£ ╞Æ /api/clinics/communications
+Γö£ ╞Æ /api/clinics/doctors
+Γö£ ╞Æ /api/clinics/expenses
+Γö£ ╞Æ /api/clinics/patients
+Γö£ ╞Æ /api/clinics/secretaries
+Γö£ ╞Æ /api/clinics/secretaries/add
+Γö£ ╞Æ /api/clinics/services
+Γö£ ╞Æ /api/clinics/services/add
+Γö£ ╞Æ /api/clinics/services/delete
+Γö£ ╞Æ /api/clinics/services/update
+Γö£ ╞Æ /api/clinics/specialties
+Γö£ ╞Æ /api/cron/notifications
+Γö£ ╞Æ /api/doctors
+Γö£ ╞Æ /api/doctors/add
+Γö£ ╞Æ /api/doctors/reviews/add
+Γö£ ╞Æ /api/family-members
+Γö£ ╞Æ /api/family-members/[id]
+Γö£ ╞Æ /api/family-members/[id]/link
+Γö£ ╞Æ /api/family-members/get
+Γö£ ╞Æ /api/integrations/mercadopago/auth
+Γö£ ╞Æ /api/integrations/mercadopago/callback
+Γö£ ╞Æ /api/medical-records
+Γö£ ╞Æ /api/notifications/confirmation
+Γö£ ╞Æ /api/patient/chat/clinics
+Γö£ ╞Æ /api/patients/add
+Γö£ ╞Æ /api/patients/get
+Γö£ ╞Æ /api/patients/update
+Γö£ ╞Æ /api/payments/create-preference
+Γö£ ╞Æ /api/payments/webhook
+Γö£ ╞Æ /api/reset-password
+Γö£ ╞Æ /api/revoke-tokens
+Γö£ ╞Æ /api/sellers
+Γö£ ╞Æ /api/send-appointment-email
+Γö£ ╞Æ /api/send-notification
+Γö£ ╞Æ /api/send-password-reset-email
+Γö£ ╞Æ /api/send-welcome-email
+Γö£ ╞Æ /api/settings/cities
+Γö£ ╞Æ /api/settings/update
+Γö£ ╞Æ /api/storage/upload
+Γö£ ╞Æ /api/support-tickets
+Γö£ ╞Æ /api/support-tickets/update
+Γö£ ╞Æ /api/support/add-message
+Γö£ ╞Æ /api/test/create-user
+Γö£ ╞Æ /api/transcribe
+Γö£ ╞Æ /api/update-fcm-token
+Γö£ ╞Æ /api/upload-image
+Γö£ ╞Æ /api/validate-password-reset-token
+Γö£ ╞Æ /api/validate-unique
+Γö£ ╞Æ /auth/callback
+Γö£ Γùï /auth/forgot-password
+Γö£ Γùï /auth/login
+Γö£ Γùï /auth/register
+Γö£ Γùï /auth/register-clinic
+Γö£ Γùï /auth/register-doctor
+Γö£ Γùï /clinic/dashboard
+Γö£ ╞Æ /clinic/patients/[id]
+Γö£ ╞Æ /clinica/[slug]
+Γö£ ╞Æ /clinica/[slug]/servicio/[serviceId]
+Γö£ Γùï /dashboard
+Γö£ Γùï /dashboard/family
+Γö£ Γùï /doctor/dashboard
+Γö£ Γùï /doctor/dashboard/analytics
+Γö£ ╞Æ /doctor/patients/[id]
+Γö£ ╞Æ /doctors/[id]
+Γö£ Γùï /favorites
+Γö£ ╞Æ /find-a-doctor
+Γö£ Γùï /investors
+Γö£ Γùï /landing-clinica
+Γö£ Γùï /login
+Γö£ Γùï /notification-test
+Γö£ Γùï /offline
+Γö£ Γùï /patient/chats
+Γö£ Γùï /privacy
+Γö£ Γùï /profile
+Γö£ Γùï /register
+Γö£ Γùï /reset-password
+Γö£ Γùï /seller/dashboard
+Γö£ Γùï /seller/profile
+Γöö Γùï /terms
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Clinic, PaymentSettings, ClinicSpecialty, COUNTRY_CODES, City } from '@/lib/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { updateClinic, getClinic, getClinicSpecialties, addClinicSpecialty, deleteClinicSpecialty, getSettings } from '@/lib/supabaseService';
+import { updateClinic, getClinic, getClinicSpecialties, addClinicSpecialty, deleteClinicSpecialty } from '@/lib/supabaseService';
+import { useSettings } from '@/lib/settings';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +13,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Settings, Save, Building2, CreditCard, Trash2, Plus, Upload } from 'lucide-react';
+import { Loader2, Settings, Save, Building2, CreditCard, Trash2, Plus, Upload, MapPin, X } from 'lucide-react';
 import Image from 'next/image';
 import { uploadPublicImage } from '@/lib/supabaseService';
+import dynamic from 'next/dynamic';
+
+const LocationPicker = dynamic(
+    () => import('@/components/location-picker').then(mod => ({ default: mod.LocationPicker })),
+    { ssr: false, loading: () => <div className="h-10 bg-slate-100 rounded-lg animate-pulse" /> }
+);
 
 export function SettingsTab() {
     const { user } = useAuth();
@@ -35,12 +42,24 @@ export function SettingsTab() {
     const [bannerUrl, setBannerUrl] = useState('');
     const [bannerFile, setBannerFile] = useState<File | null>(null);
     const [slug, setSlug] = useState('');
+    const [lat, setLat] = useState(0);
+    const [lng, setLng] = useState(0);
 
 
     // Specialties State
     const [specialties, setSpecialties] = useState<ClinicSpecialty[]>([]);
     const [newSpecialty, setNewSpecialty] = useState('');
-    const [availableCities, setAvailableCities] = useState<City[]>([]);
+    const [availableCities, setAvailableCities] = useState<string[]>([]);
+    const [citySearch, setCitySearch] = useState('');
+    const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+
+    // Load cities from settings hook
+    const { cities: settingsCities } = useSettings();
+    useEffect(() => {
+        if (settingsCities && settingsCities.length > 0) {
+            setAvailableCities(settingsCities.map(c => c.name));
+        }
+    }, [settingsCities]);
 
     useEffect(() => {
         const loadClinicData = async () => {
@@ -67,6 +86,8 @@ export function SettingsTab() {
                         setAddress(clinicData.address || '');
                         setLogoUrl(clinicData.logoUrl || '');
                         setBannerUrl(clinicData.bannerImage || '');
+                        setLat(Number(clinicData.lat) || 0);
+                        setLng(Number(clinicData.lng) || 0);
                     }
                 } catch (error) {
                     console.error("Error loading clinic specifics", error);
@@ -83,10 +104,7 @@ export function SettingsTab() {
         };
 
         const loadCities = async () => {
-            const settings = await getSettings();
-            if (settings?.cities) {
-                setAvailableCities(settings.cities);
-            }
+            // Cities now loaded via useSettings hook above
         };
 
         loadClinicData();
@@ -118,7 +136,9 @@ export function SettingsTab() {
                 address,
                 logoUrl: finalLogoUrl || undefined,
                 bannerImage: finalBannerUrl || undefined,
-            });
+                lat: lat != null ? lat : undefined,
+                lng: lng != null ? lng : undefined,
+            } as any);
 
             toast({ title: 'Guardado', description: 'Los cambios se guardaron correctamente.' });
         } catch (error) {
@@ -210,16 +230,66 @@ export function SettingsTab() {
                     <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
                             <Label htmlFor="city">Ciudad</Label>
-                            <Select value={city} onValueChange={setCity} disabled={saving}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar ciudad" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableCities.map(c => (
-                                        <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            {city ? (
+                                <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-teal-50 border-teal-200">
+                                    <MapPin className="h-4 w-4 text-teal-600 shrink-0" />
+                                    <span className="text-sm font-medium text-teal-800 flex-1">{city}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setCity(''); setCitySearch(''); setCityDropdownOpen(true); }}
+                                        className="text-teal-500 hover:text-teal-700"
+                                        disabled={saving}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            ) : !cityDropdownOpen ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setCityDropdownOpen(true)}
+                                    disabled={saving}
+                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-md text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer"
+                                >
+                                    <MapPin className="h-4 w-4" />
+                                    Elegir ciudad
+                                </button>
+                            ) : (
+                                <div>
+                                    <Input
+                                        placeholder="Filtrar ciudades..."
+                                        value={citySearch}
+                                        onChange={(e) => setCitySearch(e.target.value)}
+                                        autoComplete="off"
+                                        autoFocus
+                                        className="mb-2"
+                                        disabled={saving}
+                                    />
+                                    <div className="border rounded-lg max-h-32 overflow-y-auto bg-white">
+                                        {availableCities.length > 0 ? (
+                                            availableCities
+                                                .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                                                .length > 0 ? (
+                                                availableCities
+                                                    .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                                                    .map((cityOption) => (
+                                                        <button
+                                                            type="button"
+                                                            key={cityOption}
+                                                            onClick={() => { setCity(cityOption); setCitySearch(''); setCityDropdownOpen(false); }}
+                                                            className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors border-b last:border-b-0 cursor-pointer"
+                                                        >
+                                                            {cityOption}
+                                                        </button>
+                                                    ))
+                                            ) : (
+                                                <p className="px-3 py-2 text-sm text-muted-foreground">No se encontraron ciudades</p>
+                                            )
+                                        ) : (
+                                            <p className="px-3 py-2 text-sm text-muted-foreground">Cargando ciudades...</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="sector">Sector / Barrio</Label>
@@ -241,6 +311,18 @@ export function SettingsTab() {
                                 disabled={saving}
                             />
                         </div>
+                    </div>
+
+                    {/* Location Picker */}
+                    <div className="space-y-2">
+                        <Label>Ubicación en el Mapa</Label>
+                        <LocationPicker
+                            lat={lat}
+                            lng={lng}
+                            city={city}
+                            disabled={saving}
+                            onLocationChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }}
+                        />
                     </div>
 
                     <div className="space-y-2">

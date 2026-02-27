@@ -43,6 +43,8 @@ export async function GET(request: Request) {
             description: clinic.description,
             address: clinic.address,
             city: clinic.city,
+            lat: clinic.lat,
+            lng: clinic.lng,
             logoUrl: clinic.logo_url,
             bannerImage: clinic.banner_image,
             status: clinic.status,
@@ -103,6 +105,8 @@ export async function PATCH(request: Request) {
         if (body.plan !== undefined) dbData.plan = body.plan;
         if (body.billingCycle !== undefined) dbData.billing_cycle = body.billingCycle;
         if (body.email !== undefined) dbData.email = body.email;
+        if (body.lat !== undefined) dbData.lat = body.lat;
+        if (body.lng !== undefined) dbData.lng = body.lng;
 
         // Handle password change - hash it before saving
         if (body.password && body.password.trim()) {

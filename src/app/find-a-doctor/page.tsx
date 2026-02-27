@@ -12,6 +12,7 @@ import { Doctor, Clinic } from "@/lib/types";
 import { SearchFilters } from "@/components/search-filters";
 import { SpecialtyPills } from "@/components/specialty-pills";
 import { HealthBackground } from "@/components/HealthBackground";
+import { MapViewToggle } from "@/components/map-view-toggle";
 
 // Force dynamic rendering to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -178,95 +179,102 @@ export default async function FindDoctorPage({
         {/* RESULTS SECTION - Más compacto en móvil */}
         <section className="container mx-auto px-3 md:px-4 py-4 md:py-12 max-w-7xl space-y-6 md:space-y-20">
 
-          {/* 1. MÉDICOS PARTICULARES */}
-          {regularDoctors.length > 0 && viewMode !== 'clinics' && (
-            <div className="space-y-3 md:space-y-6">
-              {/* Header compacto en móvil */}
-              <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
-                    <Stethoscope className="h-4 w-4 md:h-6 md:w-6 text-primary" />
+          {/* Toggle Lista / Mapa */}
+          <MapViewToggle
+            doctors={filteredDoctors}
+            clinics={filteredClinics}
+            centerCity={cityFilter !== "all" ? cityFilter : undefined}
+          >
+            {/* 1. MÉDICOS PARTICULARES */}
+            {regularDoctors.length > 0 && viewMode !== 'clinics' && (
+              <div className="space-y-3 md:space-y-6">
+                {/* Header compacto en móvil */}
+                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
+                      <Stethoscope className="h-4 w-4 md:h-6 md:w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Médicos</h2>
+                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Especialistas independientes</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base md:text-2xl font-bold text-slate-900">Médicos</h2>
-                    <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Especialistas independientes</p>
-                  </div>
+                  <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
+                    {regularDoctors.length}
+                  </span>
                 </div>
-                <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
-                  {regularDoctors.length}
-                </span>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                {regularDoctors.map(doctor => (
-                  <DoctorCard key={doctor.id} doctor={doctor} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 2. ESPECIALISTAS DE BIENESTAR */}
-          {wellnessDoctors.length > 0 && viewMode !== 'clinics' && (
-            <div className="space-y-3 md:space-y-6">
-              <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-1.5 md:p-2 bg-gradient-to-br from-pink-500/10 to-purple-500/10 rounded-lg">
-                    <Sparkles className="h-4 w-4 md:h-6 md:w-6 text-pink-500" />
-                  </div>
-                  <div>
-                    <h2 className="text-base md:text-2xl font-bold text-slate-900">Bienestar</h2>
-                    <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Estética y cuidado personal</p>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                  {regularDoctors.map(doctor => (
+                    <DoctorCard key={doctor.id} doctor={doctor} />
+                  ))}
                 </div>
-                <span className="text-[10px] md:text-sm font-semibold bg-gradient-to-r from-pink-50 to-purple-50 text-pink-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-pink-100">
-                  {wellnessDoctors.length}
-                </span>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                {wellnessDoctors.map(doctor => (
-                  <DoctorCard key={doctor.id} doctor={doctor} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Mensaje cuando no hay resultados */}
-          {regularDoctors.length === 0 && wellnessDoctors.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 md:py-16 bg-white rounded-2xl md:rounded-3xl border border-dashed border-slate-200">
-              <div className="bg-slate-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
-                <Search className="h-6 w-6 md:h-8 md:w-8 text-slate-400" />
-              </div>
-              <h3 className="text-sm md:text-lg font-semibold text-slate-900 mb-1">No encontramos resultados</h3>
-              <p className="text-xs md:text-base text-slate-500 max-w-sm text-center px-4">Prueba con otra especialidad</p>
-            </div>
-          )}
-
-          {/* 3. CLÍNICAS */}
-          {filteredClinics.length > 0 && viewMode !== 'doctors' && (
-            <div className="space-y-3 md:space-y-6">
-              <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-1.5 md:p-2 bg-secondary/10 rounded-lg">
-                    <Heart className="h-4 w-4 md:h-6 md:w-6 text-secondary" />
+            {/* 2. ESPECIALISTAS DE BIENESTAR */}
+            {wellnessDoctors.length > 0 && viewMode !== 'clinics' && (
+              <div className="space-y-3 md:space-y-6">
+                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="p-1.5 md:p-2 bg-gradient-to-br from-pink-500/10 to-purple-500/10 rounded-lg">
+                      <Sparkles className="h-4 w-4 md:h-6 md:w-6 text-pink-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Bienestar</h2>
+                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Estética y cuidado personal</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base md:text-2xl font-bold text-slate-900">Clínicas</h2>
-                    <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Centros médicos destacados</p>
-                  </div>
+                  <span className="text-[10px] md:text-sm font-semibold bg-gradient-to-r from-pink-50 to-purple-50 text-pink-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-pink-100">
+                    {wellnessDoctors.length}
+                  </span>
                 </div>
-                <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
-                  {filteredClinics.length}
-                </span>
-              </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
-                {filteredClinics.map((clinic, index) => (
-                  <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
-                ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                  {wellnessDoctors.map(doctor => (
+                    <DoctorCard key={doctor.id} doctor={doctor} />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Mensaje cuando no hay resultados */}
+            {regularDoctors.length === 0 && wellnessDoctors.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-8 md:py-16 bg-white rounded-2xl md:rounded-3xl border border-dashed border-slate-200">
+                <div className="bg-slate-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
+                  <Search className="h-6 w-6 md:h-8 md:w-8 text-slate-400" />
+                </div>
+                <h3 className="text-sm md:text-lg font-semibold text-slate-900 mb-1">No encontramos resultados</h3>
+                <p className="text-xs md:text-base text-slate-500 max-w-sm text-center px-4">Prueba con otra especialidad</p>
+              </div>
+            )}
+
+            {/* 3. CLÍNICAS */}
+            {filteredClinics.length > 0 && viewMode !== 'doctors' && (
+              <div className="space-y-3 md:space-y-6">
+                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="p-1.5 md:p-2 bg-secondary/10 rounded-lg">
+                      <Heart className="h-4 w-4 md:h-6 md:w-6 text-secondary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Clínicas</h2>
+                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Centros médicos destacados</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
+                    {filteredClinics.length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
+                  {filteredClinics.map((clinic, index) => (
+                    <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </MapViewToggle>
 
         </section>
       </main>

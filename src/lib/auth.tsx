@@ -55,6 +55,8 @@ interface DoctorRegistrationData {
   address: string;
   sector: string;
   phone: string;
+  lat?: number;
+  lng?: number;
 }
 
 interface ClinicRegistrationData {
@@ -66,6 +68,8 @@ interface ClinicRegistrationData {
   sector?: string;
   address?: string;
   billingCycle?: 'monthly' | 'annual';
+  lat?: number;
+  lng?: number;
 }
 
 interface AuthContextType {
@@ -82,7 +86,7 @@ interface AuthContextType {
   sendPasswordReset: (email: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { role: 'doctor' | 'seller' | 'patient' | 'clinic' }): User => {
   const { role } = userData;
@@ -457,7 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       status: 'active', lastPaymentDate: null,
-      whatsapp: phone, lat: 0, lng: 0,
+      whatsapp: phone, lat: doctorData.lat || 0, lng: doctorData.lng || 0,
       joinDate: joinDateArgentina,
       subscriptionStatus: 'active', nextPaymentDate: paymentDateArgentina,
       coupons: [], expenses: [],
@@ -532,7 +536,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     await supabaseService.addClinic({
       ...newClinicData,
-      password: hashedPassword
+      password: hashedPassword,
+      lat: clinicData.lat || null,
+      lng: clinicData.lng || null,
     } as any);
 
     // Fetch the newly created user to verify and log them in
@@ -720,7 +726,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // Retornar un estado seguro si el provider no está disponible (ej. durante SSR o hidratación inicial)
+    return {
+      user: null as any,
+      loading: true,
+      login: async () => { },
+      register: async () => { },
+      registerDoctor: async () => { },
+      registerClinic: async () => { },
+      logout: () => { },
+      updateUser: () => { },
+      changePassword: async () => ({ success: false, message: 'Auth not ready' }),
+      toggleFavoriteDoctor: () => { },
+      sendPasswordReset: async () => { },
+    } as AuthContextType;
   }
   return context;
 }

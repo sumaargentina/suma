@@ -8,12 +8,14 @@ import { Search, UserCheck, CalendarDays, Bot, ArrowRight, Star, Building2 } fro
 import React from "react";
 import { InstallPwaBanner } from "@/components/install-pwa-banner";
 import { HealthBackground } from "@/components/HealthBackground";
+import { SplashScreen } from "@/components/splash-screen";
 
 export default function Home() {
   const heroImageUrl = "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=2000";
 
   return (
     <div className="flex flex-col min-h-screen bg-background selection:bg-secondary selection:text-white">
+      <SplashScreen />
       <HeaderWrapper />
       <main className="flex-1 pb-20 md:pb-0">
         {/* HERO SECTION */}

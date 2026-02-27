@@ -92,6 +92,22 @@ async function getDocumentData<T>(tableName: string, id: string): Promise<T | nu
 // =====================================================
 
 export const getDoctors = () => getCollectionData<Doctor>('doctors');
+
+export const getDoctorsLite = async (): Promise<Partial<Doctor>[]> => {
+    try {
+        const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+        const { data, error } = await client
+            .from('doctors')
+            .select('id, name, specialty, city, consultation_fee, rating, status');
+
+        if (error) throw new Error(error.message || String(error));
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as Partial<Doctor>[];
+    } catch (error) {
+        console.error(`Error fetching doctors lite:`, error);
+        return [];
+    }
+};
+
 export const getDoctor = (id: string) => getDocumentData<Doctor>('doctors', id);
 export const getSellers = () => getCollectionData<Seller>('sellers');
 

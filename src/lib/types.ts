@@ -356,6 +356,8 @@ export type Clinic = {
   lastPaymentDate?: string | null;
   nextPaymentDate?: string | null;
   subscriptionFee?: number;
+  lat?: number;
+  lng?: number;
 };
 
 export type ClinicPayment = {

@@ -59,6 +59,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  turbopack: {},
   webpack: (config) => {
     // These aliases are to fix build errors from dependencies.
     // Some packages have optional dependencies that are not used but cause build failures.

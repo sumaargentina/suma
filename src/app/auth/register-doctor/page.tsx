@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Stethoscope, Loader2, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Stethoscope, Loader2, Eye, EyeOff, MapPin, X } from "lucide-react";
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/lib/settings';
@@ -54,6 +54,8 @@ export default function RegisterDoctorPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [citySearch, setCitySearch] = useState('');
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -68,7 +70,7 @@ export default function RegisterDoctorPage() {
     address: '',
     sector: '',
     countryCode: '+54',
-    phone: ''
+    phone: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -311,20 +313,66 @@ export default function RegisterDoctorPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="city">Ciudad</Label>
-                <Select name="city" value={formData.city} onValueChange={(v) => handleSelectChange('city', v)} disabled={dynamicLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={dynamicLoading ? "Cargando..." : "Selecciona una ciudad"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {cities.length > 0 ? (
-                      cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
-                    ) : (
-                      <SelectItem value="no-cities" disabled>
-                        {dynamicLoading ? "Cargando ciudades..." : "No hay ciudades disponibles"}
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                {formData.city ? (
+                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-teal-50 border-teal-200">
+                    <MapPin className="h-4 w-4 text-teal-600 shrink-0" />
+                    <span className="text-sm font-medium text-teal-800 flex-1">{formData.city}</span>
+                    <button
+                      type="button"
+                      onClick={() => { handleSelectChange('city', ''); setCitySearch(''); setCityDropdownOpen(true); }}
+                      className="text-teal-500 hover:text-teal-700"
+                      disabled={isLoading}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : !cityDropdownOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setCityDropdownOpen(true)}
+                    disabled={dynamicLoading || isLoading}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-md text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    {dynamicLoading ? 'Cargando ciudades...' : 'Elegir ciudad'}
+                  </button>
+                ) : (
+                  <div>
+                    <Input
+                      placeholder="Filtrar ciudades..."
+                      value={citySearch}
+                      onChange={(e) => setCitySearch(e.target.value)}
+                      autoComplete="off"
+                      autoFocus
+                      className="mb-2"
+                      disabled={isLoading}
+                    />
+                    <div className="border rounded-lg max-h-32 overflow-y-auto bg-white">
+                      {cities.length > 0 ? (
+                        cities
+                          .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                          .length > 0 ? (
+                          cities
+                            .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                            .map((cityOption) => (
+                              <button
+                                type="button"
+                                key={cityOption}
+                                onClick={() => { handleSelectChange('city', cityOption); setCitySearch(''); setCityDropdownOpen(false); }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors border-b last:border-b-0 cursor-pointer"
+                              >
+                                {cityOption}
+                              </button>
+                            ))
+                        ) : (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">No se encontraron ciudades</p>
+                        )
+                      ) : (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">Cargando ciudades...</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

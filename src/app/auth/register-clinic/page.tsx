@@ -17,9 +17,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Building2, CheckCircle2, MapPin, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Loader2, Building2, CheckCircle2, MapPin, Eye, EyeOff, X } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import dynamic from 'next/dynamic';
+
+const LocationPicker = dynamic(
+    () => import('@/components/location-picker').then(mod => ({ default: mod.LocationPicker })),
+    { ssr: false, loading: () => <div className="h-10 bg-slate-100 rounded-lg animate-pulse" /> }
+);
 
 function RegisterClinicContent() {
     const { registerClinic } = useAuth();
@@ -40,6 +46,10 @@ function RegisterClinicContent() {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [billingMonths, setBillingMonths] = useState(initialMonths);
     const [isLoading, setIsLoading] = useState(false);
+    const [lat, setLat] = useState(0);
+    const [lng, setLng] = useState(0);
+    const [citySearch, setCitySearch] = useState('');
+    const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
 
 
     const basePrice = 29000;
@@ -86,7 +96,9 @@ function RegisterClinicContent() {
                 city,
                 sector,
                 address,
-                billingCycle: billingMonths === 12 ? 'annual' : 'monthly'
+                billingCycle: billingMonths === 12 ? 'annual' : 'monthly',
+                lat: lat || undefined,
+                lng: lng || undefined,
             });
 
             toast({
@@ -210,21 +222,66 @@ function RegisterClinicContent() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="city">Ciudad</Label>
-                                <Select value={city} onValueChange={setCity} disabled={isLoading}>
-                                    <SelectTrigger className="w-full">
-                                        <div className="flex items-center gap-2">
-                                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                                            <SelectValue placeholder="Selecciona tu ciudad" />
+                                {city ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-teal-50 border-teal-200">
+                                        <MapPin className="h-4 w-4 text-teal-600 shrink-0" />
+                                        <span className="text-sm font-medium text-teal-800 flex-1">{city}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCity(''); setCitySearch(''); setCityDropdownOpen(true); }}
+                                            className="text-teal-500 hover:text-teal-700"
+                                            disabled={isLoading}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ) : !cityDropdownOpen ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCityDropdownOpen(true)}
+                                        disabled={isLoading}
+                                        className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-md text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer"
+                                    >
+                                        <MapPin className="h-4 w-4" />
+                                        Elegir ciudad
+                                    </button>
+                                ) : (
+                                    <div>
+                                        <Input
+                                            placeholder="Filtrar ciudades..."
+                                            value={citySearch}
+                                            onChange={(e) => setCitySearch(e.target.value)}
+                                            autoComplete="off"
+                                            autoFocus
+                                            className="mb-2"
+                                            disabled={isLoading}
+                                        />
+                                        <div className="border rounded-lg max-h-32 overflow-y-auto bg-white">
+                                            {cities.length > 0 ? (
+                                                cities
+                                                    .filter(c => !citySearch || c.name.toLowerCase().includes(citySearch.toLowerCase()))
+                                                    .length > 0 ? (
+                                                    cities
+                                                        .filter(c => !citySearch || c.name.toLowerCase().includes(citySearch.toLowerCase()))
+                                                        .map((cityOption) => (
+                                                            <button
+                                                                type="button"
+                                                                key={cityOption.name}
+                                                                onClick={() => { setCity(cityOption.name); setCitySearch(''); setCityDropdownOpen(false); }}
+                                                                className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors border-b last:border-b-0 cursor-pointer"
+                                                            >
+                                                                {cityOption.name}
+                                                            </button>
+                                                        ))
+                                                ) : (
+                                                    <p className="px-3 py-2 text-sm text-muted-foreground">No se encontraron ciudades</p>
+                                                )
+                                            ) : (
+                                                <p className="px-3 py-2 text-sm text-muted-foreground">Cargando ciudades...</p>
+                                            )}
                                         </div>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {cities.map((cityOption) => (
-                                            <SelectItem key={cityOption.name} value={cityOption.name}>
-                                                {cityOption.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -248,6 +305,18 @@ function RegisterClinicContent() {
                                     value={address}
                                     onChange={(e) => setAddress(e.target.value)}
                                     disabled={isLoading}
+                                />
+                            </div>
+
+                            {/* Location Picker */}
+                            <div className="space-y-2">
+                                <Label>Ubicación en el Mapa <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                                <LocationPicker
+                                    lat={lat}
+                                    lng={lng}
+                                    city={city}
+                                    disabled={isLoading}
+                                    onLocationChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }}
                                 />
                             </div>
 

@@ -1,8 +1,9 @@
 -- =====================================================
--- MIGRACIÓN: SUPABASE AUTH COMPLETO
+-- MIGRACIÓN: SUPABASE AUTH COMPLETO (FIXED)
 -- Descripción: Configuración completa de autenticación con Supabase
+-- NOTA: Esta versión NO requiere pharmacies/laboratories (se agregan después)
 -- Fecha: 2025-12-14
--- Versión: 1.0.0
+-- Versión: 1.0.1
 -- =====================================================
 
 -- 1. HABILITAR EXTENSIONES NECESARIAS
@@ -35,12 +36,12 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     last_login_at TIMESTAMPTZ,
     
-    -- Reference to role-specific table
-    patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
-    doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
-    seller_id UUID REFERENCES sellers(id) ON DELETE SET NULL,
-    pharmacy_id UUID REFERENCES pharmacies(id) ON DELETE SET NULL,
-    laboratory_id UUID REFERENCES laboratories(id) ON DELETE SET NULL
+    -- Reference to role-specific table (SIN FOREIGN KEYS todavía)
+    patient_id UUID,
+    doctor_id UUID,
+    seller_id UUID,
+    pharmacy_id UUID,
+    laboratory_id UUID
 );
 
 -- Index para búsqueda rápida
@@ -346,34 +347,14 @@ CREATE POLICY "Users can view own audit log"
     USING (auth.uid() = user_id);
 
 -- =====================================================
--- 12. CONFIGURACIÓN DE SUPABASE AUTH
--- =====================================================
--- NOTA: Estas configuraciones se hacen desde el dashboard de Supabase
-
--- Auth Settings recomendadas:
--- ✅ Enable Email Confirmations
--- ✅ Enable Magic Links
--- ✅ Enable OAuth (Google, Facebook)
--- ✅ JWT expiry: 3600 seconds (1 hour)
--- ✅ Refresh token expiry: 2592000 seconds (30 days)
--- ✅ Enable MFA
--- ✅ Minimum password length: 8
-
--- Email Templates a personalizar:
--- - Confirmation email
--- - Magic link email
--- - Password reset email
--- - Email change confirmation
-
--- =====================================================
--- 13. ÍNDICES ADICIONALES PARA PERFORMANCE
+-- 12. ÍNDICES ADICIONALES PARA PERFORMANCE
 -- =====================================================
 CREATE INDEX IF NOT EXISTS idx_user_profiles_created_at ON user_profiles(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_last_login ON user_profiles(last_login_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
 
 -- =====================================================
--- 14. COMENTARIOS PARA DOCUMENTACIÓN
+-- 13. COMENTARIOS PARA DOCUMENTACIÓN
 -- =====================================================
 COMMENT ON TABLE public.user_profiles IS 'Perfiles de usuario unificados, conectados con Supabase Auth';
 COMMENT ON TABLE public.user_sessions IS 'Registro de sesiones activas de usuarios para tracking y seguridad';
@@ -393,5 +374,5 @@ BEGIN
     RAISE NOTICE '📊 Tablas creadas: user_profiles, user_sessions, auth_audit_log, user_mfa, magic_links, password_reset_requests';
     RAISE NOTICE '🔒 RLS habilitado en todas las tablas sensibles';
     RAISE NOTICE '⚡ Triggers configurados para auto-creación de perfiles';
-    RAISE NOTICE '🎯 Siguiente paso: Configurar Supabase Auth en el dashboard';
+    RAISE NOTICE '🎯 Siguiente paso: Ejecutar migración 002 (pharmacies/laboratories)';
 END $$;

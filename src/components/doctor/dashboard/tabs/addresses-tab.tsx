@@ -10,9 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Plus, MapPin, Trash2, Edit, Clock, CheckCircle, X, Power } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from '@/lib/supabaseService';
+import { useSettings } from '@/lib/settings';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import dynamic from 'next/dynamic';
+
+const LocationPicker = dynamic(
+    () => import('@/components/location-picker').then(mod => ({ default: mod.LocationPicker })),
+    { ssr: false, loading: () => <div className="h-10 bg-slate-100 rounded-lg animate-pulse" /> }
+);
 
 interface AddressesTabProps {
     doctorData: Doctor;
@@ -42,21 +48,16 @@ export function AddressesTab({ doctorData, onUpdate }: AddressesTabProps) {
     const [formData, setFormData] = useState<Partial<DoctorAddress>>({});
     const [tempSchedule, setTempSchedule] = useState<Schedule>(initialSchedule);
     const [tempServices, setTempServices] = useState<Service[]>([]);
+    const [citySearch, setCitySearch] = useState('');
+    const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
 
-    // Load available cities from settings
+    // Load available cities from settings hook
+    const { cities } = useSettings();
     useEffect(() => {
-        const loadCities = async () => {
-            try {
-                const settings = await supabaseService.getSettings();
-                if (settings && settings.cities) {
-                    setAvailableCities(settings.cities.map(c => c.name));
-                }
-            } catch (error) {
-                console.error('Error loading cities:', error);
-            }
-        };
-        loadCities();
-    }, []);
+        if (cities && cities.length > 0) {
+            setAvailableCities(cities.map(c => c.name));
+        }
+    }, [cities]);
 
     const handleOpenDialog = (address?: DoctorAddress) => {
         if (address) {
@@ -78,6 +79,8 @@ export function AddressesTab({ doctorData, onUpdate }: AddressesTabProps) {
             setTempServices([]);
         }
         setIsDialogOpen(true);
+        setCitySearch('');
+        setCityDropdownOpen(false);
     };
 
     const handleSave = async () => {
@@ -270,24 +273,73 @@ export function AddressesTab({ doctorData, onUpdate }: AddressesTabProps) {
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="city">Ciudad</Label>
-                                    <Select
-                                        value={formData.city || ''}
-                                        onValueChange={(value) => setFormData({ ...formData, city: value })}
-                                    >
-                                        <SelectTrigger id="city">
-                                            <SelectValue placeholder="Selecciona una ciudad" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableCities.map((city) => (
-                                                <SelectItem key={city} value={city}>
-                                                    {city}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {availableCities.length === 0 && (
-                                        <p className="text-xs text-muted-foreground">Cargando ciudades disponibles...</p>
+                                    {formData.city ? (
+                                        <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-teal-50 border-teal-200">
+                                            <MapPin className="h-4 w-4 text-teal-600 shrink-0" />
+                                            <span className="text-sm font-medium text-teal-800 flex-1">{formData.city}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setFormData({ ...formData, city: '' }); setCitySearch(''); setCityDropdownOpen(true); }}
+                                                className="text-teal-500 hover:text-teal-700"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    ) : !cityDropdownOpen ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setCityDropdownOpen(true)}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-md text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer"
+                                        >
+                                            <MapPin className="h-4 w-4" />
+                                            Elegir ciudad
+                                        </button>
+                                    ) : (
+                                        <div>
+                                            <Input
+                                                id="city"
+                                                placeholder="Filtrar ciudades..."
+                                                value={citySearch}
+                                                onChange={(e) => setCitySearch(e.target.value)}
+                                                autoComplete="off"
+                                                autoFocus
+                                                className="mb-2"
+                                            />
+                                            <div className="border rounded-lg max-h-32 overflow-y-auto bg-white">
+                                                {availableCities.length > 0 ? (
+                                                    availableCities
+                                                        .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                                                        .length > 0 ? (
+                                                        availableCities
+                                                            .filter(c => !citySearch || c.toLowerCase().includes(citySearch.toLowerCase()))
+                                                            .map((cityOption) => (
+                                                                <button
+                                                                    type="button"
+                                                                    key={cityOption}
+                                                                    onClick={() => { setFormData({ ...formData, city: cityOption }); setCitySearch(''); setCityDropdownOpen(false); }}
+                                                                    className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors border-b last:border-b-0 cursor-pointer"
+                                                                >
+                                                                    {cityOption}
+                                                                </button>
+                                                            ))
+                                                    ) : (
+                                                        <p className="px-3 py-2 text-sm text-muted-foreground">No se encontraron ciudades</p>
+                                                    )
+                                                ) : (
+                                                    <p className="px-3 py-2 text-sm text-muted-foreground">Cargando ciudades...</p>
+                                                )}
+                                            </div>
+                                        </div>
                                     )}
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Ubicación en el Mapa</Label>
+                                    <LocationPicker
+                                        lat={formData.lat || 0}
+                                        lng={formData.lng || 0}
+                                        city={formData.city}
+                                        onLocationChange={(lat, lng) => setFormData({ ...formData, lat, lng })}
+                                    />
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="consultationFee">Precio de Consulta General ($)</Label>
