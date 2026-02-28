@@ -46,6 +46,7 @@
     "@supabase/supabase-js": "^2.86.0",
     "@types/bcryptjs": "^2.4.6",
     "animejs": "^4.3.6",
+    "babel-plugin-react-compiler": "^1.0.0",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

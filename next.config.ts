@@ -12,6 +12,9 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 });
 
 const nextConfig: NextConfig = {
+  experimental: {
+    reactCompiler: true,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
