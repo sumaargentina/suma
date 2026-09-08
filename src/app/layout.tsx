@@ -14,6 +14,7 @@ import { SettingsProvider } from "@/lib/settings";
 import { RealtimeNotifications } from "@/components/realtime-notifications";
 import { PwaRegistry } from "@/components/pwa-registry";
 import { InstallPwaBanner } from "@/components/install-pwa-banner";
+import { MicrosoftClarity } from "@/components/analytics/microsoft-clarity";
 import "./globals.css";
 
 // Configuración optimizada de fuentes con next/font
@@ -93,6 +94,7 @@ export default function RootLayout({
                           <RealtimeNotifications />
                           <InstallPwaBanner />
                           <PwaRegistry />
+                          <MicrosoftClarity />
                           <Toaster />
                         </SettingsProvider>
                       </ChatNotificationProvider>
