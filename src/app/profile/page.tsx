@@ -6,8 +6,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import * as supabaseService from '@/lib/supabaseService';
+import { supabase } from '@/lib/supabase';
 import { HeaderWrapper, BottomNav } from '@/components/header';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -32,11 +34,13 @@ import Image from 'next/image';
 import { NotificationSettings } from '@/components/notification-settings';
 import { validateName, validatePhone, validateCedula, validateCity, validateAge } from '@/lib/validation-utils';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
+import { compressImageToWebP } from '@/lib/image-compression';
+import { ImageCropModal } from '@/components/ui/image-crop-modal';
 
 const PatientProfileSchema = z.object({
   fullName: z.string().min(3, "El nombre completo es requerido."),
   birthDate: z.string().optional().nullable(),
-  gender: z.enum(['masculino', 'femenino', 'otro', '']).optional().nullable(),
+  gender: z.enum(['masculino', 'femenino', '']).optional().nullable(),
   cedula: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
@@ -56,9 +60,10 @@ const PasswordChangeSchema = z.object({
 });
 
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 
 export default function ProfilePage() {
-  const { user, updateUser, changePassword } = useAuth();
+  const { user, updateUser, changePassword, loginWithGoogle } = useAuth();
   const { cities } = useSettings();
   const router = useRouter();
   const { toast } = useToast();
@@ -67,12 +72,19 @@ export default function ProfilePage() {
   // State for profile info
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState<string>('');
-  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | 'no_especificar' | ''>('');
+  const [gender, setGender] = useState<'masculino' | 'femenino' | ''>('');
   const [cedula, setCedula] = useState('');
-  const [documentType, setDocumentType] = useState<DocumentType>('DNI');
+  const [documentType, setDocumentType] = useState<DocumentType>('Cédula');
   const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
-  const [countryCode, setCountryCode] = useState('+54');
+  const [countryCode, setCountryCode] = useState('+58');
+  const [locationData, setLocationData] = useState<LocationData>({
+    country: user?.country || 'VE',
+    state: user?.state || '',
+    city: user?.city || '',
+    sector: user?.sector || '',
+    address: user?.address || '',
+  });
+  const [isGoogleLinked, setIsGoogleLinked] = useState(false);
 
   // ... (Password state and profileImage state remain unchanged)
   const [currentPassword, setCurrentPassword] = useState('');
@@ -80,23 +92,64 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
 
   useEffect(() => {
     if (user === undefined) return;
     if (user === null) {
       router.push('/auth/login');
-    } else {
-      // Actualizar campos del formulario cuando el usuario cambie (excepto phone que se maneja aparte)
-      setFullName(user.name ?? '');
-      setBirthDate(user.birthDate ?? '');
-      setGender(user.gender ?? '');
-      setCedula(user.cedula ?? '');
-      setDocumentType((user as { documentType?: DocumentType }).documentType ?? 'DNI');
-      setCity(user.city ?? '');
-      setProfileImage(user.profileImage ?? null);
-      // El teléfono se parsea en un efecto separado para evitar re-parseo innecesario
+      return;
     }
-  }, [user, router]);
+
+    // Actualizar campos iniciales desde la sesión
+    setFullName(user.name ?? '');
+    setBirthDate(user.birthDate ?? '');
+    setGender(user.gender ?? '');
+    setCedula(user.cedula ?? '');
+    setDocumentType((user as { documentType?: DocumentType }).documentType ?? 'Cédula');
+    setLocationData({
+      country: user.country || 'VE',
+      state: user.state || '',
+      city: user.city || '',
+      sector: user.sector || '',
+      address: user.address || '',
+    });
+    setProfileImage(user.profileImage ?? null);
+
+    if (user.password === 'OAUTH_GOOGLE_USER') {
+      setIsGoogleLinked(true);
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.app_metadata?.provider === 'google') {
+          setIsGoogleLinked(true);
+        }
+      }).catch(() => {});
+    }
+
+    // Refrescar directamente desde la base de datos para cargar datos completos y actualizados
+    if (user.email) {
+      supabaseService.findUserByEmail(user.email).then((fresh) => {
+        if (fresh) {
+          setFullName(fresh.name ?? '');
+          setBirthDate(fresh.birthDate ?? '');
+          setGender(fresh.gender ?? '');
+          setCedula(fresh.cedula ?? '');
+          setDocumentType(fresh.documentType ?? 'Cédula');
+          setLocationData({
+            country: fresh.country || 'VE',
+            state: fresh.state || '',
+            city: fresh.city || '',
+            sector: fresh.sector || '',
+            address: fresh.address || '',
+          });
+          if (fresh.profileImage) {
+            setProfileImage(fresh.profileImage);
+          }
+        }
+      }).catch((err) => console.error("Error fetching fresh profile in page:", err));
+    }
+  }, [user?.email, router]);
 
   // Efecto separado para parsear el teléfono - solo cuando user.phone cambie
   const lastParsedPhone = useRef<string | null>(null);
@@ -106,7 +159,7 @@ export default function ProfilePage() {
     if (!user.phone) {
       // Sin teléfono, solo resetear si es la primera vez
       if (lastParsedPhone.current !== 'NO_PHONE') {
-        setCountryCode('+54');
+        setCountryCode('+58');
         setPhone('');
         lastParsedPhone.current = 'NO_PHONE';
       }
@@ -141,13 +194,13 @@ export default function ProfilePage() {
           setCountryCode(possibleCode);
           setPhone(user.phone.slice(3).replace(/\D/g, ''));
         } else {
-          setCountryCode('+54');
+          setCountryCode('+58');
           setPhone(user.phone.replace(/[^\d]/g, ''));
         }
       }
     } else {
       // Teléfono sin código de país
-      setCountryCode('+54');
+      setCountryCode('+58');
       let cleanPhone = user.phone.replace(/\D/g, '');
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.slice(1);
       setPhone(cleanPhone);
@@ -156,75 +209,46 @@ export default function ProfilePage() {
 
   // ... (handleImageUpload, handleImageSave, removeProfileImage remain unchanged)
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validar tipo de archivo
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !file.name.match(/\.(jpg|jpeg|png|webp|gif|heic)$/i)) {
       toast({
         variant: 'destructive',
         title: 'Tipo de archivo no válido',
-        description: 'Por favor selecciona una imagen (JPG, PNG, etc.)',
+        description: 'Por favor selecciona una imagen (JPG, PNG, WEBP, etc.)',
       });
       return;
     }
 
-    // Validar tamaño (máximo 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 20 * 1024 * 1024) {
       toast({
         variant: 'destructive',
         title: 'Archivo demasiado grande',
-        description: 'La imagen debe ser menor a 5MB',
+        description: 'La imagen debe ser menor a 20MB',
       });
       return;
     }
 
-    try {
-      // Resize and compress image
-      const resizedImage = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = document.createElement("img");
-          img.onload = () => {
-            const canvas = document.createElement("canvas");
-            let width = img.width;
-            let height = img.height;
-            const MAX_WIDTH = 800; // Good balance for avatar quality vs size
-            const MAX_HEIGHT = 800;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+      setIsCropModalOpen(true);
+    };
+    reader.readAsDataURL(file);
 
-            if (width > height) {
-              if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width;
-                width = MAX_WIDTH;
-              }
-            } else {
-              if (height > MAX_HEIGHT) {
-                width *= MAX_HEIGHT / height;
-                height = MAX_HEIGHT;
-              }
-            }
+    // Reset input para permitir volver a elegir el mismo archivo si se desea
+    event.target.value = '';
+  };
 
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            ctx?.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", 0.7)); // Compress to JPEG 70%
-          };
-          img.src = e.target?.result as string;
-        };
-        reader.readAsDataURL(file);
-      });
-
-      setProfileImage(resizedImage);
-    } catch (error) {
-      console.error("Error resizing image:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Error al procesar imagen',
-        description: 'No se pudo procesar la imagen seleccionada.',
-      });
-    }
+  const handleCropComplete = async ({ dataUrl }: { file: File; dataUrl: string }) => {
+    setProfileImage(dataUrl);
+    setIsCropModalOpen(false);
+    toast({
+      title: 'Encuadre aplicado ⚡',
+      description: 'Imagen optimizada a WebP. Haz clic en "Guardar Foto" para actualizar tu perfil.',
+    });
   };
 
   const handleImageSave = async () => {
@@ -266,10 +290,10 @@ export default function ProfilePage() {
     const fullPhone = phoneSanitized ? `${countryCode}${phoneSanitized}` : '';
     const phoneSan = validatePhone(fullPhone);
     const cedulaSan = validateCedula(cedula, documentType);
-    const citySan = validateCity(city);
+    const citySan = validateCity(locationData.city);
     //const ageSan = validateAge(age); // Ya no validamos edad manual, se calcula
 
-    if (!nameSan.isValid || (cedula && !cedulaSan.isValid) || (phone && !phoneSan.isValid) || (city && !citySan.isValid)) {
+    if (!nameSan.isValid || (cedula && !cedulaSan.isValid) || (phone && !phoneSan.isValid) || (locationData.city && !citySan.isValid)) {
       toast({ variant: 'destructive', title: 'Error de Validación', description: 'Datos inválidos o peligrosos.' });
       return;
     }
@@ -333,7 +357,11 @@ export default function ProfilePage() {
       cedula: finalCedula, // Mantener la cédula original si ya existe
       documentType: documentType,
       phone: fullPhone,
-      city: result.data.city,
+      country: locationData.country,
+      state: locationData.state,
+      city: locationData.city,
+      sector: locationData.sector,
+      address: locationData.address,
     });
 
     // Refrescar usuario desde la base de datos y actualizar estado global y localStorage
@@ -544,17 +572,18 @@ export default function ProfilePage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cedula">{documentType === 'DNI' ? 'Número de DNI' : 'Número de Pasaporte'}</Label>
+                    <Label htmlFor="cedula">{documentType === 'Pasaporte' ? 'Número de Pasaporte' : 'Cédula de Identidad'}</Label>
                     <Input
                       id="cedula"
                       value={cedula}
                       onChange={(e) => setCedula(e.target.value)}
-                      placeholder={documentType === 'DNI' ? 'ej., 12345678' : 'ej., ABC123456'}
+                      placeholder={documentType === 'Pasaporte' ? 'ej., ABC123456' : 'ej., 12345678'}
                       disabled={!!user?.cedula} // Deshabilitar si ya tiene documento
+                      className={user?.cedula ? "bg-slate-50 dark:bg-slate-900 cursor-not-allowed" : ""}
                     />
                     {user?.cedula && (
-                      <p className="text-xs text-muted-foreground">
-                        El documento no se puede modificar después del registro
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        🔒 La Cédula no se puede modificar después del registro por seguridad.
                       </p>
                     )}
                   </div>
@@ -579,13 +608,13 @@ export default function ProfilePage() {
                           if (val.startsWith('0')) val = val.slice(1);
                           setPhone(val);
                         }}
-                        placeholder="Ej: 112345678" // Ejemplo genérico sin 0
+                        placeholder="Ej: 412 123 4567"
                         className="flex-1"
                         maxLength={15}
                       />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Selecciona el código de país e ingresa el número sin el 0 ni el 15.
+                      Selecciona el código de país e ingresa el número (ej: 412 123 4567).
                     </p>
                   </div>
                 </div>
@@ -611,31 +640,26 @@ export default function ProfilePage() {
                     <select
                       id="gender"
                       value={gender}
-                      onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | 'no_especificar' | '')}
+                      onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | '')}
                       className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <option value="" disabled>Selecciona tu sexo</option>
-                      <option value="masculino">Masculino</option>
-                      <option value="femenino">Femenino</option>
-                      <option value="otro">Otro</option>
-                      <option value="no_especificar">Prefiero no especificar</option>
+                      <option value="masculino">Hombre (Masculino)</option>
+                      <option value="femenino">Mujer (Femenino)</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="city">Ciudad Predeterminada</Label>
-                  <select
-                    id="city"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="" disabled>Selecciona tu ciudad para búsquedas</option>
-                    {cities.map((c) => (
-                      <option key={c.name} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-3">Ubicación y Dirección de Residencia</h4>
+                  <LocationSelector
+                    country={locationData.country}
+                    state={locationData.state}
+                    city={locationData.city}
+                    sector={locationData.sector}
+                    address={locationData.address}
+                    onLocationChange={setLocationData}
+                  />
                 </div>
 
                 <Button type="submit" className="w-full">
@@ -646,35 +670,148 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
+          {/* Seguridad / Contraseña */}
+          {isGoogleLinked || user?.password === 'OAUTH_GOOGLE_USER' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl font-headline text-emerald-800">
+                  <Lock className="h-5 w-5 text-emerald-600" />
+                  Seguridad y Acceso
+                </CardTitle>
+                <CardDescription>
+                  Tu cuenta está autenticada mediante tu cuenta de Google.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900">
+                  <div className="p-1.5 bg-emerald-100 rounded-full mt-0.5">
+                    <Lock className="h-4 w-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-emerald-950">Acceso Protegido por Google OAuth</p>
+                    <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                      Inicias sesión con un solo clic utilizando tu cuenta de Google (<strong>{user?.email}</strong>). Al estar gestionado por Google, no requieres administrar ni cambiar contraseñas locales.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl font-headline">
+                  <Lock /> Seguridad
+                </CardTitle>
+                <CardDescription>
+                  Cambia tu contraseña de acceso local.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                    <Input id="currentPassword" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                    <Input id="newPassword" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+                    <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirmar Nueva Contraseña</Label>
+                    <Input id="confirmPassword" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                  </div>
+                  <Button type="submit" className="w-full">
+                    <Save className="mr-2 h-4 w-4" />
+                    Cambiar Contraseña
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cuentas Vinculadas y Acceso Rápido */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-2xl font-headline">
-                <Lock /> Seguridad
+              <CardTitle className="flex items-center gap-2 text-xl font-headline">
+                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                Cuentas Vinculadas y Acceso Rápido
               </CardTitle>
               <CardDescription>
-                Cambia tu contraseña.
+                {isGoogleLinked || user?.password === 'OAUTH_GOOGLE_USER'
+                  ? "Tu cuenta está vinculada con Google para iniciar sesión rápidamente."
+                  : "Conecta tu cuenta de Google para iniciar sesión con un solo clic de forma rápida y segura."}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handlePasswordSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Contraseña Actual</Label>
-                  <Input id="currentPassword" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border bg-slate-50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-white border rounded-xl shadow-2xs">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm text-slate-900">Google</p>
+                    <p className="text-xs text-slate-600 font-mono">{user?.email || 'Sin correo asociado'}</p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">Nueva Contraseña</Label>
-                  <Input id="newPassword" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
-                  <p className="text-xs text-muted-foreground">Mínimo 8 caracteres, con mayúsculas, minúsculas y números.</p>
+
+                <div className="flex items-center gap-2">
+                  {isGoogleLinked || user?.password === 'OAUTH_GOOGLE_USER' ? (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 font-medium px-3 py-1 text-xs">
+                      🟢 Cuenta vinculada
+                    </Badge>
+                  ) : (
+                    <>
+                      <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-300 text-xs">
+                        No vinculada
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => loginWithGoogle('/profile')}
+                      >
+                        Sincronizar con Google
+                      </Button>
+                    </>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirmar Nueva Contraseña</Label>
-                  <Input id="confirmPassword" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
-                </div>
-                <Button type="submit" className="w-full">
-                  <Save className="mr-2 h-4 w-4" />
-                  Cambiar Contraseña
-                </Button>
-              </form>
+              </div>
             </CardContent>
           </Card>
 
@@ -688,6 +825,19 @@ export default function ProfilePage() {
 
         </div>
       </main>
+
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        onClose={() => setIsCropModalOpen(false)}
+        imageSrc={cropImageSrc}
+        cropShape="round"
+        aspectRatio={1}
+        title="Ajustar Foto de Perfil"
+        description="Arrastra la foto para encuadrar tu rostro y usa el zoom para acercar o alejar."
+        originalFileName={user?.name ? `${user.name}-perfil` : 'foto-perfil'}
+        onCropComplete={handleCropComplete}
+      />
+
       <BottomNav />
     </div>
   );

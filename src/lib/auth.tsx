@@ -1,10 +1,10 @@
-
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import * as supabaseService from './supabaseService';
-import type { Patient, Doctor, Seller, Clinic } from './types';
+import { supabase } from './supabase';
+import type { Patient, Doctor, Seller, Clinic, DoctorWorkspace, ActiveWorkspace, DocumentType } from './types';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentDateInArgentina, getPaymentDateInArgentina } from './utils';
 import { hashPassword, verifyPassword, isPasswordHashed } from './password-utils';
@@ -34,12 +34,17 @@ async function clearAuthToken(): Promise<void> {
 }
 
 // The User type represents the logged-in user and must have all Patient properties for consistency across the app.
-interface User extends Patient {
+export interface User extends Patient {
   role: 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
   referralCode?: string;
   clinicId?: string; // For doctors/secretaries
   permissions?: string[]; // For secretaries (e.g. ['agenda'])
   isClinicEmployee?: boolean;
+  workspaces?: DoctorWorkspace[];
+  activeWorkspace?: ActiveWorkspace | null;
+  specialty?: string;
+  medicalLicense?: string;
+  onboardingCompleted?: boolean;
 }
 
 interface DoctorRegistrationData {
@@ -48,9 +53,11 @@ interface DoctorRegistrationData {
   password: string;
   confirmPassword?: string;
   specialty: string;
+  country?: string;
+  state?: string;
   city: string;
   dni: string;
-  documentType: 'DNI' | 'Pasaporte' | 'Otro';
+  documentType: DocumentType;
   medicalLicense: string;
   address: string;
   sector: string;
@@ -64,6 +71,8 @@ interface ClinicRegistrationData {
   email: string;
   password: string;
   phone: string;
+  country?: string;
+  state?: string;
   city?: string;
   sector?: string;
   address?: string;
@@ -72,18 +81,25 @@ interface ClinicRegistrationData {
   lng?: number;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null | undefined; // undefined means still loading
   loading: boolean;
+  activeWorkspace: ActiveWorkspace | null;
+  workspaces: DoctorWorkspace[];
+  showWorkspaceModal: boolean;
+  setShowWorkspaceModal: (show: boolean) => void;
+  switchWorkspace: (workspaceId: string) => Promise<void>;
+  refreshWorkspaces: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   registerDoctor: (doctorData: DoctorRegistrationData) => Promise<void>;
   registerClinic: (clinicData: ClinicRegistrationData) => Promise<void>;
   logout: () => void;
-  updateUser: (data: Partial<Patient | Seller>) => void;
+  updateUser: (data: Partial<Patient | Seller | Doctor>) => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   toggleFavoriteDoctor: (doctorId: string) => void;
   sendPasswordReset: (email: string) => Promise<void>;
+  loginWithGoogle: (nextPath?: string, role?: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -104,11 +120,21 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       gender: patientData.gender || null,
       phone: patientData.phone || null,
       cedula: patientData.cedula || null,
+      documentType: patientData.documentType || 'Cédula',
+      country: patientData.country || 'VE',
+      state: patientData.state || null,
       city: patientData.city || null,
+      sector: patientData.sector || null,
+      address: patientData.address || null,
       favoriteDoctorIds: patientData.favoriteDoctorIds || [],
       favoriteClinicIds: patientData.favoriteClinicIds || [],
       profileImage: patientData.profileImage || null,
       profileCompleted: patientData.profileCompleted ?? false,
+      bloodType: patientData.bloodType || null,
+      religion: patientData.religion || null,
+      maritalStatus: patientData.maritalStatus || null,
+      education: patientData.education || null,
+      occupation: patientData.occupation || null,
     };
   }
 
@@ -119,12 +145,20 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       name: doctorData.name,
       email: doctorData.email,
       password: doctorData.password,
-      phone: doctorData.whatsapp || null,
+      phone: doctorData.phone || doctorData.whatsapp || null,
       cedula: doctorData.cedula || null,
+      documentType: doctorData.documentType || 'Cédula',
       profileImage: doctorData.profileImage,
+      specialty: doctorData.specialty || '',
+      medicalLicense: doctorData.medicalLicense || '',
+      country: doctorData.country || 'VE',
+      state: doctorData.state || null,
+      city: doctorData.city || null,
+      sector: doctorData.sector || null,
+      address: doctorData.address || null,
+      onboardingCompleted: doctorData.onboardingCompleted ?? (!!doctorData.specialty && doctorData.specialty !== 'Pendiente'),
       age: null,
       gender: null,
-      city: null,
       favoriteDoctorIds: [],
       role: 'doctor',
       isClinicEmployee: doctorData.isClinicEmployee,
@@ -212,20 +246,131 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [workspaces, setWorkspaces] = useState<DoctorWorkspace[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspace | null>(null);
+  const [showWorkspaceModal, setShowWorkspaceModal] = useState<boolean>(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  const loadDoctorWorkspaces = useCallback(async (doctorId: string): Promise<{ list: DoctorWorkspace[]; active: ActiveWorkspace | null }> => {
+    try {
+      const list = await supabaseService.getDoctorWorkspaces(doctorId);
+      setWorkspaces(list);
+
+      let chosenActive: ActiveWorkspace | null = null;
+      const storedActiveStr = localStorage.getItem('activeWorkspace');
+
+      if (storedActiveStr) {
+        try {
+          const parsed = JSON.parse(storedActiveStr);
+          // Verify if it still belongs to active workspaces
+          const exists = list.find(w => w.id === parsed.id);
+          if (exists) {
+            chosenActive = {
+              id: exists.id,
+              workspaceType: exists.workspaceType,
+              name: exists.customName || exists.clinicName || (exists.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
+              clinicId: exists.clinicId || null,
+              roleInWorkplace: exists.roleInWorkplace || undefined,
+              canManageFinances: exists.canManageFinances,
+              canManageSchedule: exists.canManageSchedule,
+            };
+          }
+        } catch {
+          // ignore corrupted JSON
+        }
+      }
+
+      if (!chosenActive && list.length > 0) {
+        const def = list.find(w => w.isDefault) || list[0];
+        chosenActive = {
+          id: def.id,
+          workspaceType: def.workspaceType,
+          name: def.customName || def.clinicName || (def.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
+          clinicId: def.clinicId || null,
+          roleInWorkplace: def.roleInWorkplace || undefined,
+          canManageFinances: def.canManageFinances,
+          canManageSchedule: def.canManageSchedule,
+        };
+      }
+
+      setActiveWorkspace(chosenActive);
+      if (chosenActive) {
+        localStorage.setItem('activeWorkspace', JSON.stringify(chosenActive));
+      }
+
+      return { list, active: chosenActive };
+    } catch (err) {
+      console.error('Error loading doctor workspaces in AuthProvider:', err);
+      return { list: [], active: null };
+    }
+  }, []);
+
+  const refreshWorkspaces = useCallback(async () => {
+    if (user && user.role === 'doctor') {
+      await loadDoctorWorkspaces(user.id);
+    }
+  }, [user, loadDoctorWorkspaces]);
+
+  const switchWorkspace = async (workspaceId: string) => {
+    const target = workspaces.find(w => w.id === workspaceId);
+    if (!target || !user) return;
+
+    const newActive: ActiveWorkspace = {
+      id: target.id,
+      workspaceType: target.workspaceType,
+      name: target.customName || target.clinicName || (target.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
+      clinicId: target.clinicId || null,
+      roleInWorkplace: target.roleInWorkplace || undefined,
+      canManageFinances: target.canManageFinances,
+      canManageSchedule: target.canManageSchedule,
+    };
+
+    setActiveWorkspace(newActive);
+    localStorage.setItem('activeWorkspace', JSON.stringify(newActive));
+
+    // Update session token with current workspace clinicId
+    await setAuthToken(user.id, user.email, user.role, user.name, newActive.clinicId || undefined);
+
+    toast({
+      title: 'Espacio de trabajo cambiado',
+      description: `Ahora estás atendiendo en: ${newActive.name}`,
+    });
+  };
 
   const fetchUserFromStorage = useCallback(async () => {
     setLoading(true);
     try {
+      let targetEmail: string | null = null;
+      let existingParsed: any = null;
+
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        const freshUser = await supabaseService.findUserByEmail(parsedUser.email);
+        existingParsed = JSON.parse(storedUser);
+        targetEmail = existingParsed.email;
+      } else {
+        // Verificar si hay una sesión activa de Supabase OAuth
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.email) {
+            targetEmail = session.user.email;
+          }
+        } catch {}
+      }
+
+      if (targetEmail) {
+        const freshUser = await supabaseService.findUserByEmail(targetEmail);
         if (freshUser) {
-          setUser(buildUserFromData(freshUser));
-        } else if (parsedUser.role === 'admin') {
-          setUser(parsedUser); // Keep admin session alive
+          const builtUser = buildUserFromData(freshUser);
+          if (builtUser.role === 'doctor') {
+            const { list, active } = await loadDoctorWorkspaces(builtUser.id);
+            builtUser.workspaces = list;
+            builtUser.activeWorkspace = active;
+          }
+          setUser(builtUser);
+          localStorage.setItem('user', JSON.stringify(builtUser));
+        } else if (existingParsed?.role === 'admin') {
+          setUser(existingParsed); // Mantener sesión admin
         } else {
           setUser(null);
           localStorage.removeItem('user');
@@ -238,7 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadDoctorWorkspaces]);
 
   useEffect(() => {
     fetchUserFromStorage();
@@ -327,6 +472,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const loggedInUser = buildUserFromData(userToAuth);
+
+    // Cargar espacios de trabajo si es médico
+    if (loggedInUser.role === 'doctor') {
+      const { list, active } = await loadDoctorWorkspaces(loggedInUser.id);
+      loggedInUser.workspaces = list;
+      loggedInUser.activeWorkspace = active;
+
+      // Si tiene más de un espacio, abrir el selector modal
+      if (list.length > 1) {
+        setShowWorkspaceModal(true);
+      }
+    }
+
     // Eliminar password antes de guardar en localStorage
     setUser(loggedInUser);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -339,7 +497,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loggedInUser.email,
       loggedInUser.role,
       loggedInUser.name,
-      loggedInUser.clinicId
+      loggedInUser.activeWorkspace?.clinicId || loggedInUser.clinicId
     );
 
     if (loggedInUser && ['patient', 'doctor', 'seller'].includes(loggedInUser.role)) {
@@ -443,7 +601,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const paymentDateArgentina = getPaymentDateInArgentina(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-      name, email: normalizedEmail, specialty, city, address: address || '', password: hashedPassword,
+      name, email: normalizedEmail, specialty,
+      country: doctorData.country || 'VE',
+      state: doctorData.state || 'Monagas',
+      city, address: address || '', password: hashedPassword,
       sellerId: null, cedula: dni, documentType, sector: sector || '', rating: 0, reviewCount: 0,
       profileImage: 'https://placehold.co/400x400.png',
       bannerImage: 'https://placehold.co/1200x400.png',
@@ -480,7 +641,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const registerClinic = async (clinicData: ClinicRegistrationData) => {
-    const { name, email, password, phone, city, billingCycle, sector, address } = clinicData;
+    const { name, email, password, phone, country, state, city, billingCycle, sector, address } = clinicData;
     const normalizedEmail = email.toLowerCase();
 
     // Check existing user
@@ -502,37 +663,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const newClinicData: Omit<Clinic, 'id' | 'createdAt'> = {
       name,
       adminEmail: normalizedEmail,
-      slug: `${slug}-${Date.now().toString().slice(-4)}`, // Ensure uniqueness
-      password: hashedPassword, // Note: Clinic type in types.ts doesn't have password, need to check if I need to add it or if it's separate. 
-      // Wait, clinic table doesn't have password column in migration script?
-      // Migration: "admin_email TEXT NOT NULL". It doesn't have password!
-      // I need to add password to clinics table!
-      // Or link to auth.users if using Supabase Auth, but we are using custom auth table logic here (doctors/patients have password).
-      // I checked migration script: "CREATE TABLE IF NOT EXISTS public.clinics ( ... admin_email TEXT ... )". No password column.
-      // I MUST UPDATE database schema to include password for clinics if using this custom auth system.
-      // For now I will proceed but I know this will fail if I don't update DB.
-      // Reviewing migration: "CREATE TABLE IF NOT EXISTS public.clinics ...".
-      // I need to add password column to clinics.
+      slug: `${slug}-${Date.now().toString().slice(-4)}`,
+      password: hashedPassword,
       phone,
+      country: country || 'VE',
+      state: state || '',
       city,
       sector,
       address,
       billingCycle: billingCycle || 'monthly',
       plan: 'integral',
-    } as any; // Type casting because of missing password in type definition, see below logic.
-
-    // WAIT: I need to update types.ts to include password in Clinic?
-    // User interface has password.
-    // Logic in supabaseService.addClinic takes Omit<Clinic, ...>.
-    // If Clinic type doesn't have password, addClinic won't send it.
-    // I need to fix this before implementing registerClinic.
-
-    // For now, let's assume I will fix types and DB.
-    // I will comment out the actual call/logic or implement it assuming fields exist.
-
-    // Note: Since we updated the database schema to verify the password column exists,
-    // and fixed the migration, we can now safely perform the insert.
-    // The type `Clinic` might still be missing 'password' in types.ts so we cast it.
+    } as any;
 
     await supabaseService.addClinic({
       ...newClinicData,
@@ -567,7 +708,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const loginWithGoogle = async (nextPath?: string, role?: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        if (role) {
+          sessionStorage.setItem('suma_intended_role', role);
+          localStorage.setItem('suma_intended_role', role);
+        } else {
+          sessionStorage.removeItem('suma_intended_role');
+          localStorage.removeItem('suma_intended_role');
+        }
+      }
+
+      const redirectUrl = new URL('/auth/callback', window.location.origin);
+      if (nextPath) {
+        redirectUrl.searchParams.set('next', nextPath);
+      }
+      if (role) {
+        redirectUrl.searchParams.set('role', role);
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl.toString(),
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) throw error;
+    } catch (err: any) {
+      console.error('Error iniciando sesión con Google:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Error con Google',
+        description: err?.message || 'No se pudo conectar con el servicio de Google.',
+      });
+      throw err;
+    }
+  };
+
+  const logout = async () => {
     // Registrar logout antes de limpiar el usuario
     if (user) {
       logAuditEvent({
@@ -585,31 +769,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // 🔐 Limpiar cookie HTTP-only de autenticación
-    clearAuthToken();
+    await clearAuthToken();
+
+    try {
+      await supabase.auth.signOut();
+    } catch {}
 
     setUser(null);
+    setWorkspaces([]);
+    setActiveWorkspace(null);
+    setShowWorkspaceModal(false);
     localStorage.removeItem('user');
+    localStorage.removeItem('activeWorkspace');
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem('activeWorkspace');
     router.push('/');
   };
 
   const updateUser = async (data: Partial<Patient | Seller>) => {
     if (!user || !user.id) return;
 
-    console.log('Actualizando usuario con datos:', data);
-    console.log('Usuario actual:', user);
-
     if (user.role === 'patient') {
       await supabaseService.updatePatient(user.id, data as Partial<Patient>);
     } else if (user.role === 'seller') {
       await supabaseService.updateSeller(user.id, data as Partial<Seller>);
     } else {
-      return; // Or handle other roles
+      return;
     }
 
     const updatedUser = { ...user, ...data };
-    console.log('Usuario actualizado:', updatedUser);
-
     setUser(updatedUser as User);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _3, ...updatedUserNoPassword } = updatedUser as User;
@@ -633,7 +821,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Encriptar nueva contraseña
       const hashedNewPassword = await hashPassword(newPassword);
       let updatePromise;
       if (user.role === 'patient') {
@@ -647,38 +834,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updatedUser = { ...user, password: hashedNewPassword };
       setUser(updatedUser as User);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      // Revocar tokens en backend
       try {
         await fetch('/api/revoke-tokens', { method: 'POST', headers: { 'authorization': `Bearer ${localStorage.getItem('token') || ''}` } });
       } catch {
-        // No bloquear el flujo si falla la revocación
+        // No bloquear
       }
       return { success: true, message: 'Contraseña actualizada exitosamente.' };
-    } catch (error) {
-      console.error("Error changing password:", error);
-      return { success: false, message: 'Ocurrió un error al cambiar la contraseña.' };
+    } catch {
+      return { success: false, message: 'Error al actualizar la contraseña.' };
     }
   };
 
-
-  const toggleFavoriteDoctor = async (doctorId: string) => {
+  const toggleFavoriteDoctor = (doctorId: string) => {
     if (!user || user.role !== 'patient') return;
-
-    const favorites = user.favoriteDoctorIds || [];
-    const isFavorite = favorites.includes(doctorId);
-    const newFavorites = isFavorite
-      ? favorites.filter(id => id !== doctorId)
-      : [...favorites, doctorId];
-
-    await updateUser({ favoriteDoctorIds: newFavorites });
+    const currentFavorites = user.favoriteDoctorIds || [];
+    const updatedFavorites = currentFavorites.includes(doctorId)
+      ? currentFavorites.filter(id => id !== doctorId)
+      : [...currentFavorites, doctorId];
+    updateUser({ favoriteDoctorIds: updatedFavorites });
   };
 
   const sendPasswordReset = async (email: string) => {
     try {
-      const res = await fetch('/api/send-password-reset-email', {
+      const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.toLowerCase() }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -705,6 +886,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextType = {
     user,
     loading,
+    activeWorkspace,
+    workspaces,
+    showWorkspaceModal,
+    setShowWorkspaceModal,
+    switchWorkspace,
+    refreshWorkspaces,
     login,
     register,
     registerDoctor,
@@ -713,7 +900,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     changePassword,
     toggleFavoriteDoctor,
     sendPasswordReset,
-    registerClinic
+    registerClinic,
+    loginWithGoogle,
   };
 
   return (
@@ -730,6 +918,12 @@ export function useAuth() {
     return {
       user: null as any,
       loading: true,
+      activeWorkspace: null,
+      workspaces: [],
+      showWorkspaceModal: false,
+      setShowWorkspaceModal: () => { },
+      switchWorkspace: async () => { },
+      refreshWorkspaces: async () => { },
       login: async () => { },
       register: async () => { },
       registerDoctor: async () => { },
@@ -739,8 +933,8 @@ export function useAuth() {
       changePassword: async () => ({ success: false, message: 'Auth not ready' }),
       toggleFavoriteDoctor: () => { },
       sendPasswordReset: async () => { },
+      loginWithGoogle: async () => { },
     } as AuthContextType;
   }
   return context;
 }
-

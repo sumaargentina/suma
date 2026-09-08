@@ -27,10 +27,12 @@ export async function createWalkInAppointmentAction(data: {
         let existingPatient = null;
 
         if (data.patientDNI) {
+            const rawDoc = data.patientDNI.replace(/^[VEJvejpPASpas-]+\s*/, '').trim();
             const { data: byDNI } = await supabaseAdmin
                 .from('patients')
                 .select('*')
-                .eq('cedula', data.patientDNI)
+                .or(`cedula.eq.${data.patientDNI},cedula.eq.${rawDoc},cedula.eq.V-${rawDoc},cedula.eq.E-${rawDoc}`)
+                .limit(1)
                 .maybeSingle(); // Usar maybeSingle para evitar error si no existe
             if (byDNI) existingPatient = byDNI;
         }

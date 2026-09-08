@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Doctor, ClinicBranch, ClinicSpecialty } from '@/lib/types';
-import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage } from '@/lib/supabaseService';
+import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage, affiliateClinicDoctor } from '@/lib/supabaseService';
 import Image from 'next/image';
 import { Appointment } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, Search, AlertTriangle, Sparkles, UserCheck } from 'lucide-react';
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { hashPassword } from '@/lib/password-utils';
@@ -45,11 +45,17 @@ export function DoctorsTab() {
     const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
     const [changePassword, setChangePassword] = useState(false);
 
+    // DNI Lookup / Existing Doctor State
+    const [isSearchingDni, setIsSearchingDni] = useState(false);
+    const [existingDoctorFound, setExistingDoctorFound] = useState<Doctor | null>(null);
+    const [isAlreadyAffiliated, setIsAlreadyAffiliated] = useState(false);
+
     // Config Modal State
     const [isConfigOpen, setIsConfigOpen] = useState(false);
     const [configDoctor, setConfigDoctor] = useState<Doctor | null>(null);
 
     const [formData, setFormData] = useState({
+        dni: '',
         name: '',
         email: '',
         password: '', // Only for new doctors
@@ -210,12 +216,49 @@ export function DoctorsTab() {
 
 
     const resetForm = () => {
-        setFormData({ name: '', email: '', password: '', specialty: '' });
+        setFormData({ dni: '', name: '', email: '', password: '', specialty: '' });
         setProfileFile(null);
         setBannerFile(null);
         setPreviewProfile('');
         setPreviewBanner('');
         setEditingDoctor(null);
+        setExistingDoctorFound(null);
+        setIsAlreadyAffiliated(false);
+    };
+
+    const handleLookupDoctor = async (dniValue: string) => {
+        const clean = dniValue.trim().replace(/\D/g, '');
+        if (clean.length < 6) {
+            setExistingDoctorFound(null);
+            setIsAlreadyAffiliated(false);
+            return;
+        }
+
+        setIsSearchingDni(true);
+        try {
+            const res = await fetch(`/api/doctors/lookup?dni=${encodeURIComponent(clean)}&clinicId=${user?.id || ''}`);
+            const data = await res.json();
+            if (data.found && data.doctor) {
+                setExistingDoctorFound(data.doctor);
+                setIsAlreadyAffiliated(data.isAffiliated || false);
+                setFormData(prev => ({
+                    ...prev,
+                    dni: dniValue,
+                    name: data.doctor.name || prev.name,
+                    email: data.doctor.email || prev.email,
+                    specialty: data.doctor.specialty || prev.specialty || (specialties[0]?.name || ''),
+                }));
+                if (data.doctor.profileImage) setPreviewProfile(data.doctor.profileImage);
+                if (data.doctor.bannerImage) setPreviewBanner(data.doctor.bannerImage);
+            } else {
+                setExistingDoctorFound(null);
+                setIsAlreadyAffiliated(false);
+            }
+        } catch (err) {
+            console.error('Error looking up doctor by DNI:', err);
+        } finally {
+            setIsSearchingDni(false);
+        }
     };
 
     const handleToggleStatus = async (doctor: Doctor) => {
@@ -242,20 +285,20 @@ export function DoctorsTab() {
         if (doctor) {
             setEditingDoctor(doctor);
             setFormData({
+                dni: doctor.cedula || '',
                 name: doctor.name,
                 email: doctor.email,
                 password: '', // Don't show password
                 specialty: doctor.specialty,
             });
-        } else {
-            resetForm();
-        }
-        // Force reset if editing -> new transition managed by resetForm but here we also need to set previews for editing
-        if (doctor) {
             setPreviewProfile(doctor.profileImage || '');
             setPreviewBanner(doctor.bannerImage || '');
             setProfileFile(null);
             setBannerFile(null);
+            setExistingDoctorFound(null);
+            setIsAlreadyAffiliated(false);
+        } else {
+            resetForm();
         }
         setChangePassword(false);
         setIsDialogOpen(true);
@@ -284,6 +327,7 @@ export function DoctorsTab() {
                 const updateData: any = {
                     name: formData.name,
                     email: formData.email,
+                    cedula: formData.dni.replace(/\D/g, ''),
                     specialty: formData.specialty,
                     profileImage: profileUrl,
                     bannerImage: bannerUrl,
@@ -296,77 +340,48 @@ export function DoctorsTab() {
                 await updateDoctor(editingDoctor.id, updateData);
                 toast({ title: "Médico actualizado", description: "Los cambios se guardaron correctamente." });
             } else {
-                // Create
-                if (!formData.password) {
-                    toast({ variant: "destructive", title: "Error", description: "La contraseña es requerida." });
+                // Validación básica
+                if (!formData.dni.trim()) {
+                    toast({ variant: "destructive", title: "Error", description: "El DNI / Cédula es obligatorio." });
                     setIsSubmitting(false);
                     return;
                 }
 
-                // Upload images for new doctor (using temp path or timestamp)
-                const docId = `new_${Date.now()}`;
-                let profileUrl = 'https://placehold.co/400x400.png';
+                if (!existingDoctorFound && !formData.password) {
+                    toast({ variant: "destructive", title: "Error", description: "La contraseña provisional es requerida para nuevos médicos." });
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                let profileUrl = previewProfile || 'https://placehold.co/400x400.png';
                 if (profileFile) {
+                    const docId = `new_${Date.now()}`;
                     profileUrl = await uploadPublicImage(profileFile, 'images', `doctors/${docId}/profile`);
                 }
 
-                let bannerUrl = 'https://placehold.co/1200x400.png';
+                let bannerUrl = previewBanner || 'https://placehold.co/1200x400.png';
                 if (bannerFile) {
+                    const docId = `new_${Date.now()}`;
                     bannerUrl = await uploadPublicImage(bannerFile, 'images', `doctors/${docId}/banner`);
                 }
 
-                const hashedPassword = await hashPassword(formData.password);
-                const joinDateArgentina = getCurrentDateInArgentina();
-                const paymentDateArgentina = getPaymentDateInArgentina(new Date());
-
-                // Construct new doctor object with defaults
-                const newDoctorData: Omit<Doctor, 'id'> = {
+                const result = await affiliateClinicDoctor({
+                    clinicId: user.id,
+                    doctorId: existingDoctorFound?.id,
+                    isExistingDoctor: !!existingDoctorFound,
+                    dni: formData.dni,
                     name: formData.name,
-                    email: formData.email.toLowerCase(),
+                    email: formData.email,
                     specialty: formData.specialty,
-                    city: '', // Clinic city?
-                    address: '',
-                    password: hashedPassword,
-                    sellerId: null,
-                    cedula: '', // Required?
-                    sector: '',
-                    rating: 0,
-                    reviewCount: 0,
+                    password: existingDoctorFound ? undefined : formData.password,
                     profileImage: profileUrl,
                     bannerImage: bannerUrl,
-                    aiHint: 'doctor portrait',
-                    description: 'Médico de clínica',
-                    services: [],
-                    bankDetails: [],
-                    slotDuration: 30,
-                    consultationFee: 0,
-                    schedule: {
-                        monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                        tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                        wednesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                        thursday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                        friday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                        saturday: { active: false, slots: [] },
-                        sunday: { active: false, slots: [] },
-                    },
-                    status: 'active',
-                    lastPaymentDate: null,
-                    whatsapp: '',
-                    lat: 0,
-                    lng: 0,
-                    joinDate: joinDateArgentina,
-                    subscriptionStatus: 'active',
-                    nextPaymentDate: paymentDateArgentina,
-                    coupons: [],
-                    expenses: [],
-                    medicalLicense: '', // Required? Tab UI should probably include it.
-                    clinicId: user.id,
-                    isClinicEmployee: true,
-                    branchIds: [],
-                };
+                });
 
-                await addDoctor(newDoctorData);
-                toast({ title: "Médico registrado", description: "Se ha creado la cuenta para el médico." });
+                toast({
+                    title: result.isNew ? "✅ Médico registrado" : "✅ Médico vinculado",
+                    description: result.message || "Operación realizada con éxito."
+                });
             }
 
             setIsDialogOpen(false);
@@ -386,39 +401,108 @@ export function DoctorsTab() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Médicos</h2>
-                    <p className="text-muted-foreground">Gestiona el plantel médico de la clínica.</p>
+                    <p className="text-muted-foreground">Gestiona el plantel médico de la clínica y vincula profesionales.</p>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                         <Button onClick={() => handleOpenDialog()}>
-                            <Plus className="mr-2 h-4 w-4" /> Registrar Médico
+                            <Plus className="mr-2 h-4 w-4" /> Registrar / Vincular Médico
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>{editingDoctor ? 'Editar Médico' : 'Nuevo Médico'}</DialogTitle>
+                            <DialogTitle>
+                                {editingDoctor ? 'Editar Médico' : existingDoctorFound ? 'Vincular Médico Existente' : 'Registrar Nuevo Médico'}
+                            </DialogTitle>
                             <DialogDescription>
-                                {editingDoctor ? 'Modifica los datos del médico.' : 'Registra un nuevo médico para tu clínica.'}
+                                {editingDoctor
+                                    ? 'Modifica los datos del médico en tu clínica.'
+                                    : 'Ingresa el DNI para verificar si el médico ya cuenta con usuario en SUMA o registrar uno nuevo.'}
                             </DialogDescription>
                         </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-6 py-4">
+
+                        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+                            {/* Campo DNI / Cédula con búsqueda en tiempo real */}
+                            {!editingDoctor && (
+                                <div className="space-y-1.5 p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="dni" className="font-semibold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                                            DNI / Cédula del Profesional *
+                                        </Label>
+                                        {isSearchingDni && (
+                                            <span className="flex items-center gap-1 text-xs text-primary font-medium animate-pulse">
+                                                <Loader2 className="w-3 h-3 animate-spin" /> Buscando en SUMA...
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="relative">
+                                        <Input
+                                            id="dni"
+                                            value={formData.dni}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({ ...prev, dni: val }));
+                                                handleLookupDoctor(val);
+                                            }}
+                                            placeholder="Ej. 20935658"
+                                            className="bg-white dark:bg-slate-950 pr-9 font-mono"
+                                            required
+                                            autoFocus
+                                        />
+                                        <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                                    </div>
+
+                                    {/* Alertas dinámicas según búsqueda */}
+                                    {existingDoctorFound && (
+                                        <div className="mt-2.5 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5 animate-in fade-in duration-200">
+                                            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                            <div className="text-xs space-y-0.5 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                                                        Médico detectado: {existingDoctorFound.name}
+                                                    </span>
+                                                    <Badge variant="outline" className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 border-emerald-300">
+                                                        Cuenta SUMA Activa
+                                                    </Badge>
+                                                </div>
+                                                <p className="text-emerald-700 dark:text-emerald-400">
+                                                    Este médico ya tiene cuenta en SUMA ({existingDoctorFound.email}). Se vinculará a tu clínica <strong>sin requerir contraseña provisional</strong> y podrá acceder con su sesión habitual.
+                                                </p>
+                                                {isAlreadyAffiliated && (
+                                                    <p className="text-amber-700 dark:text-amber-300 font-semibold pt-1">
+                                                        ⚠️ Este médico ya forma parte activa del equipo de tu clínica.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {!existingDoctorFound && formData.dni.replace(/\D/g, '').length >= 6 && !isSearchingDni && (
+                                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                            <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                                            DNI no registrado previamente. Completa los datos para crear su cuenta en SUMA.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Sección Foto de Perfil */}
                             <div className="flex items-start gap-5">
-                                <div className="relative h-24 w-24 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm shrink-0 bg-slate-50">
+                                <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm shrink-0 bg-slate-50">
                                     {previewProfile ? (
                                         <Image src={previewProfile} alt="Profile" fill className="object-cover object-top" />
                                     ) : (
                                         <div className="flex items-center justify-center h-full w-full bg-slate-100 text-slate-300">
-                                            <User className="h-10 w-10" />
+                                            <User className="h-8 w-8" />
                                         </div>
                                     )}
                                 </div>
-                                <div className="space-y-2 flex-1">
-                                    <Label>Foto de Perfil</Label>
+                                <div className="space-y-1.5 flex-1">
+                                    <Label className="text-xs font-medium">Foto de Perfil</Label>
                                     <Input
                                         type="file"
                                         accept="image/*"
+                                        disabled={!!existingDoctorFound}
                                         onChange={(e) => {
                                             const file = e.target.files?.[0];
                                             if (file) {
@@ -426,60 +510,49 @@ export function DoctorsTab() {
                                                 setPreviewProfile(URL.createObjectURL(file));
                                             }
                                         }}
-                                        className="text-xs file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
+                                        className="text-xs file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
                                     />
-                                    <p className="text-[11px] text-muted-foreground">Recomendado: 400x400px. Formatos: JPG, PNG.</p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        {existingDoctorFound ? 'Foto tomada del perfil de SUMA del médico.' : 'Recomendado: 400x400px. Formatos: JPG, PNG.'}
+                                    </p>
                                 </div>
-                            </div>
-
-                            {/* Sección Banner */}
-                            <div className="space-y-2">
-                                <Label>Imagen de Portada</Label>
-                                <div className="relative h-40 w-full rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-                                    {previewBanner ? (
-                                        <Image src={previewBanner} alt="Banner" fill className="object-cover" />
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                            <Building2 className="h-8 w-8 mb-2 opacity-50" />
-                                            <span className="text-xs">Sin portada</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <Input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                            setBannerFile(file);
-                                            setPreviewBanner(URL.createObjectURL(file));
-                                        }
-                                    }}
-                                    className="text-xs file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-secondary/10 file:text-secondary hover:file:bg-secondary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
-                                />
-                                <p className="text-[11px] text-muted-foreground">Recomendado: 1200x400px. Se mostrará en el perfil público.</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Nombre Completo</Label>
-                                    <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Dr. Juan Perez" required />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="name" className="text-xs font-semibold">Nombre Completo *</Label>
+                                    <Input
+                                        id="name"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Dr. Juan Perez"
+                                        disabled={!!existingDoctorFound}
+                                        required
+                                    />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">Correo Electrónico</Label>
-                                    <Input id="email" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@ejemplo.com" required />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="email" className="text-xs font-semibold">Correo Electrónico *</Label>
+                                    <Input
+                                        id="email"
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        placeholder="doctor@ejemplo.com"
+                                        disabled={!!existingDoctorFound}
+                                        required
+                                    />
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="specialty">Especialidad</Label>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="specialty" className="text-xs font-semibold">Especialidad de Atención en la Clínica *</Label>
                                 <Select
                                     value={formData.specialty}
                                     onValueChange={(val) => setFormData({ ...formData, specialty: val })}
                                     required
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona..." />
+                                        <SelectValue placeholder="Selecciona la especialidad..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {specialties.map(s => (
@@ -489,37 +562,53 @@ export function DoctorsTab() {
                                 </Select>
                                 {specialties.length === 0 && (
                                     <p className="text-xs text-amber-600">
-                                        No hay especialidades configuradas. Ve a Configuración &gt; Especialidades.
+                                        No hay especialidades configuradas en la clínica. Ve a Configuración &gt; Especialidades.
                                     </p>
                                 )}
                             </div>
 
-                            <div className="pt-2 border-t">
-                                {editingDoctor && (
-                                    <div className="flex items-center space-x-2 pb-3">
-                                        <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
-                                        <Label htmlFor="changePassword" className="text-sm font-medium">Cambiar Contraseña</Label>
-                                    </div>
-                                )}
+                            {/* Sección Contraseña: Solo si es un médico NUEVO o si se está editando con cambio de clave */}
+                            {(!existingDoctorFound || editingDoctor) && (
+                                <div className="pt-2 border-t">
+                                    {editingDoctor && (
+                                        <div className="flex items-center space-x-2 pb-3">
+                                            <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
+                                            <Label htmlFor="changePassword" className="text-sm font-medium">Cambiar Contraseña</Label>
+                                        </div>
+                                    )}
 
-                                {(!editingDoctor || changePassword) && (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="password">{editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional'}</Label>
-                                        <Input id="password" type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="••••••••" required={!editingDoctor} />
-                                    </div>
-                                )}
-                            </div>
+                                    {(!editingDoctor || changePassword) && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="password">
+                                                {editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional para el Médico *'}
+                                            </Label>
+                                            <Input
+                                                id="password"
+                                                type="password"
+                                                value={formData.password}
+                                                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                                placeholder="••••••••"
+                                                required={!editingDoctor}
+                                            />
+                                            <p className="text-[11px] text-muted-foreground">
+                                                El médico usará esta contraseña para su primer ingreso en SUMA.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
-                            <DialogFooter className="pt-2">
-                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                                <Button type="submit" disabled={isSubmitting}>
+                            <DialogFooter className="pt-3 border-t">
+                                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                    Cancelar
+                                </Button>
+                                <Button type="submit" disabled={isSubmitting || (isAlreadyAffiliated && !editingDoctor)}>
                                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Guardar Cambios
+                                    {editingDoctor ? 'Guardar Cambios' : existingDoctorFound ? 'Vincular a la Clínica' : 'Crear y Vincular Médico'}
                                 </Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
-
                 </Dialog>
             </div>
 

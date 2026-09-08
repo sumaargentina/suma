@@ -25,6 +25,7 @@ import { es } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
 import Image from 'next/image';
 import { DoctorPatientChat } from "@/components/chat/DoctorPatientChat";
+import { NoShowResolutionModal } from "@/components/medical/no-show-resolution-modal";
 import { useAuth } from "@/lib/auth";
 
 interface AppointmentDetailDialogProps {
@@ -54,6 +55,7 @@ export function AppointmentDetailDialog({
     const [editableServices, setEditableServices] = useState<Service[]>([]);
     const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
     const [isChatDialogOpen, setIsChatDialogOpen] = useState(false);
+    const [isNoShowModalOpen, setIsNoShowModalOpen] = useState(false);
     const [familyMemberInfo, setFamilyMemberInfo] = useState<FamilyMember | null>(null);
     const [patientInfo, setPatientInfo] = useState<any>(null);
 
@@ -300,21 +302,70 @@ export function AppointmentDetailDialog({
                             </Card>
                             <Card>
                                 <CardHeader><CardTitle className="text-base">Gestión de la Cita</CardTitle></CardHeader>
-                                <CardContent className="space-y-4">
+                                <CardContent className="space-y-3">
                                     {appointment.attendance === 'Pendiente' ? (
-                                        <div className="flex items-center gap-4">
-                                            <Label>Asistencia del Paciente:</Label>
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <Label className="text-xs">Marcar Asistencia:</Label>
                                             <div className="flex gap-2">
-                                                <Button size="sm" variant='outline' onClick={() => onUpdateAppointment(appointment.id, { attendance: 'Atendido' })}> <ThumbsUp className="mr-2 h-4 w-4" />Atendido </Button>
-                                                <Button size="sm" variant='outline' onClick={() => onUpdateAppointment(appointment.id, { attendance: 'No Asistió' })}> <ThumbsDown className="mr-2 h-4 w-4" />No Asistió </Button>
+                                                <Button size="sm" variant='outline' className="text-xs" onClick={() => onUpdateAppointment(appointment.id, { attendance: 'Atendido' })}>
+                                                    <ThumbsUp className="mr-1.5 h-3.5 w-3.5 text-green-600" /> Atendido
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant='outline'
+                                                    className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+                                                    onClick={() => {
+                                                        if (appointment.paymentStatus === 'Pagado') {
+                                                            setIsNoShowModalOpen(true);
+                                                        } else {
+                                                            onUpdateAppointment(appointment.id, { attendance: 'No Asistió' });
+                                                        }
+                                                    }}
+                                                >
+                                                    <ThumbsDown className="mr-1.5 h-3.5 w-3.5 text-red-600" /> No Asistió
+                                                </Button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="flex items-center gap-2">
-                                            <Label>Asistencia:</Label>
-                                            <Badge variant={appointment.attendance === 'Atendido' ? 'default' : 'destructive'} className={cn({ 'bg-green-600 text-white': appointment.attendance === 'Atendido' })}>
-                                                {appointment.attendance}
-                                            </Badge>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Label className="text-xs">Asistencia:</Label>
+                                                    <Badge variant={appointment.attendance === 'Atendido' ? 'default' : 'destructive'} className={cn({ 'bg-green-600 text-white': appointment.attendance === 'Atendido' })}>
+                                                        {appointment.attendance}
+                                                    </Badge>
+                                                </div>
+
+                                                {appointment.attendance === 'No Asistió' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="text-xs h-7 text-blue-600 hover:text-blue-700"
+                                                        onClick={() => setIsNoShowModalOpen(true)}
+                                                    >
+                                                        Gestionar Resolución / Reagendar
+                                                    </Button>
+                                                )}
+                                            </div>
+
+                                            {/* Detalles de resolución de inasistencia */}
+                                            {appointment.attendance === 'No Asistió' && (
+                                                <div className="p-2.5 rounded-lg bg-slate-50 border text-xs space-y-1">
+                                                    {appointment.noShowResolution === 'refunded' || appointment.paymentStatus === 'Reembolsado' ? (
+                                                        <div className="text-amber-800">
+                                                            <span className="font-semibold">💸 Reembolsado:</span> {appointment.refundReason || 'Devolución procesada'}
+                                                        </div>
+                                                    ) : appointment.noShowResolution === 'retained' ? (
+                                                        <div className="text-red-800">
+                                                            <span className="font-semibold">🔒 Pago Retenido:</span> {appointment.noShowNote || 'Por política de inasistencia'}
+                                                        </div>
+                                                    ) : appointment.noShowResolution === 'rescheduled' ? (
+                                                        <div className="text-blue-800">
+                                                            <span className="font-semibold">🗓️ Cita Reprogramada</span>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </CardContent>
@@ -535,6 +586,14 @@ export function AppointmentDetailDialog({
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Modal de Resolución de Inasistencia */}
+            <NoShowResolutionModal
+                appointment={appointment}
+                isOpen={isNoShowModalOpen}
+                onClose={() => setIsNoShowModalOpen(false)}
+                onSuccess={() => onOpenChange(false)}
+            />
         </>
     );
 }

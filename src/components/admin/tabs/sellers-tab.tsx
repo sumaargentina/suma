@@ -17,6 +17,7 @@ import * as supabaseService from '@/lib/supabaseService';
 import { Loader2, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { hashPassword } from '@/lib/password-utils';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 
 const SellerFormSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
@@ -39,6 +40,13 @@ export function SellersTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSellerDialogOpen, setIsSellerDialogOpen] = useState(false);
   const [editingSeller, setEditingSeller] = useState<Seller | null>(null);
+  const [sellerLocationData, setSellerLocationData] = useState<LocationData>({
+    country: 'VE',
+    state: 'Monagas',
+    city: 'Maturín',
+    sector: '',
+    address: '',
+  });
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Seller | null>(null);
   const [isPendingPaymentDialogOpen, setIsPendingPaymentDialogOpen] = useState(false);
@@ -221,6 +229,11 @@ export function SellersTab() {
         name: result.data.name,
         email: normalizedEmail,
         commissionRate: result.data.commissionRate,
+        country: sellerLocationData.country,
+        state: sellerLocationData.state,
+        city: sellerLocationData.city,
+        sector: sellerLocationData.sector,
+        address: sellerLocationData.address,
       });
       toast({ title: "Vendedora Actualizada", description: "Los datos han sido guardados." });
     } else {
@@ -247,6 +260,11 @@ export function SellersTab() {
         commissionRate: result.data.commissionRate,
         referralCode: referralCode,
         phone: null,
+        country: sellerLocationData.country,
+        state: sellerLocationData.state,
+        city: sellerLocationData.city,
+        sector: sellerLocationData.sector,
+        address: sellerLocationData.address,
         profileImage: 'https://placehold.co/400x400.png',
         bankDetails: [],
         expenses: [],
@@ -277,7 +295,17 @@ export function SellersTab() {
             <div>
               <CardTitle>Pagos Pendientes a Vendedoras</CardTitle>
             </div>
-            <Button onClick={() => { setEditingSeller(null); setIsSellerDialogOpen(true); }}>
+            <Button onClick={() => {
+              setEditingSeller(null);
+              setSellerLocationData({
+                country: 'VE',
+                state: 'Monagas',
+                city: 'Maturín',
+                sector: '',
+                address: '',
+              });
+              setIsSellerDialogOpen(true);
+            }}>
               Registrar vendedora
             </Button>
           </CardHeader>
@@ -370,6 +398,13 @@ export function SellersTab() {
                       <TableCell>
                         <Button size="sm" variant="outline" onClick={() => {
                           setEditingSeller(seller);
+                          setSellerLocationData({
+                            country: seller.country || 'VE',
+                            state: seller.state || '',
+                            city: seller.city || '',
+                            sector: seller.sector || '',
+                            address: seller.address || '',
+                          });
                           setIsSellerDialogOpen(true);
                         }}>
                           Editar
@@ -627,7 +662,7 @@ export function SellersTab() {
 
       {/* Diálogo de Edición/Creación de Vendedora */}
       <Dialog open={isSellerDialogOpen} onOpenChange={setIsSellerDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSeller ? 'Editar Vendedora' : 'Registrar Nueva Vendedora'}</DialogTitle>
           </DialogHeader>
@@ -652,6 +687,18 @@ export function SellersTab() {
               <div>
                 <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
                 <Input id="confirmPassword" name="confirmPassword" type="password" />
+              </div>
+
+              <div className="border-t pt-3">
+                <h4 className="text-sm font-semibold mb-2 text-slate-800">Ubicación Geográfica y Residencia</h4>
+                <LocationSelector
+                  country={sellerLocationData.country}
+                  state={sellerLocationData.state}
+                  city={sellerLocationData.city}
+                  sector={sellerLocationData.sector}
+                  address={sellerLocationData.address}
+                  onLocationChange={(newLoc) => setSellerLocationData(newLoc)}
+                />
               </div>
             </div>
             <DialogFooter>

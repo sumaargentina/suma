@@ -25,13 +25,21 @@ interface ColumnDefinition {
     isCurrency?: boolean;
 }
 
-interface ItemSchema {
-    [key: string]: {
-        label: string;
-        type: 'text' | 'number';
-        placeholder?: string;
-        required?: boolean;
-    }
+export interface ItemSchemaField {
+    label: string;
+    type: 'text' | 'number' | 'select';
+    placeholder?: string;
+    required?: boolean;
+    options?: { label: string; value: string }[];
+    onAddOption?: () => void;
+    addOptionLabel?: string;
+    onChange?: (value: string) => void;
+    value?: string | number;
+    defaultValue?: string | number;
+}
+
+export interface ItemSchema {
+    [key: string]: ItemSchemaField;
 }
 
 interface ListManagementCardProps {
@@ -75,8 +83,9 @@ export function ListManagementCard({ title, description, items, onAddItem, onUpd
     const newItemData: { [key: string]: unknown } = {};
 
     for (const key in itemSchema) {
+      const field = itemSchema[key];
       const value = formData.get(key) as string;
-      newItemData[key] = itemSchema[key].type === 'number' ? Number(value) : value;
+      newItemData[key] = field.type === 'number' ? Number(value) : value;
     }
 
     try {
@@ -289,27 +298,67 @@ export function ListManagementCard({ title, description, items, onAddItem, onUpd
           </DialogHeader>
           
           <form onSubmit={handleSave} className="space-y-4">
-            {Object.entries(itemSchema).map(([key, field]) => (
-              <div key={key} className="space-y-2">
-                <Label htmlFor={key} className="text-sm font-medium">
-                  {field.label}
-                  {field.required && <span className="text-red-500 ml-1">*</span>}
-                </Label>
-                <Input
-                  id={key}
-                  name={key}
-                  type={field.type}
-                  placeholder={field.placeholder || field.label}
-                  defaultValue={
-                    editingItem && typeof editingItem[key] !== 'object'
-                      ? String(editingItem[key] ?? "")
-                      : ""
-                  }
-                  required={field.required}
-                  className="h-10"
-                />
-              </div>
-            ))}
+            {Object.entries(itemSchema).map(([key, field]) => {
+              const currentValue = field.value !== undefined 
+                ? String(field.value) 
+                : (editingItem && typeof editingItem[key] !== 'object'
+                    ? String(editingItem[key] ?? "")
+                    : (field.defaultValue !== undefined ? String(field.defaultValue) : ""));
+
+              return (
+                <div key={key} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={key} className="text-sm font-medium">
+                      {field.label}
+                      {field.required && <span className="text-red-500 ml-1">*</span>}
+                    </Label>
+                    {field.onAddOption && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={field.onAddOption}
+                        className="h-7 text-xs text-primary gap-1 px-2 hover:bg-primary/10"
+                      >
+                        <PlusCircle className="h-3.5 w-3.5" />
+                        {field.addOptionLabel || "+ Nuevo"}
+                      </Button>
+                    )}
+                  </div>
+
+                  {field.type === 'select' ? (
+                    <select
+                      id={key}
+                      name={key}
+                      value={currentValue}
+                      onChange={(e) => field.onChange && field.onChange(e.target.value)}
+                      required={field.required}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {field.options?.length ? (
+                        field.options.map(opt => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No hay opciones disponibles</option>
+                      )}
+                    </select>
+                  ) : (
+                    <Input
+                      id={key}
+                      name={key}
+                      type={field.type}
+                      placeholder={field.placeholder || field.label}
+                      defaultValue={currentValue}
+                      required={field.required}
+                      className="h-10"
+                    />
+                  )}
+                </div>
+              );
+            })}
             
             <DialogFooter className="flex flex-col sm:flex-row gap-2">
               <DialogClose asChild>

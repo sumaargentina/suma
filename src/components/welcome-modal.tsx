@@ -27,9 +27,18 @@ import {
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
-import { supabase } from '@/lib/supabase';
-import { COUNTRY_CODES } from '@/lib/types';
+import { COUNTRY_CODES, DOCUMENT_TYPES, DocumentType } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
+import { validateCedula } from '@/lib/validation-utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -75,11 +84,19 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
   // Estado para el formulario de perfil
   const [birthDate, setBirthDate] = useState<string>('');
-  const [gender, setGender] = useState<'masculino' | 'femenino' | 'otro' | 'no_especificar' | ''>('');
-  const [cedula, setCedula] = useState('');
-  const [countryCode, setCountryCode] = useState('+54');
+  const [gender, setGender] = useState<'masculino' | 'femenino' | ''>('');
+  const [documentType, setDocumentType] = useState<DocumentType>('Cédula');
+  const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E'>('V');
+  const [cedulaNumber, setCedulaNumber] = useState('');
+  const [countryCode, setCountryCode] = useState('+58');
   const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
+  const [locationData, setLocationData] = useState<LocationData>({
+    country: 'VE',
+    state: '',
+    city: '',
+    sector: '',
+    address: ''
+  });
   // Campos opcionales adicionales
   const [bloodType, setBloodType] = useState('');
   const [religion, setReligion] = useState('');
@@ -135,39 +152,45 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const handleCompleteProfile = async () => {
     if (!user) return;
 
+    const rawCedula = cedulaNumber.trim();
+    const finalCedula = documentType === 'Cédula' 
+      ? `${cedulaPrefix}-${rawCedula.replace(/\D/g, '')}` 
+      : rawCedula.toUpperCase();
+
     // Validación de campos obligatorios
-    if (!birthDate || !gender || !cedula || !phone || !city) {
+    if (!birthDate || !gender || !rawCedula || !phone || !locationData.state || !locationData.city) {
       toast({
         variant: 'destructive',
         title: 'Campos incompletos',
-        description: 'Por favor completa todos los campos antes de continuar.'
+        description: 'Por favor completa todos los campos obligatorios incluyendo Documento, Teléfono, Estado y Ciudad.'
       });
       return;
     }
 
-    // Validar formato de DNI argentino (7-8 dígitos)
-    const dniRegex = /^\d{7,8}$/;
-    if (!dniRegex.test(cedula)) {
+    const cedValidation = validateCedula(finalCedula, documentType);
+    if (!cedValidation.isValid) {
       toast({
         variant: 'destructive',
-        title: 'DNI inválido',
-        description: 'Por favor ingresa un DNI válido (7-8 dígitos)'
+        title: 'Documento inválido',
+        description: documentType === 'Cédula' 
+          ? 'Por favor ingresa un número de cédula válido (entre 6 y 10 dígitos).' 
+          : 'Por favor ingresa un número de documento válido.'
       });
       return;
     }
 
     try {
-      // Verificar que el DNI sea único
+      // Verificar que la Cédula sea única
       const allPatients = await supabaseService.getPatients();
       const existingPatient = allPatients.find(p =>
-        p.cedula && p.cedula.toLowerCase() === cedula.toLowerCase() && p.id !== user.id
+        p.cedula && p.cedula.toLowerCase().replace(/[-.\s]/g, '') === finalCedula.toLowerCase().replace(/[-.\s]/g, '') && p.id !== user.id
       );
 
       if (existingPatient) {
         toast({
           variant: 'destructive',
-          title: 'DNI ya registrado',
-          description: 'Este DNI ya está registrado por otro paciente.'
+          title: 'Documento ya registrado',
+          description: 'Este documento de identidad ya está registrado por otro usuario.'
         });
         return;
       }
@@ -185,9 +208,14 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         age: calculatedAge,
         birthDate: birthDate,
         gender: gender || null,
-        cedula: cedula,
+        documentType: documentType || 'Cédula',
+        cedula: finalCedula,
         phone: phone ? `${countryCode}${phone}` : null,
-        city: city || null,
+        country: locationData.country || 'VE',
+        state: locationData.state || null,
+        city: locationData.city || null,
+        sector: locationData.sector || null,
+        address: locationData.address || null,
         bloodType: bloodType || null,
         religion: religion || null,
         maritalStatus: maritalStatus || null,
@@ -310,73 +338,116 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </label>
                 <select
                   value={gender}
-                  onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | 'otro' | 'no_especificar' | '')}
+                  onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | '')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="" disabled>Selecciona tu sexo</option>
-                  <option value="masculino">Masculino</option>
-                  <option value="femenino">Femenino</option>
-                  <option value="otro">Otro</option>
-                  <option value="no_especificar">Prefiero no especificar</option>
+                  <option value="masculino">Hombre (Masculino)</option>
+                  <option value="femenino">Mujer (Femenino)</option>
                 </select>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                <User className="w-4 h-4" />
-                DNI (Documento Nacional de Identidad) *
-              </label>
-              <input
-                type="text"
-                placeholder="12345678"
-                value={cedula}
-                onChange={(e) => {
-                  // Solo permitir números
-                  const numbersOnly = e.target.value.replace(/[^0-9]/g, '');
-                  // Limitar a 8 dígitos
-                  const limitedNumbers = numbersOnly.slice(0, 8);
-                  setCedula(limitedNumbers);
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500">
-                Solo números (7-8 dígitos) - no se podrá modificar después
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="welcome-docType" className="text-xs font-medium text-gray-700">
+                  Tipo de Documento
+                </Label>
+                <Select
+                  value={documentType}
+                  onValueChange={(val) => setDocumentType(val as DocumentType)}
+                >
+                  <SelectTrigger id="welcome-docType" className="w-full h-10">
+                    <SelectValue placeholder="Selecciona tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOCUMENT_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="welcome-cedula" className="text-xs font-medium text-gray-700">
+                  {documentType === 'Pasaporte' 
+                    ? 'Nro. de Pasaporte *' 
+                    : documentType === 'DNI' 
+                    ? 'Nro. de DNI *' 
+                    : 'Nro. de Cédula de Identidad *'}
+                </Label>
+                {documentType === 'Cédula' ? (
+                  <div className="flex gap-2">
+                    <Select value={cedulaPrefix} onValueChange={(val: 'V' | 'E') => setCedulaPrefix(val)}>
+                      <SelectTrigger className="w-[100px] h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="V">V - Ven</SelectItem>
+                        <SelectItem value="E">E - Ext</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <input
+                      id="welcome-cedula"
+                      type="tel"
+                      placeholder="Ej. 12345678"
+                      value={cedulaNumber}
+                      onChange={(e) => setCedulaNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-10"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <input
+                    id="welcome-cedula"
+                    type="text"
+                    placeholder={documentType === 'Pasaporte' ? 'Ej. ABC123456' : 'Ej. 12345678'}
+                    value={cedulaNumber}
+                    onChange={(e) => setCedulaNumber(e.target.value.toUpperCase().slice(0, 20))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-10"
+                    required
+                  />
+                )}
+                <p className="text-[11px] text-gray-500">
+                  🔒 No se podrá modificar después por motivos de seguridad médica.
+                </p>
+              </div>
             </div>
           </div>
         );
 
       case 2:
         return (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <div className="text-center">
-              <div className="mx-auto w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-                <Phone className="w-8 h-8 text-purple-600" />
+              <div className="mx-auto w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mb-3">
+                <Phone className="w-7 h-7 text-purple-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Información de Contacto
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Información de Contacto y Ubicación
               </h3>
-              <p className="text-gray-600 text-sm">
-                Ayúdanos a mantenerte informado sobre tus citas y servicios.
+              <p className="text-gray-600 text-xs">
+                Selecciona tu país, estado y ciudad para conectarte con los mejores especialistas de tu zona.
               </p>
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  Teléfono
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-purple-600" />
+                  Teléfono / WhatsApp
                 </label>
                 <div className="flex gap-2">
                   <CountryCodeSelect
                     value={countryCode}
                     onChange={setCountryCode}
-                    className="w-[120px]"
+                    className="w-[110px]"
                   />
                   <input
                     type="tel"
-                    placeholder="123456789"
+                    placeholder="Ej: 412 123 4567"
                     value={phone}
                     onChange={(e) => {
                       // Solo números, sin ceros iniciales
@@ -384,39 +455,26 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                       if (val.startsWith('0')) val = val.slice(1);
                       setPhone(val);
                     }}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  Ciudad
-                </label>
-                <select
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  disabled={loadingCities}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
-                >
-                  <option value="" disabled>
-                    {loadingCities ? "Cargando ciudades..." : "Selecciona tu ciudad para búsquedas"}
-                  </option>
-                  {!loadingCities && displayCities.length > 0 ? (
-                    displayCities.map((cityObj: any) => {
-                      const cityName = typeof cityObj === 'string' ? cityObj : cityObj.name;
-                      return (
-                        <option key={cityName} value={cityName}>
-                          {cityName}
-                        </option>
-                      );
-                    })
-                  ) : (
-                    !loadingCities && <option value="" disabled>No hay ciudades disponibles</option>
-                  )}
-                </select>
-                {loadingCities && <p className="text-xs text-blue-500 animate-pulse">Sincronizando ciudades...</p>}
+              <div className="border-t pt-3">
+                <h4 className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  Ubicación Geográfica y Dirección
+                </h4>
+                <LocationSelector
+                  country={locationData.country}
+                  state={locationData.state}
+                  city={locationData.city}
+                  sector={locationData.sector}
+                  address={locationData.address}
+                  onLocationChange={setLocationData}
+                  showAddressFields={true}
+                  compact={true}
+                />
               </div>
             </div>
           </div>

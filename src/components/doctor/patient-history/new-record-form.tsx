@@ -4,11 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, Sparkles, Wand2, Mic, MicOff } from 'lucide-react';
+import { Loader2, Save, Sparkles, Wand2, Mic, MicOff, FileText, BedDouble, Calendar, ShieldCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
+import { format, addDays, parseISO } from 'date-fns';
 
 interface NewRecordFormProps {
     patientId: string;
@@ -187,8 +189,16 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         diagnosis: '',
         evaluation: '',
         requested_studies: '',
+        prescription: '',
         treatment_plan: '',
-        evolution: ''
+        evolution: '',
+        medical_report: '',
+        requires_rest: false,
+        rest_days: 3,
+        rest_start_date: format(new Date(), 'yyyy-MM-dd'),
+        rest_end_date: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
+        rest_type: 'Absoluto',
+        rest_justification: 'Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación.'
     });
 
     const handleAiGenerate = async () => {
@@ -222,8 +232,12 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 diagnosis: data.diagnosis || prev.diagnosis,
                 evaluation: data.evaluation || prev.evaluation,
                 requested_studies: data.requested_studies || prev.requested_studies,
+                prescription: data.prescription || prev.prescription,
                 treatment_plan: data.treatment || prev.treatment_plan,
-                evolution: data.evolution || prev.evolution
+                evolution: data.evolution || prev.evolution,
+                medical_report: data.medical_report || prev.medical_report,
+                requires_rest: Boolean(data.requires_rest ?? prev.requires_rest),
+                rest_days: data.rest_days || prev.rest_days
             }));
 
             toast({
@@ -443,15 +457,37 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     />
                 </div>
 
-                <div className="space-y-2">
-                    <Label className="text-green-900 font-medium">Plan de Tratamiento</Label>
-                    <Textarea
-                        placeholder="Indicaciones, medicación, dosis..."
-                        className="min-h-[100px] border-green-100 focus:border-green-300"
-                        value={formData.treatment_plan}
-                        onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
-                        required
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label className="text-teal-900 font-semibold flex items-center gap-1.5">
+                            💊 Récipe Médico (Prescripción para Farmacia)
+                        </Label>
+                        <Textarea
+                            placeholder={`Listado de medicamentos a comprar:\n1. Amoxicilina 875mg (Caja x 14 comp) - 1 caja\n2. Ibuprofeno 600mg (Caja x 20 comp) - 1 caja`}
+                            className="min-h-[110px] border-teal-200 focus:border-teal-400 bg-teal-50/20"
+                            value={formData.prescription}
+                            onChange={(e) => setFormData({ ...formData, prescription: e.target.value })}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                            Este récipe se estampará con tu firma y podrá ser presentado o impreso por el paciente.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label className="text-green-900 font-semibold flex items-center gap-1.5">
+                            📋 Plan de Tratamiento / Indicaciones
+                        </Label>
+                        <Textarea
+                            placeholder={`Indicaciones de toma para el paciente:\n- Amoxicilina: Tomar 1 comprimido cada 12 horas con comida por 7 días.\n- Ibuprofeno: Tomar 1 comprimido cada 8 horas si hay dolor o fiebre.\n- Reposo por 48 horas.`}
+                            className="min-h-[110px] border-green-200 focus:border-green-400 bg-green-50/20"
+                            value={formData.treatment_plan}
+                            onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
+                            required
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                            Instrucciones claras de horarios, duración y recomendaciones de reposo.
+                        </p>
+                    </div>
                 </div>
 
                 <div className="space-y-2">
@@ -463,6 +499,158 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                         onChange={(e) => setFormData({ ...formData, evolution: e.target.value })}
                     />
                 </div>
+
+                {/* ========================================================================= */}
+                {/* SECCIÓN DE INFORME MÉDICO Y CONSTANCIA DE REPOSO                          */}
+                {/* ========================================================================= */}
+                <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50/50 via-white to-indigo-50/30 overflow-hidden shadow-xs">
+                    <CardContent className="p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                                    <FileText className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                        Informe Médico & Constancia de Reposo
+                                        {formData.requires_rest && (
+                                            <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full uppercase">
+                                                {formData.rest_days} días de reposo
+                                            </span>
+                                        )}
+                                    </h4>
+                                    <p className="text-xs text-slate-500">
+                                        Genera un informe oficial con validez legal y código QR para Recursos Humanos / Empresas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Switch Reposo */}
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                                <Label htmlFor="requires-rest-switch" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                                    ¿Emitir Reposo?
+                                </Label>
+                                <Switch
+                                    id="requires-rest-switch"
+                                    checked={formData.requires_rest}
+                                    onCheckedChange={(checked) => setFormData({ ...formData, requires_rest: checked })}
+                                    className="data-[state=checked]:bg-blue-600"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Campos de Reposo Médico (si está habilitado) */}
+                        {formData.requires_rest && (
+                            <div className="pt-2 border-t border-blue-100 space-y-3 animate-in fade-in-50 duration-200">
+                                
+                                {/* Chips de Días Rápidos */}
+                                <div>
+                                    <Label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                                        Duración del Reposo:
+                                    </Label>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        {[1, 2, 3, 5, 7, 10, 15, 21, 30].map((d) => (
+                                            <Button
+                                                key={d}
+                                                type="button"
+                                                size="sm"
+                                                variant={formData.rest_days === d ? "default" : "outline"}
+                                                className={`h-7 px-2.5 text-xs font-semibold rounded-lg ${
+                                                    formData.rest_days === d 
+                                                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                                                }`}
+                                                onClick={() => {
+                                                    const startDate = formData.rest_start_date ? parseISO(formData.rest_start_date) : new Date();
+                                                    const endDate = addDays(startDate, Math.max(0, d - 1));
+                                                    setFormData({
+                                                        ...formData,
+                                                        rest_days: d,
+                                                        rest_end_date: format(endDate, 'yyyy-MM-dd')
+                                                    });
+                                                }}
+                                            >
+                                                {d} {d === 1 ? 'día' : 'días'}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-semibold text-slate-600">Fecha Inicio:</Label>
+                                        <Input
+                                            type="date"
+                                            value={formData.rest_start_date}
+                                            onChange={(e) => {
+                                                const newStart = e.target.value;
+                                                const parsed = newStart ? parseISO(newStart) : new Date();
+                                                const newEnd = addDays(parsed, Math.max(0, (formData.rest_days || 1) - 1));
+                                                setFormData({
+                                                    ...formData,
+                                                    rest_start_date: newStart,
+                                                    rest_end_date: format(newEnd, 'yyyy-MM-dd')
+                                                });
+                                            }}
+                                            className="h-9 text-xs bg-white border-slate-200"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-semibold text-slate-600">Fecha Fin (Reincorporación):</Label>
+                                        <Input
+                                            type="date"
+                                            value={formData.rest_end_date}
+                                            onChange={(e) => setFormData({ ...formData, rest_end_date: e.target.value })}
+                                            className="h-9 text-xs bg-white border-slate-200"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-semibold text-slate-600">Tipo de Reposo:</Label>
+                                        <Select
+                                            value={formData.rest_type}
+                                            onValueChange={(val) => setFormData({ ...formData, rest_type: val })}
+                                        >
+                                            <SelectTrigger className="h-9 text-xs bg-white border-slate-200">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Absoluto">Absoluto (En cama / Hogar)</SelectItem>
+                                                <SelectItem value="Relativo">Relativo (Sin esfuerzo)</SelectItem>
+                                                <SelectItem value="Limitación de Esfuerzo">Limitación de Esfuerzos Físicos</SelectItem>
+                                                <SelectItem value="Reposo de Voz">Reposo de Voz</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <Label className="text-[11px] font-semibold text-slate-600">Motivo / Justificación Médica:</Label>
+                                    <Input
+                                        placeholder="Ej: Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación."
+                                        value={formData.rest_justification}
+                                        onChange={(e) => setFormData({ ...formData, rest_justification: e.target.value })}
+                                        className="h-9 text-xs bg-white border-slate-200"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Texto adicional del Informe Médico */}
+                        <div className="space-y-1 pt-1">
+                            <Label className="text-xs font-semibold text-slate-700">
+                                Resumen Clínico para el Informe Oficial (Opcional):
+                            </Label>
+                            <Textarea
+                                placeholder="Escribe observaciones específicas para el informe o constancia que se entregará al paciente/empresa (si se deja vacío, se utilizará la evolución y diagnóstico)..."
+                                className="min-h-[70px] text-xs bg-white border-slate-200"
+                                value={formData.medical_report}
+                                onChange={(e) => setFormData({ ...formData, medical_report: e.target.value })}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="submit" disabled={loading} className="w-full md:w-auto">

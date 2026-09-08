@@ -18,14 +18,18 @@ const DoctorMap = dynamic(() => import("@/components/doctor-map"), {
     ),
 });
 
+import { cn } from "@/lib/utils";
+
 interface MapViewToggleProps {
     doctors: Doctor[];
     clinics: Clinic[];
+    mapDoctors?: Doctor[];
+    mapClinics?: Clinic[];
     centerCity?: string;
     children: React.ReactNode; // The list view content
 }
 
-export function MapViewToggle({ doctors, clinics, centerCity, children }: MapViewToggleProps) {
+export function MapViewToggle({ doctors, clinics, mapDoctors, mapClinics, centerCity, children }: MapViewToggleProps) {
     const [view, setView] = useState<"list" | "map">("list");
 
     return (
@@ -58,15 +62,15 @@ export function MapViewToggle({ doctors, clinics, centerCity, children }: MapVie
             {view === "map" && (
                 <div className="mb-6 md:mb-10">
                     <DoctorMap
-                        doctors={doctors}
-                        clinics={clinics}
+                        doctors={mapDoctors || doctors}
+                        clinics={mapClinics || clinics}
                         centerCity={centerCity}
                     />
                 </div>
             )}
 
-            {/* List view — always render but hide when map is active */}
-            <div className={view === "map" ? "hidden" : ""}>
+            {/* List view — generous spacing between Médicos, Bienestar, Clínicas and bottom margin */}
+            <div className={cn("space-y-8 md:space-y-16 pb-20 md:pb-28", view === "map" && "hidden")}>
                 {children}
             </div>
         </div>

@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2, Building2, CheckCircle2, MapPin, Eye, EyeOff, X } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 import dynamic from 'next/dynamic';
 
 const LocationPicker = dynamic(
@@ -37,20 +38,21 @@ function RegisterClinicContent() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
-    const [city, setCity] = useState('');
-    const [sector, setSector] = useState('');
-    const [address, setAddress] = useState('');
+    const [locationData, setLocationData] = useState<LocationData>({
+        country: 'VE',
+        state: 'Monagas',
+        city: 'Maturín',
+        sector: '',
+        address: '',
+        lat: 0,
+        lng: 0,
+    });
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [billingMonths, setBillingMonths] = useState(initialMonths);
     const [isLoading, setIsLoading] = useState(false);
-    const [lat, setLat] = useState(0);
-    const [lng, setLng] = useState(0);
-    const [citySearch, setCitySearch] = useState('');
-    const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-
 
     const basePrice = 29000;
 
@@ -93,12 +95,14 @@ function RegisterClinicContent() {
                 email,
                 password,
                 phone,
-                city,
-                sector,
-                address,
+                country: locationData.country,
+                state: locationData.state,
+                city: locationData.city,
+                sector: locationData.sector,
+                address: locationData.address,
                 billingCycle: billingMonths === 12 ? 'annual' : 'monthly',
-                lat: lat || undefined,
-                lng: lng || undefined,
+                lat: locationData.lat || undefined,
+                lng: locationData.lng || undefined,
             });
 
             toast({
@@ -220,103 +224,31 @@ function RegisterClinicContent() {
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="city">Ciudad</Label>
-                                {city ? (
-                                    <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-teal-50 border-teal-200">
-                                        <MapPin className="h-4 w-4 text-teal-600 shrink-0" />
-                                        <span className="text-sm font-medium text-teal-800 flex-1">{city}</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => { setCity(''); setCitySearch(''); setCityDropdownOpen(true); }}
-                                            className="text-teal-500 hover:text-teal-700"
-                                            disabled={isLoading}
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                ) : !cityDropdownOpen ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setCityDropdownOpen(true)}
-                                        disabled={isLoading}
-                                        className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-slate-300 rounded-md text-sm text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors cursor-pointer"
-                                    >
-                                        <MapPin className="h-4 w-4" />
-                                        Elegir ciudad
-                                    </button>
-                                ) : (
-                                    <div>
-                                        <Input
-                                            placeholder="Filtrar ciudades..."
-                                            value={citySearch}
-                                            onChange={(e) => setCitySearch(e.target.value)}
-                                            autoComplete="off"
-                                            autoFocus
-                                            className="mb-2"
-                                            disabled={isLoading}
-                                        />
-                                        <div className="border rounded-lg max-h-32 overflow-y-auto bg-white">
-                                            {cities.length > 0 ? (
-                                                cities
-                                                    .filter(c => !citySearch || c.name.toLowerCase().includes(citySearch.toLowerCase()))
-                                                    .length > 0 ? (
-                                                    cities
-                                                        .filter(c => !citySearch || c.name.toLowerCase().includes(citySearch.toLowerCase()))
-                                                        .map((cityOption) => (
-                                                            <button
-                                                                type="button"
-                                                                key={cityOption.name}
-                                                                onClick={() => { setCity(cityOption.name); setCitySearch(''); setCityDropdownOpen(false); }}
-                                                                className="w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors border-b last:border-b-0 cursor-pointer"
-                                                            >
-                                                                {cityOption.name}
-                                                            </button>
-                                                        ))
-                                                ) : (
-                                                    <p className="px-3 py-2 text-sm text-muted-foreground">No se encontraron ciudades</p>
-                                                )
-                                            ) : (
-                                                <p className="px-3 py-2 text-sm text-muted-foreground">Cargando ciudades...</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="sector">Sector / Barrio</Label>
-                                <Input
-                                    id="sector"
-                                    placeholder="Ej: Palermo"
-                                    required
-                                    value={sector}
-                                    onChange={(e) => setSector(e.target.value)}
+                            {/* Selector Geográfico Completo: País -> Estado -> Ciudad -> Sector -> Dirección */}
+                            <div className="border-t pt-4">
+                                <h4 className="text-sm font-semibold mb-3 text-slate-800">Ubicación y Dirección de la Clínica</h4>
+                                <LocationSelector
+                                    country={locationData.country}
+                                    state={locationData.state}
+                                    city={locationData.city}
+                                    sector={locationData.sector}
+                                    address={locationData.address}
                                     disabled={isLoading}
+                                    onLocationChange={(newLoc) => setLocationData(newLoc)}
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="address">Dirección Exacta</Label>
-                                <Input
-                                    id="address"
-                                    placeholder="Calle 123, Piso 1"
-                                    required
-                                    value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    disabled={isLoading}
-                                />
-                            </div>
-
-                            {/* Location Picker */}
+                            {/* Location Picker Mapa */}
                             <div className="space-y-2">
                                 <Label>Ubicación en el Mapa <span className="text-xs text-muted-foreground">(opcional)</span></Label>
                                 <LocationPicker
-                                    lat={lat}
-                                    lng={lng}
-                                    city={city}
+                                    lat={locationData.lat || 0}
+                                    lng={locationData.lng || 0}
+                                    city={locationData.city}
                                     disabled={isLoading}
-                                    onLocationChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }}
+                                    onLocationChange={(newLat, newLng) => {
+                                        setLocationData(prev => ({ ...prev, lat: newLat, lng: newLng }));
+                                    }}
                                 />
                             </div>
 

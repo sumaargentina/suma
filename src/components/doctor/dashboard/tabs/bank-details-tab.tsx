@@ -1,12 +1,13 @@
 
 "use client";
 
+import Link from "next/link";
 import type { BankDetail } from "@/lib/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Pencil, Trash2, CreditCard, User, Hash } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, CreditCard, User, Hash, BarChart3 } from 'lucide-react';
 
 interface BankDetailsTabProps {
   bankDetails: BankDetail[];
@@ -25,16 +26,25 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
               Mis Cuentas Bancarias
             </CardTitle>
             <p className="text-green-700 text-sm mt-1">
-              Gestiona las cuentas donde recibirás los pagos de tus consultas
+              Gestiona las cuentas (Pago Móvil, Transferencias) donde recibirás los pagos de tus consultas
             </p>
           </div>
-          <Button 
-            onClick={() => onOpenDialog(null)}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <PlusCircle className="mr-2 h-4 w-4"/>
-            Añadir Cuenta
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/doctor/dashboard/analytics">
+              <Button variant="outline" size="sm" className="gap-1.5 border-green-300 text-green-800 hover:bg-green-100">
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Ver</span> Estadísticas
+              </Button>
+            </Link>
+            <Button 
+              size="sm"
+              onClick={() => onOpenDialog(null)}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <PlusCircle className="mr-1.5 h-4 w-4"/>
+              Añadir Cuenta
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {/* Vista móvil con cards */}

@@ -35,73 +35,107 @@ type PublicHealthFacility = {
   emergency?: boolean;
 };
 
-// ─── Data helpers ────────────────────────────────────
+import { GEO_DATA, resolveLocation } from "@/lib/geo-data";
 
 function toMapItems(doctors: Doctor[], clinics: Clinic[]): MapItem[] {
   const items: MapItem[] = [];
 
-  for (const d of doctors) {
-    if (d.lat && d.lng && (d.lat !== 0 || d.lng !== 0)) {
-      items.push({
-        id: d.id,
-        type: "doctor",
-        name: d.name,
-        specialty: d.specialty,
-        address: d.address,
-        city: d.city,
-        lat: Number(d.lat),
-        lng: Number(d.lng),
-        rating: d.rating || 0,
-        profileImage: d.profileImage,
-        consultationFee: d.consultationFee,
-      });
+  doctors.forEach((d, i) => {
+    let lat = Number(d.lat);
+    let lng = Number(d.lng);
+
+    if (!lat || !lng || (lat === 0 && lng === 0) || isNaN(lat) || isNaN(lng)) {
+      const resolved = resolveLocation(d.country || 'VE', d.state, d.city || 'Maturín');
+      lat = resolved.lat;
+      lng = resolved.lng;
+
+      // Jitter determinista para que varios doctores en la misma ciudad no se tapen
+      const angle = (i * 137.5) * (Math.PI / 180);
+      const radius = 0.0035 * Math.sqrt((i % 12) + 1);
+      lat += Math.sin(angle) * radius;
+      lng += Math.cos(angle) * radius;
     }
 
-    if (d.addresses) {
-      for (const addr of d.addresses) {
-        if (addr.lat && addr.lng && (addr.lat !== 0 || addr.lng !== 0)) {
-          items.push({
-            id: `${d.id}-${addr.id}`,
-            doctorId: d.id,
-            type: "doctor",
-            name: d.name,
-            specialty: d.specialty,
-            address: addr.address,
-            city: addr.city,
-            lat: Number(addr.lat),
-            lng: Number(addr.lng),
-            rating: d.rating || 0,
-            profileImage: d.profileImage,
-            consultationFee: addr.consultationFee || d.consultationFee,
-          });
+    items.push({
+      id: d.id,
+      type: "doctor",
+      name: d.name,
+      specialty: d.specialty,
+      address: d.address || d.city || "Consultorio Médico",
+      city: d.city || "Maturín",
+      lat,
+      lng,
+      rating: d.rating || 0,
+      profileImage: d.profileImage,
+      consultationFee: d.consultationFee,
+    });
+
+    if (d.addresses && d.addresses.length > 0) {
+      d.addresses.forEach((addr, addrIdx) => {
+        let addrLat = Number(addr.lat);
+        let addrLng = Number(addr.lng);
+        if (!addrLat || !addrLng || (addrLat === 0 && addrLng === 0) || isNaN(addrLat) || isNaN(addrLng)) {
+          const resolved = resolveLocation(d.country || 'VE', undefined, addr.city || d.city || 'Maturín');
+          addrLat = resolved.lat;
+          addrLng = resolved.lng;
+          const angle = ((i + addrIdx + 3) * 137.5) * (Math.PI / 180);
+          const radius = 0.004 * Math.sqrt((addrIdx % 6) + 1);
+          addrLat += Math.sin(angle) * radius;
+          addrLng += Math.cos(angle) * radius;
         }
-      }
-    }
-  }
 
-  for (const c of clinics) {
-    const lat = (c as Record<string, unknown>).lat as number | undefined;
-    const lng = (c as Record<string, unknown>).lng as number | undefined;
-    if (lat && lng && (lat !== 0 || lng !== 0)) {
-      items.push({
-        id: c.id,
-        type: "clinic",
-        name: c.name,
-        address: c.address || "",
-        city: c.city || "",
-        lat: Number(lat),
-        lng: Number(lng),
-        rating: c.rating || 0,
-        profileImage: c.logoUrl,
-        slug: c.slug,
+        items.push({
+          id: `${d.id}-${addr.id || addrIdx}`,
+          doctorId: d.id,
+          type: "doctor",
+          name: d.name,
+          specialty: d.specialty,
+          address: addr.address || addr.name || d.address || "",
+          city: addr.city || d.city || "",
+          lat: addrLat,
+          lng: addrLng,
+          rating: d.rating || 0,
+          profileImage: d.profileImage,
+          consultationFee: addr.consultationFee || d.consultationFee,
+        });
       });
     }
-  }
+  });
+
+  clinics.forEach((c, i) => {
+    let lat = Number((c as Record<string, unknown>).lat);
+    let lng = Number((c as Record<string, unknown>).lng);
+
+    if (!lat || !lng || (lat === 0 && lng === 0) || isNaN(lat) || isNaN(lng)) {
+      const resolved = resolveLocation((c as Record<string, unknown>).country as string || 'VE', c.state, c.city || 'Maturín');
+      lat = resolved.lat;
+      lng = resolved.lng;
+
+      const angle = ((i + 7) * 137.5) * (Math.PI / 180);
+      const radius = 0.004 * Math.sqrt((i % 10) + 1);
+      lat += Math.sin(angle) * radius;
+      lng += Math.cos(angle) * radius;
+    }
+
+    items.push({
+      id: c.id,
+      type: "clinic",
+      name: c.name,
+      address: c.address || c.city || "Centro Médico",
+      city: c.city || "",
+      lat,
+      lng,
+      rating: c.rating || 0,
+      profileImage: c.logoUrl,
+      slug: c.slug,
+    });
+  });
 
   return items;
 }
 
-// ─── Overpass API: Public Health Facilities ───────────
+// In-memory cache for public health facilities in client
+const publicFacilitiesCache = new Map<string, PublicHealthFacility[]>();
 
 async function fetchPublicHealthFacilities(
   bounds: maplibregl.LngLatBounds
@@ -111,70 +145,19 @@ async function fetchPublicHealthFacilities(
   const n = bounds.getNorth();
   const e = bounds.getEast();
 
-  // Query hospitals, clinics, and health centres from OpenStreetMap
-  const query = `
-    [out:json][timeout:15];
-    (
-      node["amenity"="hospital"](${s},${w},${n},${e});
-      node["amenity"="clinic"]["healthcare:free"="yes"](${s},${w},${n},${e});
-      node["amenity"="clinic"]["operator:type"="public"](${s},${w},${n},${e});
-      node["amenity"="clinic"]["operator:type"="government"](${s},${w},${n},${e});
-      node["healthcare"="centre"](${s},${w},${n},${e});
-      node["healthcare"="hospital"](${s},${w},${n},${e});
-      way["amenity"="hospital"](${s},${w},${n},${e});
-      way["healthcare"="centre"](${s},${w},${n},${e});
-    );
-    out center 200;
-  `;
+  const cacheKey = `${s.toFixed(2)}_${w.toFixed(2)}_${n.toFixed(2)}_${e.toFixed(2)}`;
+  if (publicFacilitiesCache.has(cacheKey)) {
+    return publicFacilitiesCache.get(cacheKey)!;
+  }
 
   try {
-    const resp = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: `data=${encodeURIComponent(query)}`,
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    });
+    const res = await fetch(`/api/overpass?s=${s}&w=${w}&n=${n}&e=${e}`);
+    if (!res.ok) return [];
 
-    if (!resp.ok) return [];
-
-    const data = await resp.json();
-    const facilities: PublicHealthFacility[] = [];
-    const seen = new Set<string>();
-
-    for (const el of data.elements || []) {
-      const lat = el.lat ?? el.center?.lat;
-      const lng = el.lon ?? el.center?.lon;
-      if (!lat || !lng) continue;
-
-      const name = el.tags?.name || el.tags?.["name:es"] || "Centro de Salud";
-      const key = `${name}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      let type: PublicHealthFacility["type"] = "health_centre";
-      if (el.tags?.amenity === "hospital" || el.tags?.healthcare === "hospital") {
-        type = "hospital";
-      } else if (el.tags?.amenity === "clinic") {
-        type = "clinic";
-      }
-
-      facilities.push({
-        id: el.id,
-        name,
-        type,
-        lat,
-        lng,
-        address: el.tags?.["addr:street"]
-          ? `${el.tags["addr:street"]} ${el.tags["addr:housenumber"] || ""}`
-          : undefined,
-        phone: el.tags?.phone || el.tags?.["contact:phone"],
-        operator: el.tags?.operator,
-        emergency: el.tags?.emergency === "yes",
-      });
-    }
-
+    const facilities: PublicHealthFacility[] = await res.json();
+    publicFacilitiesCache.set(cacheKey, facilities);
     return facilities;
   } catch {
-    console.warn("Overpass API error — public facilities not loaded");
     return [];
   }
 }
@@ -357,28 +340,17 @@ function createPublicHealthPopupHTML(f: PublicHealthFacility): string {
 
 // ─── City Coordinates ────────────────────────────────
 
-const CITY_COORDS: Record<string, [number, number]> = {
-  "Buenos Aires": [-34.6037, -58.3816],
-  "Córdoba": [-31.4201, -64.1888],
-  "Rosario": [-32.9468, -60.6393],
-  "Mendoza": [-32.8895, -68.8458],
-  "Tucumán": [-26.8083, -65.2176],
-  "La Plata": [-34.9205, -57.9536],
-  "Mar del Plata": [-38.0023, -57.5575],
-  "Salta": [-24.7821, -65.4232],
-  "Santa Fe": [-31.6333, -60.7000],
-  "San Juan": [-31.5375, -68.5364],
-  "Resistencia": [-27.4513, -58.9868],
-  "Posadas": [-27.3671, -55.8961],
-  "San Miguel de Tucumán": [-26.8083, -65.2176],
-  "Paraná": [-31.7320, -60.5238],
-  "Neuquén": [-38.9516, -68.0591],
-  "Formosa": [-26.1775, -58.1781],
-  "San Luis": [-33.3, -66.35],
-  "Corrientes": [-27.4696, -58.8306],
-  "Bahía Blanca": [-38.7183, -62.2663],
-  "Santiago del Estero": [-27.7951, -64.2615],
-};
+function getCityCoordinates(cityName?: string): [number, number] {
+  if (!cityName || cityName === "all") {
+    // Default Venezuela center (Maturín / Monagas)
+    return [9.7469, -63.1831];
+  }
+  const resolved = resolveLocation('VE', undefined, cityName);
+  if (resolved && resolved.lat && resolved.lng) {
+    return [resolved.lat, resolved.lng];
+  }
+  return [9.7469, -63.1831];
+}
 
 // ─── Component ───────────────────────────────────────
 
@@ -401,13 +373,8 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    let center: [number, number] = [-34.6037, -58.3816];
-    let zoom = 5;
-
-    if (centerCity && CITY_COORDS[centerCity]) {
-      center = CITY_COORDS[centerCity];
-      zoom = 12;
-    }
+    let center: [number, number] = getCityCoordinates(centerCity);
+    let zoom = centerCity && centerCity !== "all" ? 12 : 6;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -484,12 +451,17 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
       markers.push(marker);
     }
 
-    if (mapItems.length > 0 && !centerCity) {
-      const bounds = new maplibregl.LngLatBounds();
-      for (const item of mapItems) {
-        bounds.extend([item.lng, item.lat]);
+    if (mapItems.length > 0) {
+      if (centerCity && centerCity !== "all") {
+        const centerCoords = getCityCoordinates(centerCity);
+        map.flyTo({ center: [centerCoords[1], centerCoords[0]], zoom: 12, duration: 800 });
+      } else {
+        const bounds = new maplibregl.LngLatBounds();
+        for (const item of mapItems) {
+          bounds.extend([item.lng, item.lat]);
+        }
+        map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 1000 });
       }
-      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 1000 });
     }
 
     return () => {
@@ -550,10 +522,18 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
     const map = mapRef.current;
     if (!map || !showPublicHealth) return;
 
-    const onMoveEnd = () => loadPublicFacilities();
+    let debounceTimer: NodeJS.Timeout;
+    const onMoveEnd = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadPublicFacilities();
+      }, 700);
+    };
+
     map.on("moveend", onMoveEnd);
 
     return () => {
+      clearTimeout(debounceTimer);
       map.off("moveend", onMoveEnd);
     };
   }, [showPublicHealth, mapLoaded, loadPublicFacilities]);

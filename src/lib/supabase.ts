@@ -11,17 +11,33 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('   Configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local');
 }
 
-// Initialize Supabase client
-export const supabase = createClient(
-  supabaseUrl || '',
-  supabaseAnonKey || '',
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
+// Initialize Supabase client (Singleton pattern to avoid multiple GoTrueClient warnings)
+const getSupabaseClient = () => {
+  if (typeof window === 'undefined') {
+    return createClient(supabaseUrl || '', supabaseAnonKey || '', {
+      auth: {
+        persistSession: false,
+      },
+    });
   }
-);
+
+  const globalWithSupabase = globalThis as unknown as { __supabaseInstance?: ReturnType<typeof createClient> };
+  if (!globalWithSupabase.__supabaseInstance) {
+    globalWithSupabase.__supabaseInstance = createClient(
+      supabaseUrl || '',
+      supabaseAnonKey || '',
+      {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      }
+    );
+  }
+  return globalWithSupabase.__supabaseInstance;
+};
+
+export const supabase = getSupabaseClient();
 
 export { supabaseUrl, supabaseAnonKey };
 

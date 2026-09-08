@@ -5,9 +5,10 @@ import type {
     Doctor, Seller, Patient, Appointment, AdminSupportTicket,
     SellerPayment, DoctorPayment, AppSettings, MarketingMaterial,
     ChatMessage, DoctorReview, Service, Clinic, ClinicBranch, ClinicService, Secretary, ClinicSpecialty, ClinicExpense, PatientCommunication, ClinicPatientMessage, ClinicChatConversation,
-    FamilyMember, ClinicPayment
+    FamilyMember, ClinicPayment, DoctorWorkspace
 } from './types';
 import { roundPrice } from './validation-utils';
+import { compressImageToWebP } from './image-compression';
 
 // =====================================================
 // HELPER FUNCTIONS
@@ -39,18 +40,19 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 
 export async function getCollectionData<T>(tableName: string): Promise<T[]> {
     try {
-        // En el cliente, usar el cliente normal (sujeto a RLS)
-        // En el servidor, usar supabaseAdmin (bypass RLS)
         const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
         const { data, error } = await client
             .from(tableName)
             .select('*');
 
-        if (error) throw new Error(error.message || String(error));
+        if (error) {
+            console.warn(`[supabaseService] Warning fetching ${tableName}:`, error.message || error);
+            return [];
+        }
         return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as T[];
     } catch (error) {
-        console.error(`Error fetching ${tableName}:`, error);
+        console.warn(`[supabaseService] Exception fetching ${tableName}:`, error);
         return [];
     }
 }
@@ -133,11 +135,18 @@ export const getPatients = () => getCollectionData<Patient>('patients');
 export const getPatient = (id: string) => getDocumentData<Patient>('patients', id);
 export const getAppointments = () => getCollectionData<Appointment>('appointments');
 
-export const getDoctorAppointments = async (doctorId: string): Promise<Appointment[]> => {
+export const getDoctorAppointments = async (
+    doctorId: string,
+    clinicId?: string | null,
+    workspaceType?: string | null
+): Promise<Appointment[]> => {
     // Si estamos en el cliente, llamar a la API para usar credenciales seguras de servidor
     if (typeof window !== 'undefined') {
         try {
-            const res = await fetch(`/api/appointments/doctor?id=${doctorId}`);
+            let url = `/api/appointments/doctor?id=${doctorId}`;
+            if (clinicId) url += `&clinicId=${clinicId}`;
+            if (workspaceType) url += `&workspaceType=${workspaceType}`;
+            const res = await fetch(url);
             if (!res.ok) {
                 console.error('Error fetching appointments via API:', await res.text());
                 return [];
@@ -150,10 +159,37 @@ export const getDoctorAppointments = async (doctorId: string): Promise<Appointme
     }
 
     // Si estamos en el servidor, usar supabaseAdmin directamente
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
         .from('appointments')
-        .select('*')
-        .eq('doctor_id', doctorId);
+        .select('*');
+
+    if (workspaceType === 'private' || (!clinicId && workspaceType !== 'clinic' && workspaceType !== 'public_hospital')) {
+        query = query
+            .eq('doctor_id', doctorId)
+            .is('clinic_id', null)
+            .is('clinic_service_id', null);
+    } else if (clinicId) {
+        const { data: services } = await supabaseAdmin
+            .from('clinic_services')
+            .select('id')
+            .eq('clinic_id', clinicId);
+
+        const serviceIds = (services || []).map(s => s.id);
+
+        if (serviceIds.length > 0) {
+            query = query
+                .eq('doctor_id', doctorId)
+                .or(`clinic_id.eq.${clinicId},clinic_service_id.in.(${serviceIds.join(',')})`);
+        } else {
+            query = query
+                .eq('doctor_id', doctorId)
+                .eq('clinic_id', clinicId);
+        }
+    } else {
+        query = query.eq('doctor_id', doctorId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         console.error('Error fetching doctor appointments:', error);
@@ -570,7 +606,6 @@ export const updatePatient = async (id: string, data: Partial<Patient>) => {
     // Si estamos en el cliente, usar la API para evitar problemas de API key
     if (typeof window !== 'undefined') {
         try {
-            console.log('Client: Calling API to update patient', id);
             const res = await fetch('/api/patients/update', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -583,7 +618,6 @@ export const updatePatient = async (id: string, data: Partial<Patient>) => {
                 throw new Error(errorData.error || 'Failed to update patient');
             }
 
-            console.log('Client: Patient updated successfully');
             return;
         } catch (err) {
             console.error('Client: Error updating patient:', err);
@@ -781,7 +815,13 @@ export const getClinicSecretaries = async (clinicId: string): Promise<Secretary[
         name: item.name,
         role: 'secretary',
         clinicId: item.clinic_id,
-        permissions: item.permissions || []
+        permissions: item.permissions || [],
+        phone: item.phone || '',
+        country: item.country || 'VE',
+        state: item.state || '',
+        city: item.city || '',
+        sector: item.sector || '',
+        address: item.address || '',
     }));
 };
 
@@ -849,13 +889,63 @@ export const getClinicDoctors = async (clinicId: string): Promise<Doctor[]> => {
         }
     }
 
-    const { data, error } = await supabaseAdmin
-        .from('doctors')
-        .select('*')
-        .eq('clinic_id', clinicId);
+    try {
+        // 1. Obtener los IDs de médicos afiliados en doctor_workspaces
+        const { data: workspaces } = await supabaseAdmin
+            .from('doctor_workspaces')
+            .select('doctor_id')
+            .eq('clinic_id', clinicId)
+            .eq('status', 'active');
 
-    if (error) throw new Error(error.message || String(error));
-    return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as Doctor[];
+        const wsDoctorIds = (workspaces || []).map((w: any) => w.doctor_id);
+
+        // 2. Obtener también médicos que tengan clinic_id directamente en doctors
+        const { data: directDocs } = await supabaseAdmin
+            .from('doctors')
+            .select('id')
+            .eq('clinic_id', clinicId);
+
+        const directDoctorIds = (directDocs || []).map((d: any) => d.id);
+
+        const allDoctorIds = Array.from(new Set([...wsDoctorIds, ...directDoctorIds]));
+
+        if (allDoctorIds.length === 0) return [];
+
+        const { data, error } = await supabaseAdmin
+            .from('doctors')
+            .select('*')
+            .in('id', allDoctorIds);
+
+        if (error) throw new Error(error.message || String(error));
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as Doctor[];
+    } catch (err) {
+        console.error('Error in getClinicDoctors:', err);
+        return [];
+    }
+};
+
+export const affiliateClinicDoctor = async (payload: {
+    clinicId: string;
+    doctorId?: string;
+    isExistingDoctor: boolean;
+    dni?: string;
+    name?: string;
+    email?: string;
+    specialty?: string;
+    password?: string;
+    profileImage?: string;
+    bannerImage?: string;
+}): Promise<{ success: boolean; isNew?: boolean; doctorId?: string; message?: string; error?: string }> => {
+    const res = await fetch('/api/clinics/doctors/affiliate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al procesar médico en la clínica');
+    }
+    return data;
 };
 
 export const getClinicAppointments = async (clinicId: string, dateFilter?: string, endDateFilter?: string): Promise<Appointment[]> => {
@@ -1790,34 +1880,35 @@ export const getServiceAppointments = async (clinicServiceId: string, date: stri
 // STORAGE FUNCTIONS
 // =====================================================
 
-export async function uploadImage(file: File, path: string, maxSizeMB: number = 5): Promise<string> {
+export async function uploadImage(file: File, path: string, maxSizeMB: number = 20): Promise<string> {
     try {
-        console.log('🚀 Iniciando subida de imagen:', {
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            path,
-            maxSizeMB,
-            timestamp: new Date().toISOString()
-        });
-
         if (!file) {
             throw new Error('No se proporcionó ningún archivo');
         }
 
-        if (!file.type.startsWith('image/')) {
-            throw new Error(`El archivo debe ser una imagen. Tipo recibido: ${file.type}`);
+        let fileToUpload = file;
+        if (typeof window !== 'undefined' && (file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|webp|gif|heic)$/i))) {
+            try {
+                const compressed = await compressImageToWebP(file, {
+                    maxWidth: 1600,
+                    maxHeight: 1600,
+                    quality: 0.84,
+                    maxInputSizeMB: Math.max(maxSizeMB, 20),
+                });
+                fileToUpload = compressed.file;
+            } catch (err: any) {
+                console.warn('Compresión WebP fallida en uploadImage:', err?.message);
+            }
         }
 
-        if (file.size > maxSizeMB * 1024 * 1024) {
-            throw new Error(`El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(2)}MB). Máximo permitido: ${maxSizeMB}MB`);
-        }
+        const cleanPath = path.endsWith('.webp') ? path : `${path.replace(/\.[^/.]+$/, '')}.webp`;
 
-        console.log('✅ Validaciones pasadas, subiendo a Supabase Storage...');
+        console.log('✅ Subiendo imagen WebP a Supabase Storage...');
 
         const { data, error } = await supabase.storage
             .from('profile-images')
-            .upload(path, file, {
+            .upload(cleanPath, fileToUpload, {
+                contentType: 'image/webp',
                 cacheControl: '3600',
                 upsert: true
             });
@@ -1828,7 +1919,7 @@ export async function uploadImage(file: File, path: string, maxSizeMB: number = 
             .from('profile-images')
             .getPublicUrl(data.path);
 
-        console.log('✅ Imagen subida exitosamente:', publicUrl);
+        console.log('✅ Imagen WebP subida exitosamente:', publicUrl);
         return publicUrl;
     } catch (error) {
         console.error('❌ Error al subir imagen:', error);
@@ -3125,19 +3216,32 @@ export const getFamilyMembersForBooking = async (patientId: string): Promise<Fam
 };
 
 export async function uploadPublicImage(file: File, bucket: string, path: string): Promise<string> {
-    const fileExt = file.name.split('.').pop()?.toLowerCase();
-    const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-    if (!fileExt || !allowed.includes(fileExt)) {
-        throw new Error('Formato de imagen no permitido. Use JPG, PNG o WEBP.');
+    if (!file) {
+        throw new Error('No se proporcionó ningún archivo');
     }
 
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        throw new Error('La imagen es demasiado grande. Máximo 5MB.');
+    let fileToUpload = file;
+    const isBanner = path.includes('banner') || path.includes('hero');
+
+    // Auto-comprimir y convertir a formato WebP optimizado en el cliente
+    if (typeof window !== 'undefined' && file.type.startsWith('image/')) {
+        try {
+            const compressed = await compressImageToWebP(file, {
+                maxWidth: isBanner ? 1920 : 1000,
+                maxHeight: isBanner ? 1080 : 1000,
+                quality: 0.84,
+                maxInputSizeMB: 20,
+            });
+            fileToUpload = compressed.file;
+        } catch (compErr: any) {
+            console.warn('Compresión WebP no completada, subiendo archivo original:', compErr.message);
+        }
     }
 
+    const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase() || 'webp';
     const fileName = `${path}_${Date.now()}.${fileExt}`;
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', fileToUpload);
     formData.append('bucket', bucket);
     formData.append('path', fileName);
 
@@ -3278,3 +3382,90 @@ export const getDoctorAppointmentsWithPatientData = async (doctorId: string): Pr
         return [];
     }
 };
+
+// =====================================================
+// DOCTOR WORKSPACES & MULTI-PROFILE SERVICES
+// =====================================================
+
+export const getDoctorWorkspaces = async (doctorId: string): Promise<DoctorWorkspace[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch(`/api/doctors/workspaces?doctorId=${encodeURIComponent(doctorId)}`);
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching doctor workspaces via API:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('doctor_workspaces')
+            .select(`
+                *,
+                clinics:clinic_id (
+                    id,
+                    name,
+                    logo_url,
+                    address,
+                    phone
+                )
+            `)
+            .eq('doctor_id', doctorId)
+            .eq('status', 'active')
+            .order('is_default', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching doctor workspaces from DB:', error);
+            return [];
+        }
+
+        return (data || []).map((row: any) => {
+            const camel = toCamelCase(row) as any;
+            if (row.clinics) {
+                camel.clinicName = row.clinics.name;
+                camel.clinicLogo = row.clinics.logo_url;
+                camel.clinicAddress = row.clinics.address;
+            }
+            return camel as DoctorWorkspace;
+        });
+    } catch (err) {
+        console.error('getDoctorWorkspaces error:', err);
+        return [];
+    }
+};
+
+export const addDoctorWorkspace = async (workspace: Partial<DoctorWorkspace>): Promise<DoctorWorkspace | null> => {
+    const payload = toSnakeCase(workspace as Record<string, unknown>);
+    const { data, error } = await supabaseAdmin
+        .from('doctor_workspaces')
+        .insert([payload])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error adding doctor workspace:', error);
+        throw new Error(error.message || 'Failed to add workspace');
+    }
+
+    return toCamelCase(data) as DoctorWorkspace;
+};
+
+export const updateDoctorWorkspace = async (workspaceId: string, updates: Partial<DoctorWorkspace>): Promise<boolean> => {
+    const payload = toSnakeCase(updates as Record<string, unknown>);
+    payload.updated_at = new Date().toISOString();
+
+    const { error } = await supabaseAdmin
+        .from('doctor_workspaces')
+        .update(payload)
+        .eq('id', workspaceId);
+
+    if (error) {
+        console.error('Error updating doctor workspace:', error);
+        return false;
+    }
+
+    return true;
+};
+

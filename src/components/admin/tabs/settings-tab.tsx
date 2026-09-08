@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSettings } from '@/lib/settings';
 import { useDynamicData } from '@/hooks/use-dynamic-data';
 import type { City } from '@/lib/types';
@@ -12,6 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Settings,
   MapPin,
@@ -22,13 +25,17 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Menu
+  Menu,
+  Globe,
+  Map
 } from 'lucide-react';
 
 export function SettingsTab() {
   const {
     settings,
     updateSetting,
+    countries: configCountries,
+    states: configStates,
     cities: configCities,
     specialties: configSpecialties,
     beautySpecialties,
@@ -55,7 +62,79 @@ export function SettingsTab() {
   const [activeTab, setActiveTab] = useState("general");
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Usar datos dinámicos cuando estén disponibles, sino usar configuración
+  const [selectedCountry, setSelectedCountry] = useState<string>('VE');
+  const [selectedState, setSelectedState] = useState<string>('Monagas');
+  const [selectedStateCountry, setSelectedStateCountry] = useState<string>('VE');
+
+  const [isAddCountryOpen, setIsAddCountryOpen] = useState(false);
+  const [isAddStateOpen, setIsAddStateOpen] = useState(false);
+  const [isSavingGeo, setIsSavingGeo] = useState(false);
+
+  // Sincronizar países y estados seleccionados al cargar
+  useEffect(() => {
+    if (configCountries.length > 0 && !configCountries.some(c => c.code === selectedCountry)) {
+      setSelectedCountry(configCountries[0].code);
+      setSelectedStateCountry(configCountries[0].code);
+    }
+  }, [configCountries]);
+
+  useEffect(() => {
+    const statesForCountry = configStates.filter(s => s.country === selectedCountry);
+    if (statesForCountry.length > 0 && !statesForCountry.some(s => s.name === selectedState)) {
+      setSelectedState(statesForCountry[0].name);
+    }
+  }, [selectedCountry, configStates]);
+
+  const handleQuickAddCountry = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSavingGeo(true);
+    const formData = new FormData(e.currentTarget);
+    const code = String(formData.get('code') || '').trim().toUpperCase();
+    const name = String(formData.get('name') || '').trim();
+    const flag = String(formData.get('flag') || '🏳️').trim();
+    const phoneCode = String(formData.get('phoneCode') || '+1').trim();
+    const currency = String(formData.get('currency') || 'USD').trim().toUpperCase();
+
+    try {
+      await addListItem('countries', { code, name, flag, phoneCode, currency, isActive: true });
+      setSelectedCountry(code);
+      setSelectedStateCountry(code);
+      setIsAddCountryOpen(false);
+    } catch (err) {
+      console.error('Error adding country:', err);
+    } finally {
+      setIsSavingGeo(false);
+    }
+  };
+
+  const handleQuickAddState = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSavingGeo(true);
+    const formData = new FormData(e.currentTarget);
+    const country = String(formData.get('country') || selectedCountry).trim().toUpperCase();
+    const name = String(formData.get('name') || '').trim();
+    const code = String(formData.get('code') || '').trim().toUpperCase();
+
+    try {
+      await addListItem('states', { country, name, code });
+      setSelectedState(name);
+      setIsAddStateOpen(false);
+    } catch (err) {
+      console.error('Error adding state:', err);
+    } finally {
+      setIsSavingGeo(false);
+    }
+  };
+
+  const countryOptions = configCountries.length > 0 
+    ? configCountries.map(c => ({ label: `${c.flag || '🏳️'} ${c.name} (${c.code})`, value: c.code }))
+    : [{ label: '🇻🇪 Venezuela (VE)', value: 'VE' }];
+
+  const filteredStatesForSelectedCountry = configStates.filter(s => s.country === selectedCountry);
+  const stateOptions = filteredStatesForSelectedCountry.length > 0
+    ? filteredStatesForSelectedCountry.map(s => ({ label: s.name, value: s.name }))
+    : [{ label: 'Añadir estado para este país...', value: '' }];
+
   const displayCities = dynamicCities.length > 0 ? dynamicCities : configCities.map(c => c.name);
   const displaySpecialties = dynamicSpecialties.length > 0 ? dynamicSpecialties : configSpecialties;
 
@@ -371,116 +450,244 @@ export function SettingsTab() {
         </TabsContent>
 
         <TabsContent value="cities" className="space-y-6 mt-0">
-          {/* Información de Ciudades Reales */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">📊 Ciudades con Médicos Activos ({citiesWithCount.length})</h3>
-            <p className="text-sm text-blue-800 mb-3">
-              Estas son las ciudades donde actualmente hay doctores registrados:
-            </p>
-            {dynamicLoading ? (
-              <p className="text-sm text-blue-600">Cargando ciudades...</p>
-            ) : citiesWithCount.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {citiesWithCount.map((city, index) => (
-                  <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded text-sm font-medium">
-                    {city.name} ({city.doctorCount})
-                  </span>
-                ))}
+          {/* Sub-navegación Geográfica: Países, Estados, Ciudades */}
+          <Tabs defaultValue="cities-list" className="w-full space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b">
+              <div>
+                <h3 className="text-lg font-bold">Gestión Geográfica del Sistema</h3>
+                <p className="text-xs text-muted-foreground">Administra países, estados y ciudades donde opera la plataforma SUMA.</p>
               </div>
-            ) : (
-              <p className="text-sm text-blue-600">No hay ciudades en uso actualmente</p>
-            )}
-          </div>
+              <TabsList className="grid grid-cols-3 w-full sm:w-auto">
+                <TabsTrigger value="countries-list" className="text-xs sm:text-sm gap-1.5">
+                  <Globe className="h-4 w-4" />
+                  Países ({configCountries.length})
+                </TabsTrigger>
+                <TabsTrigger value="states-list" className="text-xs sm:text-sm gap-1.5">
+                  <Map className="h-4 w-4" />
+                  Estados ({configStates.length})
+                </TabsTrigger>
+                <TabsTrigger value="cities-list" className="text-xs sm:text-sm gap-1.5">
+                  <MapPin className="h-4 w-4" />
+                  Ciudades ({configCities.length})
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          {/* Mostrar datos dinámicos en lugar de configuración */}
-          <Card>
-            <CardHeader>
-              <CardTitle>🏙️ Ciudades Reales de la Base de Datos</CardTitle>
-              <CardDescription>
-                Estas son las ciudades donde actualmente hay doctores registrados
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {dynamicLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">Cargando ciudades...</p>
-                </div>
-              ) : citiesWithCount.length > 0 ? (
-                <div className="space-y-3">
-                  {citiesWithCount.map((city, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-blue-600 font-bold">{city.doctorCount}</span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-blue-900">{city.name}</h3>
-                          <p className="text-sm text-blue-600">
-                            {city.doctorCount} {city.doctorCount === 1 ? 'médico registrado' : 'médicos registrados'}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                        Activa
-                      </Badge>
-                    </div>
-                  ))}
-                  <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                    <p className="text-sm text-green-800">
-                      ✅ <strong>{citiesWithCount.length} ciudades</strong> con <strong>{totalActiveDoctors} médicos</strong> activos en total
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <MapPin className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">No hay ciudades registradas</h3>
-                  <p className="text-gray-500">Los doctores aparecerán aquí cuando se registren en el sistema</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>⚙️ Gestión de Ciudades</CardTitle>
-              <CardDescription>
-                Administra las ciudades disponibles. Los médicos eligen de esta lista al registrarse.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-800 mb-2">📍 Cómo funciona</h4>
-                  <p className="text-sm text-blue-700">
-                    Tú defines las ciudades disponibles y los médicos eligen una al registrarse.
-                    En la sección "Datos Reales" puedes ver cuántos médicos hay en cada ciudad.
-                  </p>
-                </div>
-
-                <ListManagementCard
-                  title="Ciudades Configuradas"
-                  description="Ciudades que aparecerán en los formularios de registro de doctores"
-                  listName="cities"
-                  items={configCities.map(c => ({ id: c.name, ...c }))}
-                  onAddItem={(item) => addListItem('cities', item as City)}
-                  onUpdateItem={(id, item) => updateListItem('cities', id, item as City)}
-                  onDeleteItem={(id) => deleteListItem('cities', id)}
-                  columns={[
-                    { header: 'Ciudad', key: 'name' },
-                    { header: 'Tarifa de Suscripción', key: 'subscriptionFee', isCurrency: true }
-                  ]}
-                  itemSchema={{
-                    name: { label: 'Nombre de la Ciudad', type: 'text' },
-                    subscriptionFee: { label: 'Tarifa Mensual ($)', type: 'number' }
-                  }}
-                  itemNameSingular="Ciudad"
-                />
+            {/* TAB: PAÍSES */}
+            <TabsContent value="countries-list" className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-800 mb-1">🌎 Países Habilitados</h4>
+                <p className="text-sm text-emerald-700">
+                  Aquí defines los países donde está disponible SUMA. Al registrar un nuevo país, los médicos y clínicas podrán seleccionarlo para sus cuentas y consultorios.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+
+              <ListManagementCard
+                title="Países Configurados"
+                description="Listado maestro de países habilitados en la plataforma"
+                listName="countries"
+                items={configCountries.map(c => ({
+                  id: c.code,
+                  flag: c.flag || '🏳️',
+                  name: c.name,
+                  code: c.code,
+                  phoneCode: c.phoneCode || '',
+                  currency: c.currency || 'USD'
+                }))}
+                onAddItem={(item) => addListItem('countries', {
+                  code: String(item.code || '').trim().toUpperCase(),
+                  name: String(item.name || '').trim(),
+                  flag: String(item.flag || '🏳️').trim(),
+                  phoneCode: String(item.phoneCode || '+1').trim(),
+                  currency: String(item.currency || 'USD').trim().toUpperCase(),
+                  isActive: true
+                })}
+                onUpdateItem={(id, item) => updateListItem('countries', id, {
+                  code: String(item.code || id).trim().toUpperCase(),
+                  name: String(item.name || '').trim(),
+                  flag: String(item.flag || '🏳️').trim(),
+                  phoneCode: String(item.phoneCode || '+1').trim(),
+                  currency: String(item.currency || 'USD').trim().toUpperCase(),
+                  isActive: true
+                })}
+                onDeleteItem={(id) => deleteListItem('countries', id)}
+                columns={[
+                  { header: 'Bandera', key: 'flag' },
+                  { header: 'Nombre del País', key: 'name' },
+                  { header: 'Código ISO', key: 'code' },
+                  { header: 'Prefijo Tel.', key: 'phoneCode' },
+                  { header: 'Moneda', key: 'currency' }
+                ]}
+                itemSchema={{
+                  flag: { label: 'Bandera Emoji (ej. 🇻🇪, 🇦🇷, 🇨🇴)', type: 'text', placeholder: '🇨🇴', required: true },
+                  name: { label: 'Nombre del País', type: 'text', placeholder: 'Colombia', required: true },
+                  code: { label: 'Código ISO (2 letras: VE, AR, CO, MX...)', type: 'text', placeholder: 'CO', required: true },
+                  phoneCode: { label: 'Prefijo Telefónico (ej. +57)', type: 'text', placeholder: '+57', required: true },
+                  currency: { label: 'Moneda Oficial (USD, ARS, COP, etc.)', type: 'text', placeholder: 'COP', required: true }
+                }}
+                itemNameSingular="País"
+              />
+            </TabsContent>
+
+            {/* TAB: ESTADOS */}
+            <TabsContent value="states-list" className="space-y-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h4 className="font-semibold text-purple-800 mb-1">🗺️ Estados y Provincias</h4>
+                <p className="text-sm text-purple-700">
+                  Estados, departamentos o provincias asociadas a cada país. Permiten a los médicos organizar sus consultorios por región.
+                </p>
+              </div>
+
+              <ListManagementCard
+                title="Estados y Provincias Configurados"
+                description="Listado de estados por país almacenados en base de datos"
+                listName="states"
+                items={configStates.map(s => {
+                  const foundCountry = configCountries.find(c => c.code === s.country);
+                  return {
+                    id: `${s.country}-${s.name}`,
+                    country: foundCountry ? `${foundCountry.flag || '🏳️'} ${foundCountry.name} (${s.country})` : s.country,
+                    name: s.name,
+                    code: s.code || ''
+                  };
+                })}
+                onAddItem={(item) => addListItem('states', {
+                  name: String(item.name || '').trim(),
+                  code: String(item.code || '').trim().toUpperCase(),
+                  country: String(item.country || selectedStateCountry).trim().toUpperCase()
+                })}
+                onUpdateItem={(id, item) => updateListItem('states', id, {
+                  name: String(item.name || '').trim(),
+                  code: String(item.code || '').trim().toUpperCase(),
+                  country: String(item.country || selectedStateCountry).trim().toUpperCase()
+                })}
+                onDeleteItem={(id) => deleteListItem('states', id)}
+                columns={[
+                  { header: 'País', key: 'country' },
+                  { header: 'Estado / Provincia', key: 'name' },
+                  { header: 'Código Abreviado', key: 'code' }
+                ]}
+                itemSchema={{
+                  country: {
+                    label: 'País',
+                    type: 'select',
+                    options: countryOptions,
+                    value: selectedStateCountry,
+                    onChange: (val) => setSelectedStateCountry(val),
+                    onAddOption: () => setIsAddCountryOpen(true),
+                    addOptionLabel: '+ Nuevo País',
+                    required: true
+                  },
+                  name: { label: 'Nombre del Estado / Provincia', type: 'text', placeholder: 'Monagas', required: true },
+                  code: { label: 'Código Abreviado (ej. MO, BA)', type: 'text', placeholder: 'MO' }
+                }}
+                itemNameSingular="Estado"
+              />
+            </TabsContent>
+
+            {/* TAB: CIUDADES Y TARIFAS */}
+            <TabsContent value="cities-list" className="space-y-4">
+              {/* Información de Ciudades Reales */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">📊 Ciudades con Médicos Activos ({citiesWithCount.length})</h3>
+                <p className="text-sm text-blue-800 mb-3">
+                  Estas son las ciudades donde actualmente hay doctores registrados en el sistema:
+                </p>
+                {dynamicLoading ? (
+                  <p className="text-sm text-blue-600">Cargando ciudades...</p>
+                ) : citiesWithCount.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {citiesWithCount.map((city, index) => (
+                      <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded text-sm font-medium">
+                        {city.name} ({city.doctorCount})
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-blue-600">No hay ciudades en uso actualmente</p>
+                )}
+              </div>
+
+              <ListManagementCard
+                title="Ciudades y Tarifas Configuradas"
+                description="Ciudades, estados y países almacenados en base de datos con sus respectivas tarifas de suscripción"
+                listName="cities"
+                items={configCities.map(c => {
+                  const countryCode = c.country || 'VE';
+                  const foundCountry = configCountries.find(cn => cn.code === countryCode);
+                  const countryLabel = foundCountry ? `${foundCountry.flag || '🇻🇪'} ${foundCountry.name}` : (countryCode === 'AR' ? '🇦🇷 Argentina' : '🇻🇪 Venezuela');
+                  return {
+                    id: `${countryCode}-${c.state || ''}-${c.name}`,
+                    country: countryLabel,
+                    state: c.state || 'Principal',
+                    name: c.name,
+                    subscriptionFee: c.subscriptionFee ?? 25
+                  };
+                })}
+                onAddItem={(item) => addListItem('cities', {
+                  name: String(item.name || '').trim(),
+                  state: String(item.state || selectedState).trim(),
+                  country: String(item.country || selectedCountry).trim().toUpperCase(),
+                  subscriptionFee: Number(item.subscriptionFee) || 25
+                } as City)}
+                onUpdateItem={(id, item) => updateListItem('cities', id, {
+                  name: String(item.name || '').trim(),
+                  state: String(item.state || selectedState).trim(),
+                  country: String(item.country || selectedCountry).trim().toUpperCase(),
+                  subscriptionFee: Number(item.subscriptionFee) || 25
+                } as City)}
+                onDeleteItem={(id) => deleteListItem('cities', id)}
+                columns={[
+                  { header: 'País', key: 'country' },
+                  { header: 'Estado / Provincia', key: 'state' },
+                  { header: 'Ciudad', key: 'name' },
+                  { header: 'Tarifa de Suscripción', key: 'subscriptionFee', isCurrency: true }
+                ]}
+                itemSchema={{
+                  country: {
+                    label: 'País',
+                    type: 'select',
+                    options: countryOptions,
+                    value: selectedCountry,
+                    onChange: (val) => {
+                      setSelectedCountry(val);
+                      const firstSt = configStates.find(s => s.country === val)?.name || '';
+                      setSelectedState(firstSt);
+                    },
+                    onAddOption: () => setIsAddCountryOpen(true),
+                    addOptionLabel: '+ Nuevo País',
+                    required: true
+                  },
+                  state: {
+                    label: 'Estado / Provincia',
+                    type: 'select',
+                    options: stateOptions,
+                    value: selectedState,
+                    onChange: (val) => setSelectedState(val),
+                    onAddOption: () => {
+                      setSelectedStateCountry(selectedCountry);
+                      setIsAddStateOpen(true);
+                    },
+                    addOptionLabel: '+ Nuevo Estado',
+                    required: true
+                  },
+                  name: {
+                    label: 'Nombre de la Ciudad',
+                    type: 'text',
+                    placeholder: 'Escribe el nombre de la ciudad nueva (ej. Maturín)',
+                    required: true
+                  },
+                  subscriptionFee: {
+                    label: 'Tarifa Mensual ($)',
+                    type: 'number',
+                    defaultValue: 25,
+                    required: true
+                  }
+                }}
+                itemNameSingular="Ciudad"
+              />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="specialties" className="space-y-6 mt-0">

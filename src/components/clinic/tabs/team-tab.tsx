@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, Plus, User, Trash2, Mail, Shield } from 'lucide-react';
+import { Loader2, Plus, User, Trash2, Mail, Shield, Phone, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { hashPassword } from '@/lib/password-utils';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 
 export function TeamTab() {
     const { user } = useAuth();
@@ -26,6 +26,12 @@ export function TeamTab() {
         name: '',
         email: '',
         password: '',
+        phone: '',
+        country: 'VE',
+        state: 'Monagas',
+        city: 'Maturín',
+        sector: '',
+        address: '',
     });
 
     useEffect(() => {
@@ -54,7 +60,7 @@ export function TeamTab() {
 
         try {
             setIsSubmitting(true);
-            // Send plain password to API to create Supabase Auth user
+            // Send plain password and geographic info to API to create Supabase Auth user & row
             await addSecretary({
                 name: formData.name,
                 email: formData.email,
@@ -62,11 +68,27 @@ export function TeamTab() {
                 clinicId: user.id,
                 role: 'secretary',
                 permissions: ['agenda', 'patients'], // Default permissions
+                phone: formData.phone,
+                country: formData.country,
+                state: formData.state,
+                city: formData.city,
+                sector: formData.sector,
+                address: formData.address,
             });
 
             toast({ title: "Secretaria registrada", description: "La cuenta ha sido creada exitosamente." });
             setIsDialogOpen(false);
-            setFormData({ name: '', email: '', password: '' });
+            setFormData({
+                name: '',
+                email: '',
+                password: '',
+                phone: '',
+                country: 'VE',
+                state: 'Monagas',
+                city: 'Maturín',
+                sector: '',
+                address: '',
+            });
             loadData();
         } catch (error) {
             console.error(error);
@@ -106,7 +128,7 @@ export function TeamTab() {
                                 <Plus className="mr-2 h-4 w-4" /> Nuevo Acceso
                             </Button>
                         </DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle>Agregar Secretaria/o</DialogTitle>
                                 <DialogDescription>
@@ -127,7 +149,32 @@ export function TeamTab() {
                                     <Label htmlFor="password">Contraseña</Label>
                                     <Input id="password" type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} required />
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="phone">Teléfono de Contacto</Label>
+                                    <Input id="phone" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="Ej: +58 412 1234567" />
+                                </div>
+
+                                <div className="border-t pt-3">
+                                    <h4 className="text-sm font-semibold mb-2">Ubicación y Dirección de Residencia</h4>
+                                    <LocationSelector
+                                        country={formData.country}
+                                        state={formData.state}
+                                        city={formData.city}
+                                        sector={formData.sector}
+                                        address={formData.address}
+                                        onLocationChange={(loc: LocationData) => setFormData(prev => ({
+                                            ...prev,
+                                            country: loc.country,
+                                            state: loc.state,
+                                            city: loc.city,
+                                            sector: loc.sector || '',
+                                            address: loc.address || '',
+                                        }))}
+                                    />
+                                </div>
+
                                 <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                                     <Button type="submit" disabled={isSubmitting}>
                                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                         Crear Cuenta
@@ -159,6 +206,16 @@ export function TeamTab() {
                                 <CardDescription className="flex items-center gap-1">
                                     <Mail className="h-3 w-3" /> {sec.email}
                                 </CardDescription>
+                                {sec.phone && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                        <Phone className="h-3 w-3 text-slate-500" /> {sec.phone}
+                                    </p>
+                                )}
+                                {sec.city && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                        <MapPin className="h-3 w-3 text-teal-600" /> {sec.city}{sec.state ? `, ${sec.state}` : ''}{sec.country ? ` (${sec.country})` : ''}
+                                    </p>
+                                )}
                             </CardHeader>
                             <CardContent>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">

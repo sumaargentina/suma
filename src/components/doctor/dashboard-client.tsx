@@ -6,8 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { HeaderWrapper } from '@/components/header';
 import * as supabaseService from '@/lib/supabaseService';
 import { createWalkInAppointmentAction, sendMessageAction } from '@/app/actions';
-import type { Appointment, Doctor, Service, BankDetail, Coupon, Expense, AdminSupportTicket, DoctorPayment } from '@/lib/types';
-import { EXPENSE_CATEGORIES } from '@/lib/types';
+import { EXPENSE_CATEGORIES, DOCUMENT_TYPES, DocumentType } from '@/lib/types';
+import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
@@ -42,9 +42,10 @@ import { OnlineConsultationTab } from './dashboard/tabs/online-consultation-tab'
 import { SupportTab } from './dashboard/tabs/support-tab';
 import { AppointmentDetailDialog } from '@/components/doctor/appointment-detail-dialog';
 import { Skeleton } from '../ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { PaymentIntegrationsTab } from './dashboard/tabs/payment-integrations-tab';
 import { InsurancesTab } from './dashboard/tabs/insurances-tab';
+import { WorkspaceSelectorModal } from '@/components/doctor/workspace-selector-modal';
+import { DoctorWelcomeModal } from '@/components/doctor/doctor-welcome-modal';
 import { format } from 'date-fns';
 
 const BankDetailFormSchema = z.object({
@@ -116,12 +117,12 @@ function capitalizeWords(str: string) {
 }
 
 export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
-    const { user, loading, changePassword } = useAuth();
+    const { user, loading, changePassword, activeWorkspace } = useAuth();
     const searchParams = useSearchParams();
     const ticketIdParam = searchParams.get('ticketId');
     const chatPatientIdParam = searchParams.get('chatPatientId');
     const appointmentIdParam = searchParams.get('appointmentId');
-    const isClinicDoctor = user?.role === 'doctor' && user?.isClinicEmployee;
+    const isClinicDoctor = user?.role === 'doctor' && (user?.isClinicEmployee || activeWorkspace?.workspaceType === 'clinic' || activeWorkspace?.workspaceType === 'public_hospital' || (activeWorkspace && !activeWorkspace.canManageFinances));
 
     const { toast } = useToast();
 
@@ -149,6 +150,18 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isWalkInDialogOpen, setIsWalkInDialogOpen] = useState(false);
+    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+
+    // Comprobar si el médico necesita completar su bienvenida/onboarding
+    useEffect(() => {
+        if (user && user.role === 'doctor') {
+            const isWelcomeParam = searchParams.get('welcome') === 'true';
+            const isProfileIncomplete = !user.onboardingCompleted && (!user.specialty || user.specialty === 'Pendiente' || !user.medicalLicense);
+            if (isWelcomeParam || isProfileIncomplete) {
+                setShowWelcomeModal(true);
+            }
+        }
+    }, [user, searchParams]);
 
     // Entity states for dialogs
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -168,9 +181,21 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const [showNewOfficeInput, setShowNewOfficeInput] = useState(false);
     const [newOfficeName, setNewOfficeName] = useState("");
 
+    // Walk-in patient form states
+    const [walkInDocType, setWalkInDocType] = useState<DocumentType>('Cédula');
+    const [walkInCedulaPrefix, setWalkInCedulaPrefix] = useState<'V' | 'E'>('V');
+    const [walkInDocNumber, setWalkInDocNumber] = useState('');
+    const [walkInPhoneCountryCode, setWalkInPhoneCountryCode] = useState('+58');
+    const [walkInPhoneNumber, setWalkInPhoneNumber] = useState('');
+
     useEffect(() => {
         if (!isWalkInDialogOpen) {
             setSelectedWalkInOffice('');
+            setWalkInDocType('Cédula');
+            setWalkInCedulaPrefix('V');
+            setWalkInDocNumber('');
+            setWalkInPhoneCountryCode('+58');
+            setWalkInPhoneNumber('');
         }
     }, [isWalkInDialogOpen]);
 
@@ -182,14 +207,16 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
         if (!user || user.role !== 'doctor' || !user.id) return;
         setIsLoadingData(true);
         try {
+            const clinicId = activeWorkspace?.clinicId || null;
+            const wsType = activeWorkspace?.workspaceType || (user.isClinicEmployee ? 'clinic' : 'private');
+
             const [doc, apps, tickets, payments] = await Promise.all([
                 supabaseService.getDoctor(user.id),
-                supabaseService.getDoctorAppointments(user.id),
+                supabaseService.getDoctorAppointments(user.id, clinicId, wsType),
                 supabaseService.getSupportTickets(),
                 supabaseService.getDoctorPayments(),
             ]);
-            console.log('📋 Doctor data loaded:', doc?.name, 'Services:', doc?.services);
-            console.log('🏢 Doctor addresses:', doc?.addresses?.map(a => ({ id: a.id, address: a.address, services: a.services?.length || 0 })));
+            console.log('📋 Doctor data loaded:', doc?.name, 'Workspace:', wsType, 'ClinicId:', clinicId, 'Appointments:', apps.length);
             setDoctorData(doc);
             setAppointments(apps);
             setSupportTickets(tickets.filter(t => t.userId === user.email));
@@ -197,9 +224,9 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
         } finally {
             setIsLoadingData(false);
         }
-    }, [user]);
+    }, [user, activeWorkspace]);
 
-    // Cargar datos al montar el componente o cuando cambie el usuario
+    // Cargar datos al montar el componente o cuando cambie el usuario o el espacio de trabajo activo
     useEffect(() => {
         fetchData();
     }, [fetchData]);
@@ -232,9 +259,10 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
 
     // Obtener lista de consultorios registrados del médico (desde módulo Addresses)
     const uniqueOffices = useMemo(() => {
+        if (isClinicDoctor) return [];
         if (!doctorData || !doctorData.addresses) return [];
         return doctorData.addresses.map(addr => addr.address);
-    }, [doctorData]);
+    }, [doctorData, isClinicDoctor]);
 
     // Calcular servicios disponibles para Walk-in
     const walkInServices = useMemo(() => {
@@ -522,8 +550,6 @@ ID Transacción: ${transactionId}`;
         const formData = new FormData(e.currentTarget);
         const patientName = formData.get('patientName') as string;
         const patientEmail = formData.get('patientEmail') as string;
-        const patientPhone = formData.get('patientPhone') as string;
-        const patientDNI = formData.get('patientDNI') as string;
         const selectedServices = formData.getAll('services') as string[];
         const paymentMethod = formData.get('paymentMethod') as 'efectivo' | 'transferencia';
         const totalPrice = parseFloat(formData.get('totalPrice') as string);
@@ -540,12 +566,22 @@ ID Transacción: ${transactionId}`;
             return;
         }
 
-
-
         if (isNaN(totalPrice) || totalPrice <= 0) {
             toast({ variant: 'destructive', title: 'Error', description: 'El monto debe ser mayor a 0' });
             return;
         }
+
+        // Formatear Cédula / Documento
+        const cleanDocNumber = walkInDocNumber.trim();
+        const fullCedula = cleanDocNumber
+            ? (walkInDocType === 'Cédula' ? `${walkInCedulaPrefix}-${cleanDocNumber}` : cleanDocNumber)
+            : undefined;
+
+        // Formatear Teléfono
+        const cleanPhone = walkInPhoneNumber.trim();
+        const fullPhone = cleanPhone
+            ? `${walkInPhoneCountryCode} ${cleanPhone}`
+            : undefined;
 
         try {
             const services = doctorData.services.filter(s => selectedServices.includes(s.name));
@@ -555,8 +591,8 @@ ID Transacción: ${transactionId}`;
                 doctorName: doctorData.name,
                 patientName,
                 patientEmail,
-                patientPhone: patientPhone || undefined,
-                patientDNI: patientDNI || undefined,
+                patientPhone: fullPhone,
+                patientDNI: fullCedula,
                 services,
                 totalPrice,
                 consultationFee: doctorData.consultationFee,
@@ -606,6 +642,7 @@ ID Transacción: ${transactionId}`;
     return (
         <div className="flex flex-col min-h-screen bg-background">
             <HeaderWrapper />
+            <WorkspaceSelectorModal />
             <main className="flex-1 bg-muted/40">
                 <div className="container py-6 md:py-12 px-2 md:px-0">
                     <h1 className="text-lg md:text-3xl font-bold font-headline mb-1 md:mb-2">Panel del Médico</h1>
@@ -616,9 +653,9 @@ ID Transacción: ${transactionId}`;
                             <AppointmentsTab
                                 appointments={appointments}
                                 onOpenDialog={handleOpenAppointmentDialog}
-                                onOpenWalkInDialog={handleOpenWalkIn}
-                                offices={uniqueOffices}
-                                doctorAddresses={doctorData?.addresses || []}
+                                onOpenWalkInDialog={!isClinicDoctor ? handleOpenWalkIn : undefined}
+                                offices={isClinicDoctor ? [] : uniqueOffices}
+                                doctorAddresses={isClinicDoctor ? [] : (doctorData?.addresses || [])}
                             />
                         )}
                         {currentTab === "patients" && (
@@ -654,16 +691,26 @@ ID Transacción: ${transactionId}`;
                             )
                         )}
                         {currentTab === "insurances" && (
-                            <InsurancesTab />
+                            !isClinicDoctor ? (
+                                <InsurancesTab />
+                            ) : (
+                                <div className="text-center py-10 text-muted-foreground">Las coberturas y convenios son administrados directamente por la clínica.</div>
+                            )
                         )}
                         {currentTab === "bank-details" && (
                             !isClinicDoctor ? (
-                                <div className="space-y-8">
-                                    <PaymentIntegrationsTab doctorId={user.id} />
-                                    <div className="border-t pt-8">
-                                        <h3 className="text-lg font-semibold mb-4">Cuentas Bancarias (Para transferencias manuales)</h3>
+                                <div className="space-y-6">
+                                    {(doctorData.country === 'AR' || doctorData.country === 'Argentina') ? (
+                                        <>
+                                            <PaymentIntegrationsTab doctorId={user.id} />
+                                            <div className="border-t pt-6">
+                                                <h3 className="text-lg font-semibold mb-4">Cuentas Bancarias (Para transferencias manuales)</h3>
+                                                <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={(bd) => { setEditingBankDetail(bd); setIsBankDetailDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                            </div>
+                                        </>
+                                    ) : (
                                         <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={(bd) => { setEditingBankDetail(bd); setIsBankDetailDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
-                                    </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
@@ -677,8 +724,20 @@ ID Transacción: ${transactionId}`;
                             )
                         )}
                         {currentTab === "chat" && <ChatTab appointments={appointments} onOpenChat={(appointment) => handleOpenAppointmentDialog('chat', appointment)} initialPatientId={chatPatientIdParam} initialPatientName={chatPatientName} />}
-                        {currentTab === "online-consultation" && <OnlineConsultationTab doctorData={doctorData} onUpdate={fetchData} />}
-                        {currentTab === "support" && <SupportTab supportTickets={supportTickets} onViewTicket={(t) => { setSelectedSupportTicket(t); setIsSupportDetailOpen(true); }} onOpenTicketDialog={() => setIsSupportDialogOpen(true)} onCreateTestTickets={handleCreateTestTickets} />}
+                        {currentTab === "online-consultation" && (
+                            !isClinicDoctor ? (
+                                <OnlineConsultationTab doctorData={doctorData} onUpdate={fetchData} />
+                            ) : (
+                                <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
+                            )
+                        )}
+                        {currentTab === "support" && (
+                            !isClinicDoctor ? (
+                                <SupportTab supportTickets={supportTickets} onViewTicket={(t) => { setSelectedSupportTicket(t); setIsSupportDetailOpen(true); }} onOpenTicketDialog={() => setIsSupportDialogOpen(true)} onCreateTestTickets={handleCreateTestTickets} />
+                            ) : (
+                                <div className="text-center py-10 text-muted-foreground">El soporte técnico institucional es canalizado directamente a través de la administración de la clínica.</div>
+                            )
+                        )}
                     </div>
                 </div>
             </main>
@@ -1407,22 +1466,77 @@ ID Transacción: ${transactionId}`;
                                         required
                                     />
                                 </div>
-                                <div>
-                                    <Label htmlFor="patientPhone">Teléfono</Label>
-                                    <Input
-                                        id="patientPhone"
-                                        name="patientPhone"
-                                        type="tel"
-                                        placeholder="+54 11 2345 6789"
-                                    />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="walkInDocNumber">Documento de Identidad (Opcional)</Label>
+                                    <div className="flex gap-2">
+                                        <Select
+                                            value={walkInDocType}
+                                            onValueChange={(val) => setWalkInDocType(val as DocumentType)}
+                                        >
+                                            <SelectTrigger className="w-[105px] shrink-0 text-xs">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {DOCUMENT_TYPES.map(t => (
+                                                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+
+                                        {walkInDocType === 'Cédula' && (
+                                            <Select
+                                                value={walkInCedulaPrefix}
+                                                onValueChange={(val: any) => setWalkInCedulaPrefix(val)}
+                                            >
+                                                <SelectTrigger className="w-[65px] shrink-0 text-xs font-semibold">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="V">V-</SelectItem>
+                                                    <SelectItem value="E">E-</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+
+                                        <Input
+                                            id="walkInDocNumber"
+                                            value={walkInDocNumber}
+                                            onChange={(e) => {
+                                                const val = walkInDocType === 'Cédula'
+                                                    ? e.target.value.replace(/[^0-9]/g, '').slice(0, 9)
+                                                    : e.target.value;
+                                                setWalkInDocNumber(val);
+                                            }}
+                                            placeholder={
+                                                walkInDocType === 'Pasaporte' ? 'Ej: PAS123456' :
+                                                walkInDocType === 'Cédula' ? 'Ej: 12345678' :
+                                                'Número de documento'
+                                            }
+                                            className="flex-1 text-xs"
+                                        />
+                                    </div>
                                 </div>
-                                <div>
-                                    <Label htmlFor="patientDNI">DNI</Label>
-                                    <Input
-                                        id="patientDNI"
-                                        name="patientDNI"
-                                        placeholder="12345678"
-                                    />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="walkInPhoneNumber">Teléfono</Label>
+                                    <div className="flex gap-2">
+                                        <CountryCodeSelect
+                                            value={walkInPhoneCountryCode}
+                                            onChange={setWalkInPhoneCountryCode}
+                                            className="w-[125px] shrink-0 text-xs"
+                                        />
+                                        <Input
+                                            id="walkInPhoneNumber"
+                                            type="tel"
+                                            value={walkInPhoneNumber}
+                                            onChange={(e) => {
+                                                let val = e.target.value.replace(/\D/g, '');
+                                                if (val.startsWith('0')) val = val.slice(1);
+                                                setWalkInPhoneNumber(val);
+                                            }}
+                                            placeholder="Ej: 412 123 4567"
+                                            className="flex-1 text-xs"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1525,6 +1639,14 @@ ID Transacción: ${transactionId}`;
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Confirmas la eliminación?</AlertDialogTitle><AlertDialogDescription>Esta acción es permanente y no se puede deshacer.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleDeleteItem} className={cn(buttonVariants({ variant: 'destructive' }))}>Eliminar</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
+
+            {/* Modal de Bienvenida para Médicos */}
+            {showWelcomeModal && (
+                <DoctorWelcomeModal
+                    isOpen={showWelcomeModal}
+                    onClose={() => setShowWelcomeModal(false)}
+                />
+            )}
         </div>
     );
 }

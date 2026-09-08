@@ -4,9 +4,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { Appointment, Doctor, Service, ClinicService, ClinicPatientMessage } from '@/lib/types';
+import { Appointment, Doctor, Service, ClinicService, ClinicPatientMessage, DOCUMENT_TYPES, DocumentType } from '@/lib/types';
 import { getClinicAppointments, getClinicDoctors, updateAppointment, getClinicService, getClinicChatMessages, sendClinicChatMessage, markClinicChatAsRead } from '@/lib/supabaseService';
 import { createWalkInAppointmentAction } from '@/app/actions';
+import { CountryCodeSelect } from '@/components/ui/country-code-select';
+import { NoShowResolutionModal } from '@/components/medical/no-show-resolution-modal';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -110,6 +112,26 @@ export function AgendaTab() {
     const [clinicServices, setClinicServices] = useState<ClinicService[]>([]);
     const [selectedServiceId, setSelectedServiceId] = useState<string>('');
     const [selectedWalkInDoctor, setSelectedWalkInDoctor] = useState<string>('');
+
+    // Walk-in document and phone states
+    const [walkInDocType, setWalkInDocType] = useState<DocumentType>('Cédula');
+    const [walkInCedulaPrefix, setWalkInCedulaPrefix] = useState<'V' | 'E'>('V');
+    const [walkInDocNumber, setWalkInDocNumber] = useState('');
+    const [walkInPhoneCountryCode, setWalkInPhoneCountryCode] = useState('+58');
+    const [walkInPhoneNumber, setWalkInPhoneNumber] = useState('');
+
+    // No-show resolution modal
+    const [resolvingNoShowAppointment, setResolvingNoShowAppointment] = useState<Appointment | null>(null);
+
+    useEffect(() => {
+        if (!walkInOpen) {
+            setWalkInDocType('Cédula');
+            setWalkInCedulaPrefix('V');
+            setWalkInDocNumber('');
+            setWalkInPhoneCountryCode('+58');
+            setWalkInPhoneNumber('');
+        }
+    }, [walkInOpen]);
 
     // Chat Modal State
     const [chatOpen, setChatOpen] = useState(false);
@@ -225,6 +247,18 @@ export function AgendaTab() {
             return;
         }
 
+        // Formatear Cédula / Documento
+        const cleanDocNumber = walkInDocNumber.trim();
+        const fullCedula = cleanDocNumber
+            ? (walkInDocType === 'Cédula' ? `${walkInCedulaPrefix}-${cleanDocNumber}` : cleanDocNumber)
+            : undefined;
+
+        // Formatear Teléfono
+        const cleanPhone = walkInPhoneNumber.trim();
+        const fullPhone = cleanPhone
+            ? `${walkInPhoneCountryCode} ${cleanPhone}`
+            : undefined;
+
         setWalkInLoading(true);
         try {
             const doctor = walkInType === 'doctor' ? doctors.find(d => d.id === doctorId) : null;
@@ -246,8 +280,8 @@ export function AgendaTab() {
                 doctorName: walkInType === 'doctor' ? (doctor?.name || 'Médico') : 'Servicio General',
                 patientName,
                 patientEmail,
-                patientPhone,
-                patientDNI,
+                patientPhone: fullPhone,
+                patientDNI: fullCedula,
                 services: servicesData,
                 totalPrice,
                 consultationFee: totalPrice,
@@ -372,6 +406,10 @@ export function AgendaTab() {
     };
 
     const markAsAttended = async (apt: Appointment, status: 'Atendido' | 'No Asistió') => {
+        if (status === 'No Asistió' && apt.paymentStatus === 'Pagado') {
+            setResolvingNoShowAppointment(apt);
+            return;
+        }
         try {
             await updateAppointment(apt.id, { attendance: status });
             toast({ title: 'Actualizado', description: `Cita marcada como ${status}.` });
@@ -1337,14 +1375,84 @@ export function AgendaTab() {
                     </Tabs>
 
                     <form onSubmit={handleCreateWalkIn} className="space-y-4 py-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="patientName">Nombre del Paciente *</Label>
-                                <Input id="patientName" name="patientName" placeholder="Juan Pérez" required />
+                        <div className="space-y-2">
+                            <Label htmlFor="patientName">Nombre del Paciente *</Label>
+                            <Input id="patientName" name="patientName" placeholder="Juan Pérez" required />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="walkInDocNumber">Documento de Identidad (Opcional)</Label>
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={walkInDocType}
+                                        onValueChange={(val) => setWalkInDocType(val as DocumentType)}
+                                    >
+                                        <SelectTrigger className="w-[105px] shrink-0 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {DOCUMENT_TYPES.map(t => (
+                                                <SelectItem key={t} value={t}>{t}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {walkInDocType === 'Cédula' && (
+                                        <Select
+                                            value={walkInCedulaPrefix}
+                                            onValueChange={(val: any) => setWalkInCedulaPrefix(val)}
+                                        >
+                                            <SelectTrigger className="w-[65px] shrink-0 text-xs font-semibold">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="V">V-</SelectItem>
+                                                <SelectItem value="E">E-</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+
+                                    <Input
+                                        id="walkInDocNumber"
+                                        value={walkInDocNumber}
+                                        onChange={(e) => {
+                                            const val = walkInDocType === 'Cédula'
+                                                ? e.target.value.replace(/[^0-9]/g, '').slice(0, 9)
+                                                : e.target.value;
+                                            setWalkInDocNumber(val);
+                                        }}
+                                        placeholder={
+                                            walkInDocType === 'Pasaporte' ? 'Ej: PAS123456' :
+                                            walkInDocType === 'Cédula' ? 'Ej: 12345678' :
+                                            'Número de documento'
+                                        }
+                                        className="flex-1 text-xs"
+                                    />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="patientDNI">DNI (Opcional)</Label>
-                                <Input id="patientDNI" name="patientDNI" placeholder="12345678" />
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="walkInPhoneNumber">Teléfono</Label>
+                                <div className="flex gap-2">
+                                    <CountryCodeSelect
+                                        value={walkInPhoneCountryCode}
+                                        onChange={setWalkInPhoneCountryCode}
+                                        className="w-[125px] shrink-0 text-xs"
+                                    />
+                                    <Input
+                                        id="walkInPhoneNumber"
+                                        type="tel"
+                                        value={walkInPhoneNumber}
+                                        onChange={(e) => {
+                                            let val = e.target.value.replace(/\D/g, '');
+                                            if (val.startsWith('0')) val = val.slice(1);
+                                            setWalkInPhoneNumber(val);
+                                        }}
+                                        placeholder="Ej: 412 123 4567"
+                                        className="flex-1 text-xs"
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -1352,11 +1460,6 @@ export function AgendaTab() {
                             <Label htmlFor="patientEmail">Email *</Label>
                             <Input id="patientEmail" name="patientEmail" type="email" placeholder="email@ejemplo.com" required />
                             <p className="text-xs text-muted-foreground">Si el paciente ya existe, se usará su cuenta.</p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="patientPhone">Teléfono</Label>
-                            <Input id="patientPhone" name="patientPhone" placeholder="+54 9 11 ..." />
                         </div>
 
                         {walkInType === 'doctor' ? (
@@ -1441,6 +1544,18 @@ export function AgendaTab() {
                     </form>
                 </DialogContent>
             </Dialog >
+
+            {/* Modal de Resolución de Inasistencia */}
+            <NoShowResolutionModal
+                appointment={resolvingNoShowAppointment}
+                isOpen={!!resolvingNoShowAppointment}
+                onClose={() => setResolvingNoShowAppointment(null)}
+                onSuccess={() => {
+                    setResolvingNoShowAppointment(null);
+                    setDetailsOpen(false);
+                    loadData();
+                }}
+            />
         </div >
     );
 }

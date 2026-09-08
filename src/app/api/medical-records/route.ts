@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
             .from('medical_records')
             .select(`
                 *,
-                doctors ( name, specialty )
+                doctors ( name, specialty, medical_license, signature_url, phone, whatsapp, address, city )
             `)
             .order('visit_date', { ascending: false });
 

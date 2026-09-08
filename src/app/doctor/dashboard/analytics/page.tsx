@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { HeaderWrapper } from '@/components/header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Loader2, TrendingUp, Users, Calendar, DollarSign, ArrowLeft } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, Users, Calendar, DollarSign, ArrowLeft } from "lucide-react";
 import {
     BarChart,
     Bar,
@@ -20,7 +20,7 @@ import {
     AreaChart,
     Area
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function DoctorAnalyticsPage() {
@@ -32,7 +32,8 @@ export default function DoctorAnalyticsPage() {
     const [kpis, setKpis] = useState({
         total_patients: 0,
         monthly_revenue: 0,
-        total_appointments: 0
+        total_appointments: 0,
+        trend_percentage: 0
     });
 
     useEffect(() => {
@@ -57,12 +58,28 @@ export default function DoctorAnalyticsPage() {
 
             // Calculate simple KPIs from the data
             const currentMonth = format(new Date(), 'yyyy-MM');
+            const prevMonth = format(subMonths(new Date(), 1), 'yyyy-MM');
+            
             const currentMonthData = data?.find((d: any) => d.month === currentMonth);
+            const prevMonthData = data?.find((d: any) => d.month === prevMonth);
+
+            const currentRev = Number(currentMonthData?.revenue || 0);
+            const prevRev = Number(prevMonthData?.revenue || 0);
+
+            let calculatedTrend = 0;
+            if (prevRev > 0) {
+                calculatedTrend = Math.round(((currentRev - prevRev) / prevRev) * 100);
+            } else if (currentRev > 0) {
+                calculatedTrend = 100;
+            } else {
+                calculatedTrend = 0;
+            }
 
             setKpis({
-                monthly_revenue: currentMonthData?.revenue || 0,
-                total_patients: data?.reduce((acc: number, curr: any) => acc + (curr.patients_seen || 0), 0) || 0, // This is an approximation
-                total_appointments: data?.reduce((acc: number, curr: any) => acc + (curr.patients_seen || 0), 0) || 0
+                monthly_revenue: currentRev,
+                total_patients: data?.reduce((acc: number, curr: any) => acc + (curr.patients_seen || 0), 0) || 0,
+                total_appointments: data?.reduce((acc: number, curr: any) => acc + (curr.patients_seen || 0), 0) || 0,
+                trend_percentage: calculatedTrend
             });
 
         } catch (error) {
@@ -115,10 +132,18 @@ export default function DoctorAnalyticsPage() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Tendencia</CardTitle>
-                            <TrendingUp className="h-4 w-4 text-purple-600" />
+                            {kpis.trend_percentage > 0 ? (
+                                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                            ) : kpis.trend_percentage < 0 ? (
+                                <TrendingDown className="h-4 w-4 text-red-500" />
+                            ) : (
+                                <Minus className="h-4 w-4 text-slate-400" />
+                            )}
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">+5%</div>
+                            <div className={`text-2xl font-bold ${kpis.trend_percentage > 0 ? 'text-emerald-600' : kpis.trend_percentage < 0 ? 'text-red-500' : 'text-slate-700'}`}>
+                                {kpis.trend_percentage > 0 ? `+${kpis.trend_percentage}%` : `${kpis.trend_percentage}%`}
+                            </div>
                             <p className="text-xs text-muted-foreground">Respecto al mes anterior</p>
                         </CardContent>
                     </Card>

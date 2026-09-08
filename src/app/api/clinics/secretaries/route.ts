@@ -25,7 +25,13 @@ export async function GET(request: Request) {
             name: item.name,
             role: 'secretary',
             clinicId: item.clinic_id,
-            permissions: item.permissions || []
+            permissions: item.permissions || [],
+            phone: item.phone || '',
+            country: item.country || 'VE',
+            state: item.state || '',
+            city: item.city || '',
+            sector: item.sector || '',
+            address: item.address || '',
         }));
 
         return NextResponse.json(secretaries);

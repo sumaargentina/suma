@@ -94,7 +94,7 @@ export function FinancesTab() {
                 return isWithinInterval(appDate, { start, end });
             });
 
-            const filteredExpenses = expensesData.filter(exp => {
+            const filteredExpenses = expensesData.filter((exp: any) => {
                 const expDate = parseISO(exp.date);
                 return isWithinInterval(expDate, { start, end });
             });
@@ -149,10 +149,9 @@ export function FinancesTab() {
 
     // Calculations
     const stats = useMemo(() => {
-        // Only count as income if: Paid AND (Attended OR Pending attendance)
-        // No-shows with payment should NOT count (refund pending)
+        // Only count as income if: Paid AND (Attended OR Pending attendance OR Retained penalty)
         const totalIncome = appointments
-            .filter(app => app.paymentStatus === 'Pagado' && app.attendance !== 'No Asistió')
+            .filter(app => app.paymentStatus === 'Pagado' && (app.attendance !== 'No Asistió' || app.noShowResolution === 'retained'))
             .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
 
         const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
@@ -163,12 +162,16 @@ export function FinancesTab() {
             .filter(app => app.paymentStatus === 'Pendiente' && app.attendance !== 'No Asistió')
             .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
 
-        // Refunds pending = Paid but no-show
+        // Refunds pending = Paid but no-show without retention
         const refundsPending = appointments
-            .filter(app => app.paymentStatus === 'Pagado' && app.attendance === 'No Asistió')
+            .filter(app => (app.paymentStatus === 'Pagado' && app.attendance === 'No Asistió' && app.noShowResolution !== 'retained') || app.paymentStatus === 'Reembolsado')
+            .reduce((sum, app) => sum + (app.refundAmount || app.totalPrice || 0), 0);
+
+        const retainedIncome = appointments
+            .filter(app => app.noShowResolution === 'retained')
             .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
 
-        return { totalIncome, totalExpenses, netIncome, pendingIncome, refundsPending };
+        return { totalIncome, totalExpenses, netIncome, pendingIncome, refundsPending, retainedIncome };
     }, [appointments, expenses]);
 
     // Chart Data

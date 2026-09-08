@@ -1,31 +1,32 @@
-
 "use client";
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { HeaderWrapper } from '@/components/header';
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { User, Save } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { User, Save } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { HeaderWrapper } from "@/components/header";
 import { z } from 'zod';
 import { validateName, validatePhone } from '@/lib/validation-utils';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
+import { Seller } from '@/lib/types';
 
 const SellerProfileSchema = z.object({
   fullName: z.string().min(3, "El nombre completo es requerido."),
-  phone: z.string().optional().nullable(),
-  profileImage: z.string().optional().nullable(),
+  phone: z.string().optional(),
+  profileImage: z.string().nullable().optional(),
 });
 
 const fileToDataUri = (file: File): Promise<string> => {
@@ -46,7 +47,13 @@ export default function SellerProfilePage() {
   const [phone, setPhone] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [newImageFile, setNewImageFile] = useState<File | null>(null);
-
+  const [locationData, setLocationData] = useState<LocationData>({
+    country: 'VE',
+    state: 'Monagas',
+    city: 'Maturín',
+    sector: '',
+    address: '',
+  });
 
   useEffect(() => {
     if (user === undefined) return;
@@ -56,6 +63,14 @@ export default function SellerProfilePage() {
       setFullName(user.name);
       setPhone(user.phone || '');
       setProfileImage(user.profileImage || null);
+      const s = user as unknown as Seller;
+      setLocationData({
+        country: s.country || 'VE',
+        state: s.state || '',
+        city: s.city || '',
+        sector: s.sector || '',
+        address: s.address || '',
+      });
     }
   }, [user, router]);
 
@@ -76,7 +91,6 @@ export default function SellerProfilePage() {
         imageUri = await fileToDataUri(newImageFile);
     }
 
-    // Sanitizar y validar antes de zod
     const nameSan = validateName(fullName);
     const phoneSan = validatePhone(phone);
     if (!nameSan.isValid || (phone && !phoneSan.isValid)) {
@@ -96,15 +110,20 @@ export default function SellerProfilePage() {
       return;
     }
 
-    updateUser({
+    await updateUser({
       name: result.data.fullName,
       phone: result.data.phone,
       profileImage: result.data.profileImage,
+      country: locationData.country,
+      state: locationData.state,
+      city: locationData.city,
+      sector: locationData.sector,
+      address: locationData.address,
     });
     
     toast({
         title: "¡Perfil Actualizado!",
-        description: "Tu información personal ha sido guardada correctamente.",
+        description: "Tu información personal y de ubicación ha sido guardada correctamente.",
     });
   };
 
@@ -175,6 +194,18 @@ export default function SellerProfilePage() {
                       placeholder="ej., 0412-1234567"
                     />
                   </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-3 text-slate-800">Ubicación y Dirección de Residencia</h4>
+                  <LocationSelector
+                    country={locationData.country}
+                    state={locationData.state}
+                    city={locationData.city}
+                    sector={locationData.sector}
+                    address={locationData.address}
+                    onLocationChange={(newLoc) => setLocationData(newLoc)}
+                  />
+                </div>
 
                 <Button type="submit" className="w-full">
                   <Save className="mr-2 h-4 w-4" />

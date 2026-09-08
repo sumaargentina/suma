@@ -3,11 +3,13 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import * as supabaseService from './supabaseService';
-import type { AppSettings, Coupon, CompanyExpense, BankDetail, City } from './types';
+import type { AppSettings, Coupon, CompanyExpense, BankDetail, City, CountryConfig, StateConfig } from './types';
 import { useToast } from '@/hooks/use-toast';
 
 interface SettingsContextType {
   settings: AppSettings | null;
+  countries: CountryConfig[];
+  states: StateConfig[];
   cities: City[];
   specialties: string[];
   beautySpecialties: string[];
@@ -23,14 +25,16 @@ interface SettingsContextType {
 
   updateSetting: (key: keyof AppSettings, value: unknown) => Promise<void>;
 
-  addListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => Promise<void>;
-  updateListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemId: string, newItem: City | string | BankDetail | CompanyExpense | Coupon) => Promise<void>;
-  deleteListItem: (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemToDeleteIdOrName: string) => Promise<void>;
+  addListItem: (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: CountryConfig | StateConfig | City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => Promise<void>;
+  updateListItem: (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemId: string, newItem: CountryConfig | StateConfig | City | string | BankDetail | CompanyExpense | Coupon) => Promise<void>;
+  deleteListItem: (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemToDeleteIdOrName: string) => Promise<void>;
   isLoading: boolean;
 }
 
 const skeletonContextValue: SettingsContextType = {
   settings: null,
+  countries: [],
+  states: [],
   cities: [],
   specialties: [],
   beautySpecialties: [],
@@ -154,7 +158,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
-  const addListItem = useCallback(async (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => {
+  const addListItem = useCallback(async (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', item: CountryConfig | StateConfig | City | string | Omit<BankDetail, 'id'> | Omit<CompanyExpense, 'id'> | Omit<Coupon, 'id'>) => {
     if (!settings) {
       return;
     }
@@ -162,9 +166,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const list = (settings[listName] as unknown[]) || [];
 
     // Check for duplicates
-    if (listName === 'cities' && typeof item === 'object' && 'name' in item && list.some(c => typeof c === 'object' && c !== null && 'name' in c && typeof ((c as Record<string, unknown>).name) === 'string' && ((c as Record<string, unknown>).name as string).toLowerCase() === (item as City).name.toLowerCase())) {
-      toast({ variant: 'destructive', title: 'Elemento duplicado', description: `La ciudad "${(item as City).name}" ya existe.` });
-      return;
+    if (listName === 'countries' && typeof item === 'object' && 'code' in item) {
+      const countryItem = item as CountryConfig;
+      if (list.some(c => typeof c === 'object' && c !== null && 'code' in c && ((c as CountryConfig).code || '').toUpperCase() === countryItem.code.toUpperCase())) {
+        toast({ variant: 'destructive', title: 'Elemento duplicado', description: `El país con código "${countryItem.code}" ya existe.` });
+        return;
+      }
+    }
+    if (listName === 'states' && typeof item === 'object' && 'name' in item) {
+      const stateItem = item as StateConfig;
+      if (list.some(s => typeof s === 'object' && s !== null && 'name' in s && ((s as StateConfig).name || '').toLowerCase() === stateItem.name.toLowerCase() && ((s as StateConfig).country || '').toLowerCase() === stateItem.country.toLowerCase())) {
+        toast({ variant: 'destructive', title: 'Elemento duplicado', description: `El estado "${stateItem.name}" ya existe en este país.` });
+        return;
+      }
+    }
+    if (listName === 'cities' && typeof item === 'object' && 'name' in item) {
+      const cityItem = item as City;
+      const isDuplicate = list.some(c => {
+        if (!c || typeof c !== 'object' || !('name' in c)) return false;
+        const existing = c as City;
+        return (
+          existing.name.toLowerCase() === cityItem.name.toLowerCase() &&
+          (existing.state || '').toLowerCase() === (cityItem.state || '').toLowerCase() &&
+          (existing.country || 'VE').toLowerCase() === (cityItem.country || 'VE').toLowerCase()
+        );
+      });
+      if (isDuplicate) {
+        toast({ variant: 'destructive', title: 'Elemento duplicado', description: `La ciudad "${cityItem.name}" en ${cityItem.state || 'la región'} ya existe.` });
+        return;
+      }
     }
     if (listName === 'specialties' && typeof item === 'string' && list.map(i => typeof i === 'string' ? (i as string).toLowerCase() : '').includes(item.toLowerCase())) {
       toast({ variant: 'destructive', title: 'Elemento duplicado', description: `"${item}" ya existe en la lista.` });
@@ -203,14 +233,35 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings, updateSetting, toast]);
 
-  const updateListItem = useCallback(async (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemIdOrName: string, newItem: City | string | BankDetail | CompanyExpense | Coupon) => {
+  const updateListItem = useCallback(async (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemIdOrName: string, newItem: CountryConfig | StateConfig | City | string | BankDetail | CompanyExpense | Coupon) => {
     if (!settings) return;
 
     const list = (settings[listName] as unknown[]) || [];
     let newList;
 
-    if (listName === 'cities') {
-      newList = list.map(item => (item && (item as City).name === itemIdOrName) ? newItem : item);
+    if (listName === 'countries') {
+      newList = list.map(item => {
+        if (!item || typeof item !== 'object') return item;
+        const c = item as CountryConfig;
+        return (c.code === itemIdOrName || (c as any).id === itemIdOrName) ? newItem : item;
+      });
+    } else if (listName === 'states') {
+      newList = list.map(item => {
+        if (!item || typeof item !== 'object') return item;
+        const s = item as StateConfig;
+        const currentId = `${s.country}-${s.name}`;
+        return (currentId === itemIdOrName || s.name === itemIdOrName || (s as any).id === itemIdOrName) ? newItem : item;
+      });
+    } else if (listName === 'cities') {
+      newList = list.map(item => {
+        if (!item || typeof item !== 'object') return item;
+        const c = item as City;
+        const currentId = `${c.country || 'VE'}-${c.state || ''}-${c.name}`;
+        if (currentId === itemIdOrName || c.name === itemIdOrName) {
+          return newItem;
+        }
+        return item;
+      });
     } else if (listName === 'specialties') {
       newList = list.map(item => item === itemIdOrName ? newItem : item);
     } else { // bank, expense, coupon
@@ -220,14 +271,32 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     await updateSetting(listName, newList);
   }, [settings, updateSetting]);
 
-  const deleteListItem = useCallback(async (listName: 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemToDeleteIdOrName: string) => {
+  const deleteListItem = useCallback(async (listName: 'countries' | 'states' | 'cities' | 'specialties' | 'companyBankDetails' | 'companyExpenses' | 'coupons', itemToDeleteIdOrName: string) => {
     if (!settings) return;
 
     const list = (settings[listName] as unknown[]) || [];
     let newList;
 
-    if (listName === 'cities') {
-      newList = list.filter(item => item && (item as City).name !== itemToDeleteIdOrName);
+    if (listName === 'countries') {
+      newList = list.filter(item => {
+        if (!item || typeof item !== 'object') return true;
+        const c = item as CountryConfig;
+        return c.code !== itemToDeleteIdOrName && (c as any).id !== itemToDeleteIdOrName;
+      });
+    } else if (listName === 'states') {
+      newList = list.filter(item => {
+        if (!item || typeof item !== 'object') return true;
+        const s = item as StateConfig;
+        const currentId = `${s.country}-${s.name}`;
+        return currentId !== itemToDeleteIdOrName && s.name !== itemToDeleteIdOrName && (s as any).id !== itemToDeleteIdOrName;
+      });
+    } else if (listName === 'cities') {
+      newList = list.filter(item => {
+        if (!item || typeof item !== 'object') return true;
+        const c = item as City;
+        const currentId = `${c.country || 'VE'}-${c.state || ''}-${c.name}`;
+        return currentId !== itemToDeleteIdOrName && c.name !== itemToDeleteIdOrName;
+      });
     } else if (listName === 'specialties') {
       newList = list.filter(item => item !== itemToDeleteIdOrName);
     } else { // bank, expense, coupon
@@ -240,6 +309,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value: SettingsContextType = {
     settings,
+    countries: settings?.countries || [],
+    states: settings?.states || [],
     cities: settings?.cities || [],
     specialties: settings?.specialties || [],
     beautySpecialties: settings?.beautySpecialties || [],

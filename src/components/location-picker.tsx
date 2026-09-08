@@ -21,25 +21,27 @@ type NominatimResult = {
     type: string;
 };
 
-// City centers for Argentina
+// City centers for Venezuela
 const CITY_CENTERS: Record<string, [number, number]> = {
-    "Buenos Aires": [-34.6037, -58.3816],
-    "Córdoba": [-31.4201, -64.1888],
-    "Rosario": [-32.9468, -60.6393],
-    "Mendoza": [-32.8895, -68.8458],
-    "Tucumán": [-26.8083, -65.2176],
-    "La Plata": [-34.9205, -57.9536],
-    "Mar del Plata": [-38.0023, -57.5575],
-    "Salta": [-24.7821, -65.4232],
-    "Santa Fe": [-31.6333, -60.7000],
-    "San Juan": [-31.5375, -68.5364],
-    "Resistencia": [-27.4513, -58.9868],
-    "Posadas": [-27.3671, -55.8961],
-    "Paraná": [-31.7320, -60.5238],
-    "Neuquén": [-38.9516, -68.0591],
-    "Formosa": [-26.1775, -58.1781],
-    "Corrientes": [-27.4696, -58.8306],
-    "Bahía Blanca": [-38.7183, -62.2663],
+    "Caracas": [10.4806, -66.9036],
+    "Maracaibo": [10.6427, -71.6125],
+    "Valencia": [10.1620, -68.0077],
+    "Barquisimeto": [10.0678, -69.3474],
+    "Maracay": [10.2469, -67.5958],
+    "Ciudad Guayana": [8.3794, -62.6517],
+    "San Cristóbal": [7.7669, -72.2250],
+    "Mérida": [8.5983, -71.1450],
+    "Maturín": [9.7457, -63.1832],
+    "Puerto La Cruz": [10.2138, -64.6328],
+    "Barcelona": [10.1362, -64.6862],
+    "Lechería": [10.1917, -64.6917],
+    "Porlamar": [10.9577, -63.8697],
+    "Cumaná": [10.4538, -64.1826],
+    "Cabimas": [10.3953, -71.4428],
+    "Coro": [11.4045, -69.6734],
+    "Los Teques": [10.3444, -67.0433],
+    "Guarenas": [10.4636, -66.6186],
+    "Guatire": [10.4722, -66.5414],
 };
 
 export function LocationPicker({ lat, lng, onLocationChange, city, disabled }: LocationPickerProps) {
@@ -62,7 +64,7 @@ export function LocationPicker({ lat, lng, onLocationChange, city, disabled }: L
         if (!mapOpen || !mapContainerRef.current || mapRef.current) return;
 
         // Determine initial center
-        let center: [number, number] = [-58.3816, -34.6037]; // Buenos Aires [lng, lat]
+        let center: [number, number] = [-66.9036, 10.4806]; // Caracas, Venezuela [lng, lat]
         let zoom = 5;
 
         if (selectedLat && selectedLng && (selectedLat !== 0 || selectedLng !== 0)) {
@@ -163,9 +165,9 @@ export function LocationPicker({ lat, lng, onLocationChange, city, disabled }: L
 
         setSearching(true);
         try {
-            const countryBias = "&countrycodes=ar";
+            const countryBias = "&countrycodes=ve";
             const cityBias = city ? `+${encodeURIComponent(city)}` : "";
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}${cityBias},+Argentina${countryBias}&limit=5&addressdetails=0`;
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}${cityBias},+Venezuela${countryBias}&limit=5&addressdetails=0`;
 
             const resp = await fetch(url, {
                 headers: { "Accept-Language": "es" },

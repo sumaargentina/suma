@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { getCitiesByState } from "@/lib/geo-data";
+import { LocationFilterPopover } from "@/components/location-filter-popover";
 
 interface SearchFiltersProps {
     specialties: string[];
@@ -37,9 +39,20 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     const searchParams = useSearchParams();
     const { user } = useAuth();
 
+    // Ciudades venezolanas completas combinadas con ciudades registradas
+    const availableCities = React.useMemo(() => {
+        const veCities = getCitiesByState('VE').map(c => c.name);
+        const combined = new Set([
+            ...veCities,
+            ...(cities || [])
+        ]);
+        return Array.from(combined).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    }, [cities]);
+
     // Estados locales
     const [query, setQuery] = React.useState(searchParams.get("q") || "");
     const [specialty, setSpecialty] = React.useState(searchParams.get("specialty") || "all");
+    const [state, setState] = React.useState(searchParams.get("state") || "all");
     const [city, setCity] = React.useState(searchParams.get("city") || "all");
     const [minRating, setMinRating] = React.useState(Number(searchParams.get("minRating")) || 0);
     const [priceRange, setPriceRange] = React.useState([
@@ -53,64 +66,117 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     // Ref para el timeout del debounce
     const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
 
-    // Flag para controlar si ya se aplicó la ciudad inicial del usuario
+    // Flag para controlar que el auto-select de la ciudad del usuario solo ocurra una sola vez al cargar la página
     const hasAppliedUserCityRef = React.useRef(false);
 
-    // Función para construir URL con parámetros actuales
-    const buildSearchUrl = React.useCallback((currentQuery: string) => {
-        const params = new URLSearchParams();
-        if (currentQuery) params.set("q", currentQuery);
-        if (specialty && specialty !== "all") params.set("specialty", specialty);
-        if (city && city !== "all") params.set("city", city);
-        if (minRating > 0) params.set("minRating", minRating.toString());
-        if (priceRange[0] > 0) params.set("minPrice", priceRange[0].toString());
-        if (priceRange[1] < maxPrice) params.set("maxPrice", priceRange[1].toString());
-        if (verifiedOnly) params.set("verified", "true");
-        return `/find-a-doctor?${params.toString()}`;
-    }, [specialty, city, minRating, priceRange, maxPrice, verifiedOnly]);
-
-    // Auto-select city for patient - SOLO UNA VEZ al cargar la página
+    // Sincronizar estados locales cuando los searchParams de la URL cambian
     React.useEffect(() => {
-        // Solo aplicar si:
-        // 1. No se ha aplicado antes
-        // 2. No hay ciudad en la URL
-        // 3. El usuario es paciente y tiene ciudad configurada
-        if (
-            !hasAppliedUserCityRef.current &&
-            !searchParams.get("city") &&
-            user?.role === 'patient' &&
-            user.city
-        ) {
+        const urlQuery = searchParams.get("q") || "";
+        const urlSpecialty = searchParams.get("specialty") || "all";
+        const urlState = searchParams.get("state") || "all";
+        const urlCity = searchParams.get("city") || "all";
+        setQuery(urlQuery);
+        setSpecialty(urlSpecialty);
+        setState(urlState);
+        setCity(urlCity);
+        setMinRating(Number(searchParams.get("minRating")) || 0);
+        setPriceRange([
+            Number(searchParams.get("minPrice")) || 0,
+            Number(searchParams.get("maxPrice")) || maxPrice
+        ]);
+        setVerifiedOnly(searchParams.get("verified") === "true");
+    }, [searchParams, maxPrice]);
+
+    // Función para construir URL con parámetros actuales o con overrides
+    const buildSearchUrl = React.useCallback((overrides?: {
+        q?: string;
+        specialty?: string;
+        state?: string;
+        city?: string;
+        minRating?: number;
+        minPrice?: number;
+        maxPrice?: number;
+        verified?: boolean;
+    }) => {
+        const params = new URLSearchParams();
+        
+        const qVal = overrides?.q !== undefined ? overrides.q : query;
+        if (qVal) params.set("q", qVal);
+
+        const specVal = overrides?.specialty !== undefined ? overrides.specialty : specialty;
+        if (specVal && specVal !== "all") params.set("specialty", specVal);
+
+        const stateVal = overrides?.state !== undefined ? overrides.state : state;
+        if (stateVal && stateVal !== "all") params.set("state", stateVal);
+
+        const cityVal = overrides?.city !== undefined ? overrides.city : city;
+        if (cityVal && cityVal !== "all") params.set("city", cityVal);
+
+        const ratingVal = overrides?.minRating !== undefined ? overrides.minRating : minRating;
+        if (ratingVal > 0) params.set("minRating", ratingVal.toString());
+
+        const minP = overrides?.minPrice !== undefined ? overrides.minPrice : priceRange[0];
+        if (minP > 0) params.set("minPrice", minP.toString());
+
+        const maxP = overrides?.maxPrice !== undefined ? overrides.maxPrice : priceRange[1];
+        if (maxP < maxPrice) params.set("maxPrice", maxP.toString());
+
+        const verVal = overrides?.verified !== undefined ? overrides.verified : verifiedOnly;
+        if (verVal) params.set("verified", "true");
+
+        return `/find-a-doctor?${params.toString()}`;
+    }, [query, specialty, state, city, minRating, priceRange, maxPrice, verifiedOnly]);
+
+    // Auto-select city for patient - SOLAMENTE una vez al montar el componente si no hay parámetros en la URL
+    React.useEffect(() => {
+        if (hasAppliedUserCityRef.current) return;
+        
+        // Si ya hay parámetros en la URL o no es paciente, marcar como aplicado y salir
+        if (searchParams.has("city") || searchParams.has("state") || searchParams.has("specialty") || searchParams.has("q")) {
+            hasAppliedUserCityRef.current = true;
+            return;
+        }
+
+        if (user?.role === 'patient' && user.city) {
             hasAppliedUserCityRef.current = true;
             setCity(user.city);
-            const params = new URLSearchParams(searchParams.toString());
+            if (user.state) setState(user.state);
+
+            const params = new URLSearchParams();
             params.set("city", user.city);
+            if (user.state) params.set("state", user.state);
             router.replace(`?${params.toString()}`, { scroll: false });
+        } else {
+            hasAppliedUserCityRef.current = true;
         }
-    }, [user]); // Solo se ejecuta cuando cambia user, no searchParams
+    }, [user, searchParams, router]);
 
     // Búsqueda en tiempo real con debounce
     const handleQueryChange = (value: string) => {
         setQuery(value);
         setIsSearching(true);
 
-        // Cancelar el timeout anterior
         if (debounceRef.current) {
             clearTimeout(debounceRef.current);
         }
 
-        // Si el valor está vacío y no hay otros filtros, limpiar inmediatamente
-        if (!value && specialty === "all" && city === "all" && minRating === 0 && !verifiedOnly) {
-            router.push("/find-a-doctor", { scroll: false });
-            setIsSearching(false);
-            return;
-        }
-
-        // Debounce de 300ms para búsqueda en tiempo real
         debounceRef.current = setTimeout(() => {
-            router.push(buildSearchUrl(value), { scroll: false });
+            router.push(buildSearchUrl({ q: value }), { scroll: false });
             setIsSearching(false);
         }, 300);
+    };
+
+    // Cambiar especialidad
+    const handleSpecialtyChange = (newSpecialty: string) => {
+        setSpecialty(newSpecialty);
+        router.push(buildSearchUrl({ specialty: newSpecialty }), { scroll: false });
+    };
+
+    // Cambiar ubicación
+    const handleLocationChange = (newState: string, newCity: string) => {
+        setState(newState);
+        setCity(newCity);
+        router.push(buildSearchUrl({ state: newState, city: newCity }), { scroll: false });
     };
 
     // Limpiar timeout al desmontar
@@ -127,20 +193,22 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
         if (debounceRef.current) {
             clearTimeout(debounceRef.current);
         }
-        router.push(buildSearchUrl(query));
+        router.push(buildSearchUrl());
         setIsOpen(false);
         setIsSearching(false);
     };
 
-    // Limpiar filtros
+    // Limpiar todos los filtros
     const handleClearFilters = () => {
         setQuery("");
         setSpecialty("all");
+        setState("all");
         setCity("all");
         setMinRating(0);
         setPriceRange([0, maxPrice]);
         setVerifiedOnly(false);
-        router.push("/find-a-doctor");
+        hasAppliedUserCityRef.current = true;
+        router.push("/find-a-doctor", { scroll: false });
         setIsOpen(false);
     };
 
@@ -154,7 +222,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     // Filtros activos
     const activeFiltersCount = [
         specialty !== "all",
-        city !== "all",
+        state !== "all" || city !== "all",
         minRating > 0,
         priceRange[0] > 0 || priceRange[1] < maxPrice,
         verifiedOnly
@@ -231,7 +299,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                     {/* Filtros Desktop */}
                     <div className="hidden md:flex items-center gap-2">
                         {/* Especialidad */}
-                        <Select value={specialty} onValueChange={setSpecialty}>
+                        <Select value={specialty} onValueChange={handleSpecialtyChange}>
                             <SelectTrigger className="w-[160px] h-11 border-0 bg-slate-50/80 hover:bg-slate-100 focus:ring-0 rounded-xl font-medium text-slate-700">
                                 <div className="flex items-center gap-2">
                                     <Stethoscope className="h-4 w-4 text-primary" />
@@ -246,21 +314,13 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                             </SelectContent>
                         </Select>
 
-                        {/* Ciudad */}
-                        <Select value={city} onValueChange={setCity}>
-                            <SelectTrigger className="w-[160px] h-11 border-0 bg-slate-50/80 hover:bg-slate-100 focus:ring-0 rounded-xl font-medium text-slate-700">
-                                <div className="flex items-center gap-2">
-                                    <MapPin className="h-4 w-4 text-rose-500" />
-                                    <SelectValue placeholder="Ciudad" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                                <SelectItem value="all">Todas</SelectItem>
-                                {cities.map((c) => (
-                                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {/* Ubicación: Estado y Ciudad con Búsqueda en Vivo */}
+                        <LocationFilterPopover
+                            selectedState={state}
+                            selectedCity={city}
+                            onLocationChange={handleLocationChange}
+                            variant="desktop"
+                        />
 
                         {/* Botón Filtros Avanzados Desktop */}
                         <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -286,18 +346,31 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
 
                             {/* Sheet Content (compartido desktop/mobile) */}
                             <SheetContent side="right" className="w-full sm:w-[420px] overflow-y-auto p-0">
-                                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-lg border-b p-6">
-                                    <SheetHeader className="text-left">
-                                        <SheetTitle className="text-2xl font-bold flex items-center gap-3">
-                                            <div className="p-2 rounded-xl bg-primary/10">
-                                                <SlidersHorizontal className="h-5 w-5 text-primary" />
-                                            </div>
-                                            Filtros Avanzados
-                                        </SheetTitle>
-                                        <SheetDescription>
-                                            Personaliza tu búsqueda para encontrar exactamente lo que necesitas
-                                        </SheetDescription>
-                                    </SheetHeader>
+                                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-lg border-b p-5 sm:p-6">
+                                    <div className="flex items-start justify-between">
+                                        <SheetHeader className="text-left flex-1 pr-3">
+                                            <SheetTitle className="text-xl sm:text-2xl font-bold flex items-center gap-3 text-slate-800">
+                                                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                                                    <SlidersHorizontal className="h-5 w-5" />
+                                                </div>
+                                                Filtros Avanzados
+                                            </SheetTitle>
+                                            <SheetDescription className="text-xs sm:text-sm text-slate-500 mt-1">
+                                                Personaliza tu búsqueda para encontrar exactamente lo que necesitas
+                                            </SheetDescription>
+                                        </SheetHeader>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setIsOpen(false)}
+                                            className="h-9 w-9 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors shrink-0 -mr-2 -mt-1"
+                                            title="Cerrar filtros"
+                                        >
+                                            <X className="h-5 w-5" />
+                                            <span className="sr-only">Cerrar</span>
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 <div className="p-6 space-y-8">
@@ -306,7 +379,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                                         <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                                             <Stethoscope className="h-4 w-4" /> Especialidad
                                         </Label>
-                                        <Select value={specialty} onValueChange={setSpecialty}>
+                                        <Select value={specialty} onValueChange={handleSpecialtyChange}>
                                             <SelectTrigger className="w-full h-14 rounded-xl bg-slate-50 border-slate-200 font-medium">
                                                 <SelectValue placeholder="Seleccionar especialidad" />
                                             </SelectTrigger>
@@ -319,22 +392,17 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                                         </Select>
                                     </div>
 
-                                    {/* Ciudad */}
+                                    {/* Ubicación: Estado y Ciudad con Búsqueda en Vivo */}
                                     <div className="space-y-3">
                                         <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                            <MapPin className="h-4 w-4" /> Ubicación
+                                            <MapPin className="h-4 w-4" /> Ubicación (Estado / Ciudad)
                                         </Label>
-                                        <Select value={city} onValueChange={setCity}>
-                                            <SelectTrigger className="w-full h-14 rounded-xl bg-slate-50 border-slate-200 font-medium">
-                                                <SelectValue placeholder="Seleccionar ciudad" />
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xl max-h-[300px]">
-                                                <SelectItem value="all">Todas las ciudades</SelectItem>
-                                                {cities.map((c) => (
-                                                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <LocationFilterPopover
+                                            selectedState={state}
+                                            selectedCity={city}
+                                            onLocationChange={handleLocationChange}
+                                            variant="sheet"
+                                        />
                                     </div>
 
                                     <Separator className="bg-slate-100" />
@@ -451,27 +519,25 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
 
                     {/* MOBILE: Botones */}
                     <div className="flex md:hidden gap-2">
-                        <Sheet open={isOpen} onOpenChange={setIsOpen}>
-                            <SheetTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    className={cn(
-                                        "flex-1 h-12 border-slate-200 rounded-xl font-medium transition-all",
-                                        activeFiltersCount > 0
-                                            ? "bg-primary/5 border-primary/20 text-primary"
-                                            : "bg-slate-50 text-slate-700"
-                                    )}
-                                >
-                                    <SlidersHorizontal className="h-4 w-4 mr-2" />
-                                    Filtros
-                                    {activeFiltersCount > 0 && (
-                                        <Badge className="ml-2 h-5 min-w-[20px] p-0 flex items-center justify-center rounded-full bg-primary text-white text-[10px]">
-                                            {activeFiltersCount}
-                                        </Badge>
-                                    )}
-                                </Button>
-                            </SheetTrigger>
-                        </Sheet>
+                        <Button
+                            type="button"
+                            onClick={() => setIsOpen(true)}
+                            variant="outline"
+                            className={cn(
+                                "flex-1 h-12 border-slate-200 rounded-xl font-medium transition-all",
+                                activeFiltersCount > 0
+                                    ? "bg-primary/5 border-primary/20 text-primary"
+                                    : "bg-slate-50 text-slate-700"
+                            )}
+                        >
+                            <SlidersHorizontal className="h-4 w-4 mr-2" />
+                            Filtros
+                            {activeFiltersCount > 0 && (
+                                <Badge className="ml-2 h-5 min-w-[20px] p-0 flex items-center justify-center rounded-full bg-primary text-white text-[10px]">
+                                    {activeFiltersCount}
+                                </Badge>
+                            )}
+                        </Button>
 
                         <Button
                             onClick={handleSearch}
@@ -493,7 +559,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                         <Badge
                             variant="secondary"
                             className="pl-2.5 pr-1.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
-                            onClick={() => { setSpecialty("all"); handleSearch(); }}
+                            onClick={() => handleSpecialtyChange("all")}
                         >
                             <Stethoscope className="h-3 w-3 text-primary" />
                             {specialty}
@@ -501,15 +567,15 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                         </Badge>
                     )}
 
-                    {city !== "all" && (
+                    {(state !== "all" || city !== "all") && (
                         <Badge
                             variant="secondary"
-                            className="pl-2.5 pr-1.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
-                            onClick={() => { setCity("all"); handleSearch(); }}
+                            className="pl-2.5 pr-1.5 py-1.5 bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
+                            onClick={() => handleLocationChange("all", "all")}
                         >
                             <MapPin className="h-3 w-3 text-rose-500" />
-                            {city}
-                            <X className="h-3 w-3 text-slate-400 group-hover:text-red-500 transition-colors" />
+                            {city !== "all" ? (state !== "all" ? `${city}, ${state}` : city) : `Todo ${state}`}
+                            <X className="h-3 w-3 text-rose-400 group-hover:text-red-500 transition-colors" />
                         </Badge>
                     )}
 
@@ -517,7 +583,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                         <Badge
                             variant="secondary"
                             className="pl-2.5 pr-1.5 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
-                            onClick={() => { setMinRating(0); handleSearch(); }}
+                            onClick={() => { setMinRating(0); router.push(buildSearchUrl({ minRating: 0 }), { scroll: false }); }}
                         >
                             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                             {minRating}+ estrellas
@@ -529,7 +595,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                         <Badge
                             variant="secondary"
                             className="pl-2.5 pr-1.5 py-1.5 bg-green-50 border border-green-200 text-green-700 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
-                            onClick={() => { setPriceRange([0, maxPrice]); handleSearch(); }}
+                            onClick={() => { setPriceRange([0, maxPrice]); router.push(buildSearchUrl({ minPrice: 0, maxPrice }), { scroll: false }); }}
                         >
                             <DollarSign className="h-3 w-3 text-green-500" />
                             ${priceRange[0].toLocaleString()} - ${priceRange[1].toLocaleString()}
@@ -541,7 +607,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                         <Badge
                             variant="secondary"
                             className="pl-2.5 pr-1.5 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
-                            onClick={() => { setVerifiedOnly(false); handleSearch(); }}
+                            onClick={() => { setVerifiedOnly(false); router.push(buildSearchUrl({ verified: false }), { scroll: false }); }}
                         >
                             <ShieldCheck className="h-3 w-3 text-emerald-500" />
                             Verificados

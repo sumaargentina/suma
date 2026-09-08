@@ -97,12 +97,12 @@ export function FamilyTab() {
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
-        documentType: 'DNI' as DocumentType,
+        documentType: 'Cédula' as DocumentType,
         cedula: '',
         birthDate: '',
         gender: '',
         email: '',
-        phoneCode: '+54',
+        phoneCode: '+58',
         phoneNum: '',
         relationship: '' as FamilyRelationship | '',
         relationshipDetail: '',
@@ -604,10 +604,8 @@ export function FamilyTab() {
                                         <SelectValue placeholder="Seleccionar..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="masculino">Masculino</SelectItem>
-                                        <SelectItem value="femenino">Femenino</SelectItem>
-                                        <SelectItem value="otro">Otro</SelectItem>
-                                        <SelectItem value="no_especificar">No especificar</SelectItem>
+                                        <SelectItem value="masculino">Hombre (Masculino)</SelectItem>
+                                        <SelectItem value="femenino">Mujer (Femenino)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
         const { user } = authResult;
         const body = await request.json();
-        const { name, email, password, clinicId, permissions } = body;
+        const { name, email, password, clinicId, permissions, phone, country, state, city, sector, address } = body;
 
         // 🔐 SEGURIDAD: Verificar que la clínica solo añade secretarias a sí misma
         if (user.role === 'clinic' && clinicId !== user.id) {
@@ -70,6 +70,12 @@ export async function POST(request: NextRequest) {
                 clinic_id: clinicId,
                 permissions: permissions || ['agenda'],
                 role: 'secretary',
+                phone: phone ? sanitizeString(phone) : null,
+                country: country || 'VE',
+                state: state ? sanitizeString(state) : null,
+                city: city ? sanitizeString(city) : null,
+                sector: sector ? sanitizeString(sector) : null,
+                address: address ? sanitizeString(address) : null,
                 created_at: new Date().toISOString()
             }])
             .select()

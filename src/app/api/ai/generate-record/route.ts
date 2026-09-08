@@ -47,12 +47,13 @@ export async function POST(req: Request) {
         "diagnosis": "Diagnóstico presuntivo o definitivo (CIE-10 si aplica)",
         "evaluation": "Evaluación clínica: examen físico, signos vitales, hallazgos",
         "requested_studies": "Estudios solicitados: laboratorios, imágenes, interconsultas (separados por coma)",
-        "treatment": "Plan de tratamiento detallado (medicación, dosis, indicaciones)",
+        "prescription": "Récipe médico / Prescripción formal para farmacia (lista de medicamentos a comprar, concentración, presentación y cantidad ej: 1) Amoxicilina 875mg - 1 caja)",
+        "treatment": "Plan de tratamiento e indicaciones de toma para el paciente (cómo tomarlo, horarios, días de duración, reposo, dieta)",
         "evolution": "Historia actual de la enfermedad: evolución, antecedentes relevantes, observaciones"
       }
 
       Contexto del paciente: ${context || 'General'}
-      Usa terminología médica estándar en español (Argentina).
+      Usa terminología médica estándar en español.
       Si no hay información para algún campo, deja una cadena vacía.
     `;
 

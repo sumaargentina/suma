@@ -9,19 +9,19 @@ export type ChatMessage = {
 // NÚCLEO FAMILIAR - Tipos
 // =====================================================
 
-export type DocumentType = 'DNI' | 'Pasaporte' | 'Otro';
+export type DocumentType = 'Cédula' | 'Pasaporte' | 'DNI' | 'Otro';
 
-export const DOCUMENT_TYPES: DocumentType[] = ['DNI', 'Pasaporte', 'Otro'];
+export const DOCUMENT_TYPES: DocumentType[] = ['Cédula', 'Pasaporte', 'DNI', 'Otro'];
 
 export const COUNTRY_CODES = [
   // Sudamérica
-  { code: '+54', country: 'Argentina', flag: '🇦🇷' },
-  { code: '+55', country: 'Brasil', flag: '🇧🇷' },
-  { code: '+56', country: 'Chile', flag: '🇨🇱' },
-  { code: '+57', country: 'Colombia', flag: '🇨🇴' },
   { code: '+58', country: 'Venezuela', flag: '🇻🇪' },
+  { code: '+54', country: 'Argentina', flag: '🇦🇷' },
+  { code: '+57', country: 'Colombia', flag: '🇨🇴' },
+  { code: '+56', country: 'Chile', flag: '🇨🇱' },
   { code: '+51', country: 'Perú', flag: '🇵🇪' },
   { code: '+593', country: 'Ecuador', flag: '🇪🇨' },
+  { code: '+55', country: 'Brasil', flag: '🇧🇷' },
   { code: '+591', country: 'Bolivia', flag: '🇧🇴' },
   { code: '+595', country: 'Paraguay', flag: '🇵🇾' },
   { code: '+598', country: 'Uruguay', flag: '🇺🇾' },
@@ -173,6 +173,39 @@ export const EXPENSE_CATEGORIES = [
 
 export type UserRole = 'patient' | 'doctor' | 'admin' | 'superadmin' | 'clinic' | 'secretary';
 
+export type WorkspaceType = 'private' | 'clinic' | 'public_hospital';
+
+export interface DoctorWorkspace {
+  id: string;
+  doctorId: string;
+  workspaceType: WorkspaceType;
+  clinicId?: string | null;
+  customName?: string | null;
+  roleInWorkplace?: 'owner' | 'staff_doctor' | 'guard_doctor' | string;
+  status: 'active' | 'pending_invitation' | 'inactive';
+  canManageFinances: boolean;
+  canManageSchedule: boolean;
+  consultationFee?: number;
+  slotDuration?: number;
+  schedule?: Schedule | null;
+  isDefault: boolean;
+  clinicName?: string;
+  clinicLogo?: string;
+  clinicAddress?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ActiveWorkspace {
+  id: string;
+  workspaceType: WorkspaceType;
+  name: string;
+  clinicId?: string | null;
+  roleInWorkplace?: string;
+  canManageFinances: boolean;
+  canManageSchedule: boolean;
+}
+
 export interface Secretary {
   id: string;
   clinicId: string;
@@ -180,6 +213,12 @@ export interface Secretary {
   email: string;
   role: 'secretary';
   permissions: string[];
+  phone?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  sector?: string;
+  address?: string;
 }
 
 export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
@@ -211,8 +250,11 @@ export type Schedule = {
 export type DoctorAddress = {
   id: string;
   name: string;
-  address: string;
+  country?: string;
+  state?: string;
   city: string;
+  sector?: string;
+  address: string;
   schedule: Schedule;
   lat: number;
   lng: number;
@@ -235,8 +277,11 @@ export type ClinicBranch = {
   id: string;
   clinicId: string;
   name: string;
-  address: string;
+  country?: string;
+  state?: string;
   city: string;
+  sector?: string;
+  address: string;
   phone?: string;
   location?: { lat: number; lng: number } | string;
   isActive: boolean;
@@ -337,6 +382,8 @@ export type Clinic = {
   website?: string;
   createdAt: string;
   password?: string; // Required for Admin/Clinic login
+  country?: string;
+  state?: string;
   address?: string;
   city?: string;
   sector?: string;
@@ -390,6 +437,8 @@ export type Doctor = {
   cedula: string;
   documentType?: DocumentType;
   specialty: string;
+  country?: string;
+  state?: string;
   city: string;
   address: string;
   sector: string;
@@ -435,7 +484,42 @@ export type Doctor = {
   // Payment Settings
   paymentSettings?: PaymentSettings;
   acceptedInsurances?: string[];
+
+  phone?: string;
+  onboardingCompleted?: boolean;
+
+  // Digital Signature & Stamp
+  signature_url?: string;
+  stamp_url?: string;
 };
+
+export interface MedicalRecord {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  appointment_id?: string | null;
+  family_member_id?: string | null;
+  visit_date: string;
+  record_type?: string;
+  reason_for_visit?: string | null;
+  diagnosis: string;
+  evaluation?: string | null;
+  requested_studies?: string | null;
+  prescription?: string | null;
+  notes?: string | null;
+  evolution?: string | null;
+  medical_report?: string | null;
+  requires_rest?: boolean;
+  rest_days?: number | null;
+  rest_start_date?: string | null;
+  rest_end_date?: string | null;
+  rest_type?: string | null;
+  rest_justification?: string | null;
+  vital_signs?: any;
+  created_at?: string;
+  updated_at?: string;
+  doctors?: Doctor;
+}
 
 export type Seller = {
   id: string;
@@ -443,6 +527,11 @@ export type Seller = {
   email: string;
   password: string;
   phone: string | null;
+  country?: string;
+  state?: string;
+  city?: string;
+  sector?: string;
+  address?: string;
   profileImage: string;
   referralCode: string;
   bankDetails: BankDetail[];
@@ -457,11 +546,15 @@ export type Patient = {
   password: string;
   age: number | null;
   birthDate?: string | null; // YYYY-MM-DD
-  gender: 'masculino' | 'femenino' | 'otro' | null;
+  gender: 'masculino' | 'femenino' | null;
   phone: string | null;
   cedula: string | null;
   documentType?: DocumentType;
+  country?: string;
+  state?: string;
   city: string | null;
+  sector?: string;
+  address?: string;
   favoriteDoctorIds?: string[];
   favoriteClinicIds?: string[];
   profileImage: string | null;
@@ -488,10 +581,16 @@ export type Appointment = {
   totalPrice: number;
   consultationFee: number;
   paymentMethod: 'efectivo' | 'transferencia' | 'mercadopago';
-  paymentStatus: 'Pendiente' | 'Pagado';
+  paymentStatus: 'Pendiente' | 'Pagado' | 'Reembolsado';
   paymentProof: string | null;
   attendance: 'Atendido' | 'No Asistió' | 'Pendiente';
   patientConfirmationStatus: 'Pendiente' | 'Confirmada' | 'Cancelada';
+  noShowResolution?: 'rescheduled' | 'refunded' | 'retained';
+  refundReason?: string;
+  refundDate?: string;
+  refundAmount?: number;
+  rescheduledFromDate?: string;
+  noShowNote?: string;
   clinicalNotes?: string;
   prescription?: string;
   messages?: ChatMessage[];
@@ -639,12 +738,35 @@ export type CompanyExpense = {
   category: 'operativo' | 'marketing' | 'personal';
 };
 
+export type CountryConfig = {
+  id?: string;
+  code: string;
+  name: string;
+  flag: string;
+  phoneCode: string;
+  currency: string;
+  isActive?: boolean;
+};
+
+export type StateConfig = {
+  id?: string;
+  code?: string;
+  name: string;
+  country: string;
+};
+
 export type City = {
   name: string;
   subscriptionFee: number;
+  country?: string;
+  state?: string;
+  lat?: number;
+  lng?: number;
 };
 
 export type AppSettings = {
+  countries?: CountryConfig[];
+  states?: StateConfig[];
   cities: City[];
   specialties: string[];
   companyBankDetails: BankDetail[];

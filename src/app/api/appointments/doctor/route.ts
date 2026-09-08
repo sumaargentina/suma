@@ -1,29 +1,59 @@
-
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const doctorId = searchParams.get('id');
+    const clinicId = searchParams.get('clinicId');
+    const workspaceType = searchParams.get('workspaceType'); // 'private' | 'clinic' | 'public_hospital'
 
     if (!doctorId) {
         return NextResponse.json({ error: 'Doctor ID required' }, { status: 400 });
     }
 
     try {
-        // 1. Obtener citas
-        const { data: appointments, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('appointments')
-            .select('*')
-            .eq('doctor_id', doctorId);
+            .select('*');
+
+        if (workspaceType === 'private' || (!clinicId && workspaceType !== 'clinic' && workspaceType !== 'public_hospital')) {
+            // Consultorio Privado: solo citas donde NO pertenezcan a una clínica ni servicio institucional
+            query = query
+                .eq('doctor_id', doctorId)
+                .is('clinic_id', null)
+                .is('clinic_service_id', null);
+        } else if (clinicId) {
+            // Clínica / Hospital: citas asignadas a este médico en esta clínica específica
+            const { data: services } = await supabaseAdmin
+                .from('clinic_services')
+                .select('id')
+                .eq('clinic_id', clinicId);
+
+            const serviceIds = (services || []).map(s => s.id);
+
+            if (serviceIds.length > 0) {
+                query = query
+                    .eq('doctor_id', doctorId)
+                    .or(`clinic_id.eq.${clinicId},clinic_service_id.in.(${serviceIds.join(',')})`);
+            } else {
+                query = query
+                    .eq('doctor_id', doctorId)
+                    .eq('clinic_id', clinicId);
+            }
+        } else {
+            query = query.eq('doctor_id', doctorId);
+        }
+
+        const { data: appointments, error } = await query;
 
         if (error) {
             console.error('Error fetching appointments via API:', error);
             throw error;
         }
 
-        // 2. Obtener teléfonos actualizados de pacientes
-        // Usamos Set para ids únicos y filtramos nulos
+        // Obtener teléfonos actualizados de pacientes
         const patientIds = [...new Set(appointments?.map((a: any) => a.patient_id).filter(Boolean))];
         const patientPhoneMap = new Map();
 
@@ -42,7 +72,7 @@ export async function GET(req: Request) {
             }
         }
 
-        // 3. Convertir y mezclar
+        // Convertir y mezclar
         const camelData = (appointments || []).map((item: any) => {
             const result: any = {};
             for (const key in item) {
@@ -50,7 +80,6 @@ export async function GET(req: Request) {
                 result[camelKey] = item[key];
             }
 
-            // Inyectar teléfono actualizado si existe
             if (item.patient_id && patientPhoneMap.has(item.patient_id)) {
                 result.patientPhone = patientPhoneMap.get(item.patient_id);
             }

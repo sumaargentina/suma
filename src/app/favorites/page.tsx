@@ -20,22 +20,42 @@ export default function FavoritesPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [docs, clinics] = await Promise.all([
-          supabaseService.getDoctors(),
-          supabaseService.getClinics()
+        const [docsRes, clinicsRes] = await Promise.all([
+          fetch('/api/doctors').then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch('/api/clinics').then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
-        setAllDoctors(docs);
-        setAllClinics(clinics);
+
+        let docs = Array.isArray(docsRes) ? docsRes : [];
+        let clinics = Array.isArray(clinicsRes) ? clinicsRes : [];
+
+        if (docs.length === 0) {
+          docs = await supabaseService.getDoctors().catch(() => []);
+        }
+        if (clinics.length === 0) {
+          clinics = await supabaseService.getClinics().catch(() => []);
+        }
+
+        if (isMounted) {
+          setAllDoctors(docs);
+          setAllClinics(clinics);
+        }
       } catch (error) {
-        console.error("Failed to fetch data for favorites.", error);
+        console.warn("Failed to fetch data for favorites.", error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const favoriteDoctors = useMemo(() => {

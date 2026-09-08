@@ -6,7 +6,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { Search, UserCheck, CalendarDays, Bot, ArrowRight, Star, Building2 } from "lucide-react";
 import React from "react";
-import { InstallPwaBanner } from "@/components/install-pwa-banner";
 import { HealthBackground } from "@/components/HealthBackground";
 import { SplashScreen } from "@/components/splash-screen";
 
@@ -156,7 +155,6 @@ export default function Home() {
 
       </main>
       <BottomNav />
-      <InstallPwaBanner />
     </div>
   );
 }

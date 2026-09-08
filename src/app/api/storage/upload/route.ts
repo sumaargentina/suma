@@ -13,7 +13,7 @@ export async function POST(request: Request) {
         }
 
         // Validación de seguridad básica: solo permitir buckets conocidos
-        const allowedBuckets = ['images', 'payment-proofs', 'profiles', 'clinics'];
+        const allowedBuckets = ['images', 'payment-proofs', 'profiles', 'clinics', 'profile-images', 'settings'];
         if (!allowedBuckets.includes(bucket)) {
             return NextResponse.json({ error: 'Invalid bucket' }, { status: 400 });
         }

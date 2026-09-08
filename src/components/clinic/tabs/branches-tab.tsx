@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Loader2, Plus, Pencil, Trash2, MapPin, Phone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 
 export function BranchesTab() {
     const { user } = useAuth();
@@ -23,12 +24,24 @@ export function BranchesTab() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingBranch, setEditingBranch] = useState<ClinicBranch | null>(null);
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        name: string;
+        country: string;
+        state: string;
+        city: string;
+        sector: string;
+        address: string;
+        phone: string;
+        location: string;
+    }>({
         name: '',
-        city: '',
+        country: 'VE',
+        state: 'Monagas',
+        city: 'Maturín',
+        sector: '',
         address: '',
         phone: '',
-        location: '', // Coordinates or map link
+        location: '',
     });
 
     useEffect(() => {
@@ -52,7 +65,16 @@ export function BranchesTab() {
     };
 
     const resetForm = () => {
-        setFormData({ name: '', city: '', address: '', phone: '', location: '' });
+        setFormData({
+            name: '',
+            country: 'VE',
+            state: 'Monagas',
+            city: 'Maturín',
+            sector: '',
+            address: '',
+            phone: '',
+            location: '',
+        });
         setEditingBranch(null);
     };
 
@@ -61,8 +83,11 @@ export function BranchesTab() {
             setEditingBranch(branch);
             setFormData({
                 name: branch.name,
-                city: branch.city,
-                address: branch.address,
+                country: branch.country || 'VE',
+                state: branch.state || '',
+                city: branch.city || '',
+                sector: branch.sector || '',
+                address: branch.address || '',
                 phone: branch.phone || '',
                 location: typeof branch.location === 'string' ? branch.location : '',
             });
@@ -132,7 +157,7 @@ export function BranchesTab() {
                             <Plus className="mr-2 h-4 w-4" /> Agregar Sede
                         </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingBranch ? 'Editar Sede' : 'Nueva Sede'}</DialogTitle>
                             <DialogDescription>
@@ -140,24 +165,35 @@ export function BranchesTab() {
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Nombre de la Sede</Label>
-                                    <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Sede Centro" required />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="city">Ciudad</Label>
-                                    <Input id="city" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} placeholder="Ej: Buenos Aires" required />
-                                </div>
-                            </div>
                             <div className="space-y-2">
-                                <Label htmlFor="address">Dirección</Label>
-                                <Input id="address" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} placeholder="Ej: Av. Corrientes 1234" required />
+                                <Label htmlFor="name">Nombre de la Sede</Label>
+                                <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Sede Centro" required />
                             </div>
+
                             <div className="space-y-2">
                                 <Label htmlFor="phone">Teléfono de la Sede</Label>
-                                <Input id="phone" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="Ej: +54 11 4444-5555" required />
+                                <Input id="phone" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="Ej: +58 412 1234567" required />
                             </div>
+
+                            <div className="border-t pt-3">
+                                <h4 className="text-sm font-semibold mb-2">Ubicación y Dirección de la Sede</h4>
+                                <LocationSelector
+                                    country={formData.country}
+                                    state={formData.state}
+                                    city={formData.city}
+                                    sector={formData.sector}
+                                    address={formData.address}
+                                    onLocationChange={(loc: LocationData) => setFormData(prev => ({
+                                        ...prev,
+                                        country: loc.country,
+                                        state: loc.state,
+                                        city: loc.city,
+                                        sector: loc.sector || '',
+                                        address: loc.address || '',
+                                    }))}
+                                />
+                            </div>
+
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                                 <Button type="submit" disabled={isSubmitting}>

@@ -12,12 +12,7 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 });
 
 const nextConfig: NextConfig = {
-  experimental: {
-    reactCompiler: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  reactCompiler: true,
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -57,6 +52,18 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'plus.unsplash.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
         port: '',
         pathname: '/**',
       },

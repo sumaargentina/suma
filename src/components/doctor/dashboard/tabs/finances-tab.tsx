@@ -57,6 +57,9 @@ interface OfficeStats {
   netProfit: number;
   appointments: number;
   paidAppointments: number;
+  refundedAppointments: number;
+  totalRefunded: number;
+  totalRetained: number;
   uniquePatients: number;
 }
 
@@ -124,8 +127,6 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       });
     }
 
-
-
     // Agrupar por consultorio
     const statsMap = new Map<string, OfficeStats>();
 
@@ -150,6 +151,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
         netProfit: 0,
         appointments: 0,
         paidAppointments: 0,
+        refundedAppointments: 0,
+        totalRefunded: 0,
+        totalRetained: 0,
         uniquePatients: 0,
       };
 
@@ -157,6 +161,12 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       if (apt.paymentStatus === 'Pagado') {
         existing.totalRevenue += apt.totalPrice;
         existing.paidAppointments++;
+        if (apt.noShowResolution === 'retained') {
+          existing.totalRetained += apt.totalPrice;
+        }
+      } else if (apt.paymentStatus === 'Reembolsado' || apt.noShowResolution === 'refunded') {
+        existing.refundedAppointments++;
+        existing.totalRefunded += (apt.refundAmount || apt.totalPrice);
       }
 
       statsMap.set(office, existing);
@@ -174,6 +184,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
         netProfit: 0,
         appointments: 0,
         paidAppointments: 0,
+        refundedAppointments: 0,
+        totalRefunded: 0,
+        totalRetained: 0,
         uniquePatients: 0,
       };
 
@@ -204,6 +217,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       netProfit: acc.netProfit + stats.netProfit,
       appointments: acc.appointments + stats.appointments,
       paidAppointments: acc.paidAppointments + stats.paidAppointments,
+      refundedAppointments: acc.refundedAppointments + stats.refundedAppointments,
+      totalRefunded: acc.totalRefunded + stats.totalRefunded,
+      totalRetained: acc.totalRetained + stats.totalRetained,
       uniquePatients: acc.uniquePatients + stats.uniquePatients,
       pendingPayments: 0, // Se calculará después
     }), {
@@ -212,6 +228,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       netProfit: 0,
       appointments: 0,
       paidAppointments: 0,
+      refundedAppointments: 0,
+      totalRefunded: 0,
+      totalRetained: 0,
       uniquePatients: 0,
       pendingPayments: 0,
     });
@@ -228,6 +247,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       netProfit: 0,
       appointments: 0,
       paidAppointments: 0,
+      refundedAppointments: 0,
+      totalRefunded: 0,
+      totalRetained: 0,
       uniquePatients: 0,
     };
   }, [selectedOffice, officeStats, totalStats]);
@@ -261,9 +283,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [doctorData.expenses, timeRange, selectedOffice]);
 
-  // Citas pagadas para la tabla de ingresos
+  // Citas para la tabla de ingresos y movimientos
   const filteredIncomeAppointments = useMemo(() => {
-    let apps = appointments.filter(a => a.paymentStatus === 'Pagado');
+    let apps = appointments.filter(a => a.paymentStatus === 'Pagado' || a.paymentStatus === 'Reembolsado' || a.noShowResolution === 'retained');
 
     if (timeRange !== 'all') {
       const now = new Date();
@@ -664,7 +686,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                     <TableHead>Fecha</TableHead>
                     <TableHead>Paciente</TableHead>
                     <TableHead>Consultorio</TableHead>
-                    <TableHead>Servicio</TableHead>
+                    <TableHead>Servicio / Estado</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -679,8 +701,29 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                           {appt.consultationType === 'online' ? 'Consultas Online' : (addressToNameMap.get(appt.doctorAddress || '') || appt.office || 'Sin consultorio')}
                         </Badge>
                       </TableCell>
-                      <TableCell>{appt.services?.[0]?.name || 'Consulta'}</TableCell>
-                      <TableCell className="text-right font-bold text-green-600">${appt.totalPrice}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs">{appt.services?.[0]?.name || 'Consulta'}</span>
+                          {appt.paymentStatus === 'Reembolsado' ? (
+                            <Badge variant="outline" className="w-fit text-[10px] bg-amber-50 text-amber-800 border-amber-300">
+                              💸 Reembolsado
+                            </Badge>
+                          ) : appt.noShowResolution === 'retained' ? (
+                            <Badge variant="outline" className="w-fit text-[10px] bg-red-50 text-red-700 border-red-200">
+                              🔒 Retenido (Inasistencia)
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {appt.paymentStatus === 'Reembolsado' ? (
+                          <span className="font-bold text-slate-400 line-through">-${appt.totalPrice}</span>
+                        ) : appt.noShowResolution === 'retained' ? (
+                          <span className="font-bold text-slate-900">${appt.totalPrice}</span>
+                        ) : (
+                          <span className="font-bold text-green-600">${appt.totalPrice}</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   )) : (
                     <TableRow>

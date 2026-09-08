@@ -31,7 +31,7 @@ export const validatePhone = (phone: string): { isValid: boolean; sanitized: str
   };
 };
 
-export const validateCedula = (cedula: string, documentType?: 'DNI' | 'Pasaporte' | 'Otro'): { isValid: boolean; sanitized: string } => {
+export const validateCedula = (cedula: string, documentType?: 'Cédula' | 'DNI' | 'Pasaporte' | 'Otro'): { isValid: boolean; sanitized: string } => {
   const originalCedula = cedula.trim();
 
   // Si no hay valor, es válido (campo opcional)
@@ -48,13 +48,12 @@ export const validateCedula = (cedula: string, documentType?: 'DNI' | 'Pasaporte
       sanitized: originalCedula.toUpperCase()
     };
   } else {
-    // DNI argentino: 7-8 dígitos, opcionalmente con puntos
-    // Si no se especifica tipo, asumimos DNI por compatibilidad
-    const sanitizedDNI = originalCedula.replace(/\./g, ''); // Eliminar puntos
-    const dniRegex = /^\d{7,8}$/;
+    // Cédula de Identidad / DNI: 6-12 caracteres alfanuméricos (ej: 12345678, V12345678, E84123456)
+    const sanitizedCedula = originalCedula.replace(/[.\s-]/g, '').toUpperCase();
+    const cedulaRegex = /^[VEJ]?[0-9]{6,12}$/i;
     return {
-      isValid: dniRegex.test(sanitizedDNI),
-      sanitized: sanitizedDNI
+      isValid: cedulaRegex.test(sanitizedCedula),
+      sanitized: sanitizedCedula
     };
   }
 };
@@ -145,7 +144,7 @@ export const validateGender = (gender: string): { isValid: boolean; sanitized: s
   const sanitized = sanitizeText(gender).toLowerCase();
 
   return {
-    isValid: ['masculino', 'femenino', 'otro'].includes(sanitized),
+    isValid: ['masculino', 'femenino'].includes(sanitized),
     sanitized
   };
 };

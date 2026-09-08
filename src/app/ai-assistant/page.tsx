@@ -83,8 +83,8 @@ export default function AiAssistantPage() {
   useEffect(() => {
     if (!hasStarted && messages.length === 0) {
       const welcomeMessage = user?.name
-        ? `¡Hola ${user.name.split(' ')[0]}! 👋 Soy SUMA, tu asistente de salud. ¿En qué puedo ayudarte hoy? 😊`
-        : "¡Hola! 👋 Soy SUMA, tu asistente de salud. ¿Cómo te llamas?";
+        ? `¡Hola ${user.name.split(' ')[0]}! 👋 Soy SUMA, tu asistente virtual de salud. ¿Cómo te sientes hoy y en qué te puedo orientar? 😊`
+        : "¡Hola! 👋 Soy SUMA, tu asistente virtual de salud. Cuéntame, ¿cómo te sientes hoy o qué síntomas estás experimentando?";
 
       setMessages([{ sender: "assistant", text: welcomeMessage }]);
       setHasStarted(true);
@@ -169,7 +169,7 @@ export default function AiAssistantPage() {
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = false;
-    recognitionRef.current.lang = 'es-ES';
+    recognitionRef.current.lang = 'es-419';
 
     recognitionRef.current.onstart = () => {
       setIsListening(true);
@@ -210,9 +210,9 @@ export default function AiAssistantPage() {
   };
 
   const quickActions = [
-    { icon: "🩺", text: "Buscar especialista" },
-    { icon: "📅", text: "Agendar cita" },
-    { icon: "💊", text: "Tengo síntomas" },
+    { icon: "🩺", text: "Tengo síntomas y necesito orientación" },
+    { icon: "📍", text: "Buscar especialistas en Venezuela" },
+    { icon: "📅", text: "¿Cómo agendo una cita médica?" },
   ];
 
   return (
@@ -329,19 +329,22 @@ export default function AiAssistantPage() {
             {/* Input de mensaje */}
             <div className="border-t bg-white p-3 md:p-4">
               <form onSubmit={handleSubmit} className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant={isListening ? "destructive" : "outline"}
-                  className={cn(
-                    "rounded-full h-10 w-10 shrink-0",
-                    isListening && "animate-pulse ring-2 ring-red-400"
-                  )}
-                  onClick={toggleListening}
-                  title="Dictar por voz"
-                >
-                  {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </Button>
+                {/* Botón de voz (temporalmente desactivado a petición del usuario, función toggleListening preservada) */}
+                {false && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={isListening ? "destructive" : "outline"}
+                    className={cn(
+                      "rounded-full h-10 w-10 shrink-0",
+                      isListening && "animate-pulse ring-2 ring-red-400"
+                    )}
+                    onClick={toggleListening}
+                    title="Dictar por voz"
+                  >
+                    {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                )}
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}

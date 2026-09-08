@@ -1,8 +1,8 @@
-
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react';
 import type { Appointment, DoctorNotification, AdminSupportTicket, DoctorPayment } from './types';
+import { differenceInDays } from 'date-fns';
 import { useAuth } from './auth';
 import { batchUpdateDoctorAppointmentsAsRead, batchUpdateDoctorNotificationsAsRead } from './supabaseService';
 import { getCurrentDateTimeInArgentina } from './utils';
@@ -16,11 +16,26 @@ interface DoctorNotificationContextType {
     supportTickets: AdminSupportTicket[],
     doctorPayments: DoctorPayment[]
   ) => void;
+  markDoctorNotificationAsRead: (id: string) => void;
   markDoctorNotificationsAsRead: () => void;
+  clearReadDoctorNotifications: () => void;
+  clearAllDoctorNotifications: () => void;
 }
 
 const DoctorNotificationContext = createContext<DoctorNotificationContextType | undefined>(undefined);
 const getNotificationStorageKey = (userId: string) => `suma-doctor-notifications-${userId}`;
+const MAX_NOTIFICATIONS = 25;
+
+// Filtrar notificaciones obsoletas (más de 14 días) y limitar tamaño
+const filterValidDoctorNotifications = (list: DoctorNotification[]): DoctorNotification[] => {
+  const now = getCurrentDateTimeInArgentina();
+  return list.filter(n => {
+    if (n.createdAt && differenceInDays(now, new Date(n.createdAt)) > 14) {
+      return false;
+    }
+    return true;
+  }).slice(0, MAX_NOTIFICATIONS);
+};
 
 export function DoctorNotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -35,8 +50,10 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
         const stored = localStorage.getItem(storageKey);
         if (stored) {
           const parsed = JSON.parse(stored) as DoctorNotification[];
-          setDoctorNotifications(parsed);
-          setDoctorUnreadCount(parsed.filter(n => !n.read).length);
+          const valid = filterValidDoctorNotifications(parsed);
+          setDoctorNotifications(valid);
+          setDoctorUnreadCount(valid.filter(n => !n.read).length);
+          localStorage.setItem(storageKey, JSON.stringify(valid));
         } else {
           setDoctorNotifications([]);
           setDoctorUnreadCount(0);
@@ -55,7 +72,6 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
   // Limpiar notificaciones de otros usuarios cuando cambie el usuario
   useEffect(() => {
     if (user?.id && user.role === 'doctor') {
-      // Limpiar notificaciones de otros usuarios
       const allKeys = Object.keys(localStorage);
       const doctorNotificationKeys = allKeys.filter(key =>
         key.startsWith('suma-doctor-notifications-') &&
@@ -71,11 +87,11 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
     const storageKey = getNotificationStorageKey(user.id);
 
     setDoctorNotifications(prev => {
-      // Evitar duplicados
+      // Evitar duplicados por ID
       if (prev.some(n => n.id === notification.id)) {
         return prev;
       }
-      const updated = [notification, ...prev].sort((a, b) =>
+      const updated = filterValidDoctorNotifications([notification, ...prev]).sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       localStorage.setItem(storageKey, JSON.stringify(updated));
@@ -99,16 +115,19 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
     const existingIds = new Set(doctorNotifications.map(n => n.id));
 
     // --- Generate Notifications ---
-
     appointments.forEach(appt => {
       // 1. New Appointment
       if (appt.readByDoctor === false) {
         const id = `new-appt-${appt.id}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: 'new_appointment', title: '¡Nueva Cita Agendada!',
+            id,
+            type: 'new_appointment',
+            title: '¡Nueva Cita Agendada!',
             description: `El paciente ${appt.patientName} ha reservado para el ${appt.date}.`,
-            date: appt.date, createdAt: now.toISOString(), read: false,
+            date: appt.date,
+            createdAt: now.toISOString(),
+            read: false,
             link: `/doctor/dashboard?view=appointments`
           });
         }
@@ -119,59 +138,75 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
         const id = `verify-${appt.id}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: 'payment_verification', title: 'Verificación de Pago',
+            id,
+            type: 'payment_verification',
+            title: 'Verificación de Pago',
             description: `El paciente ${appt.patientName} espera aprobación.`,
-            date: appt.date, createdAt: now.toISOString(), read: false,
+            date: appt.date,
+            createdAt: now.toISOString(),
+            read: false,
             link: `/doctor/dashboard?view=appointments`
           });
         }
       }
+
       // 3. Patient Confirmation status change
       if (appt.patientConfirmationStatus === 'Confirmada' || appt.patientConfirmationStatus === 'Cancelada') {
         const id = `confirm-${appt.id}-${appt.patientConfirmationStatus}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: appt.patientConfirmationStatus === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
+            id,
+            type: appt.patientConfirmationStatus === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
             title: `Cita ${appt.patientConfirmationStatus}`,
             description: `${appt.patientName} ha ${appt.patientConfirmationStatus.toLowerCase()} su cita.`,
-            date: `${appt.date}T${appt.time || '00:00'}`, createdAt: now.toISOString(), read: false,
+            date: `${appt.date}T${appt.time || '00:00'}`,
+            createdAt: now.toISOString(),
+            read: false,
             link: `/doctor/dashboard?view=appointments`
           });
         }
       }
+
       // 4. New Messages from patient
       const lastMessage = appt.messages?.slice(-1)[0];
       if (lastMessage?.sender === 'patient') {
         const id = `msg-${appt.id}-${lastMessage.id}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: 'new_message', title: `Nuevo Mensaje de ${appt.patientName}`,
-            description: lastMessage.text.substring(0, 50) + '...',
-            date: lastMessage.timestamp, createdAt: now.toISOString(), read: false,
+            id,
+            type: 'new_message',
+            title: `Nuevo Mensaje de ${appt.patientName}`,
+            description: lastMessage.text.substring(0, 50) + (lastMessage.text.length > 50 ? '...' : ''),
+            date: lastMessage.timestamp,
+            createdAt: now.toISOString(),
+            read: false,
             link: `/doctor/dashboard?view=appointments`
           });
         }
       }
     });
 
-    // 5. Subscription payment update from admin - Solo pagos de este doctor
+    // 5. Subscription payment update from admin
     const doctorPaymentsFiltered = doctorPayments.filter(payment => payment.doctorId === user.id);
     doctorPaymentsFiltered.forEach(payment => {
       if ((payment.status === 'Paid' || payment.status === 'Rejected') && !payment.readByDoctor) {
         const id = `sub-${payment.id}-${payment.status}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: 'subscription_update',
+            id,
+            type: 'subscription_update',
             title: `Suscripción ${payment.status === 'Paid' ? 'Aprobada' : 'Rechazada'}`,
             description: `Tu pago de $${payment.amount.toFixed(2)} ha sido ${payment.status === 'Paid' ? 'aprobado' : 'rechazado'}.`,
-            date: payment.date, createdAt: now.toISOString(), read: false,
+            date: payment.date,
+            createdAt: now.toISOString(),
+            read: false,
             link: '/doctor/dashboard?view=subscription'
           });
         }
       }
     });
 
-    // 6. Support Ticket Replies from admin - Solo tickets de este doctor
+    // 6. Support Ticket Replies from admin
     const doctorSupportTickets = supportTickets.filter(ticket =>
       ticket.userRole === 'doctor' && ticket.userId === user.email
     );
@@ -181,29 +216,57 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
         const id = `support-${ticket.id}-${lastMessage.id}`;
         if (!existingIds.has(id)) {
           newNotificationsMap.set(id, {
-            id, type: 'support_reply',
+            id,
+            type: 'support_reply',
             title: `Respuesta de Soporte`,
             description: `El equipo de SUMA ha respondido a tu ticket: "${ticket.subject}"`,
-            date: lastMessage.timestamp, createdAt: now.toISOString(), read: false,
+            date: lastMessage.timestamp,
+            createdAt: now.toISOString(),
+            read: false,
             link: `/doctor/dashboard?view=support&ticketId=${ticket.id}`
           });
         }
       }
     });
-    // --- End Generate Notifications ---
-
 
     if (newNotificationsMap.size > 0) {
       const uniqueNewNotifications = Array.from(newNotificationsMap.values());
-      const updatedNotifications = [...uniqueNewNotifications, ...doctorNotifications]
+      const filteredExisting = filterValidDoctorNotifications(doctorNotifications);
+      const updatedNotifications = filterValidDoctorNotifications([...uniqueNewNotifications, ...filteredExisting])
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
       setDoctorNotifications(updatedNotifications);
-      setDoctorUnreadCount(prev => prev + uniqueNewNotifications.length);
+      setDoctorUnreadCount(updatedNotifications.filter(n => !n.read).length);
     }
   }, [doctorNotifications, user]);
 
+  // Marcar una sola notificación como leída
+  const markDoctorNotificationAsRead = useCallback(async (id: string) => {
+    if (!user?.id || user.role !== 'doctor') return;
+
+    const storageKey = getNotificationStorageKey(user.id);
+    setDoctorNotifications(prev => {
+      const updated = prev.map(n => n.id === id ? { ...n, read: true } : n);
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      setDoctorUnreadCount(updated.filter(n => !n.read).length);
+      return updated;
+    });
+
+    // Si es una cita nueva, marcar en base de datos
+    if (id.startsWith('new-appt-')) {
+      const apptId = id.replace('new-appt-', '');
+      batchUpdateDoctorAppointmentsAsRead([apptId]).catch(console.error);
+    } else if (id.startsWith('sub-')) {
+      const paymentId = id.split('-')[1];
+      batchUpdateDoctorNotificationsAsRead([paymentId], []).catch(console.error);
+    } else if (id.startsWith('support-')) {
+      const ticketId = id.split('-')[1];
+      batchUpdateDoctorNotificationsAsRead([], [ticketId]).catch(console.error);
+    }
+  }, [user]);
+
+  // Marcar todas como leídas
   const markDoctorNotificationsAsRead = useCallback(async () => {
     if (!user?.id || user.role !== 'doctor' || doctorUnreadCount === 0) return;
 
@@ -230,15 +293,30 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
 
     await batchUpdateDoctorAppointmentsAsRead(appointmentIdsToUpdate);
     await batchUpdateDoctorNotificationsAsRead(paymentIdsToUpdate, ticketIdsToUpdate);
-
   }, [doctorNotifications, user, doctorUnreadCount]);
 
-  const value = { doctorNotifications, doctorUnreadCount, checkAndSetDoctorNotifications, markDoctorNotificationsAsRead };
+  // Limpiar notificaciones leídas
+  const clearReadDoctorNotifications = useCallback(() => {
+    if (!user?.id || user.role !== 'doctor') return;
+    const storageKey = getNotificationStorageKey(user.id);
+    const remaining = doctorNotifications.filter(n => !n.read);
+    localStorage.setItem(storageKey, JSON.stringify(remaining));
+    setDoctorNotifications(remaining);
+    setDoctorUnreadCount(remaining.length);
+  }, [user, doctorNotifications]);
+
+  // Limpiar todas las notificaciones
+  const clearAllDoctorNotifications = useCallback(() => {
+    if (!user?.id || user.role !== 'doctor') return;
+    const storageKey = getNotificationStorageKey(user.id);
+    localStorage.removeItem(storageKey);
+    setDoctorNotifications([]);
+    setDoctorUnreadCount(0);
+  }, [user]);
 
   // --- Supabase Realtime para notificaciones instantáneas ---
   useEffect(() => {
     if (!user?.id || user.role !== 'doctor') {
-      // Limpiar suscripción si el usuario no es doctor
       if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
@@ -248,7 +326,6 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
 
     const now = getCurrentDateTimeInArgentina();
 
-    // Crear canal de Realtime para escuchar cambios en appointments
     const channel = supabase
       .channel(`doctor-notifications-${user.id}`)
       // Escuchar nuevas citas
@@ -261,7 +338,6 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
           filter: `doctor_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('🔔 Nueva cita recibida en tiempo real:', payload);
           const appt = payload.new as Record<string, unknown>;
           const notification: DoctorNotification = {
             id: `new-appt-${appt.id}`,
@@ -276,7 +352,7 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
           addNotification(notification);
         }
       )
-      // Escuchar cambios en citas existentes (confirmaciones, cancelaciones, pagos)
+      // Escuchar cambios en citas existentes
       .on(
         'postgres_changes',
         {
@@ -286,16 +362,15 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
           filter: `doctor_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('🔔 Actualización de cita recibida:', payload);
           const appt = payload.new as Record<string, unknown>;
           const oldAppt = payload.old as Record<string, unknown>;
 
-          // Detectar cambio de estado de confirmación
+          // Cambio de estado de confirmación
           if (appt.patient_confirmation_status !== oldAppt.patient_confirmation_status) {
             const status = appt.patient_confirmation_status as string;
             if (status === 'Confirmada' || status === 'Cancelada') {
               const notification: DoctorNotification = {
-                id: `confirm-${appt.id}-${status}-${Date.now()}`,
+                id: `confirm-${appt.id}-${status}`,
                 type: status === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
                 title: `Cita ${status}`,
                 description: `${appt.patient_name || 'El paciente'} ha ${status.toLowerCase()} su cita.`,
@@ -308,14 +383,14 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
             }
           }
 
-          // Detectar nuevo mensaje
+          // Nuevo mensaje
           const newMessages = appt.messages as Array<Record<string, unknown>> | null;
           const oldMessages = oldAppt.messages as Array<Record<string, unknown>> | null;
           if (newMessages && (!oldMessages || newMessages.length > (oldMessages?.length || 0))) {
             const lastMessage = newMessages[newMessages.length - 1];
             if (lastMessage?.sender === 'patient') {
               const notification: DoctorNotification = {
-                id: `msg-${appt.id}-${lastMessage.id || Date.now()}`,
+                id: `msg-${appt.id}-${lastMessage.id || 'last'}`,
                 type: 'new_message',
                 title: `Nuevo Mensaje de ${appt.patient_name || 'Paciente'}`,
                 description: String(lastMessage.text || '').substring(0, 50) + '...',
@@ -339,14 +414,13 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
           filter: `doctor_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('🔔 Actualización de pago recibida:', payload);
           const payment = payload.new as Record<string, unknown>;
           const oldPayment = payload.old as Record<string, unknown>;
 
           if (payment.status !== oldPayment.status &&
             (payment.status === 'Paid' || payment.status === 'Rejected')) {
             const notification: DoctorNotification = {
-              id: `sub-${payment.id}-${payment.status}-${Date.now()}`,
+              id: `sub-${payment.id}-${payment.status}`,
               type: 'subscription_update',
               title: `Suscripción ${payment.status === 'Paid' ? 'Aprobada' : 'Rechazada'}`,
               description: `Tu pago de $${Number(payment.amount || 0).toFixed(2)} ha sido ${payment.status === 'Paid' ? 'aprobado' : 'rechazado'}.`,
@@ -359,26 +433,28 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`📡 Estado de suscripción Realtime para doctor ${user.id}:`, status);
-      });
+      .subscribe();
 
     subscriptionRef.current = channel;
 
-    // También hacer polling inicial y cada 60 segundos como backup
-    const doctorId = user.id; // Capturamos el ID aquí ya que sabemos que existe
+    // Polling inicial y cada 60s
+    const doctorId = user.id;
     async function fetchInitial() {
-      const { getDoctorAppointments, getSupportTickets, getDoctorPayments } = await import('./supabaseService');
-      const [appointments, supportTickets, doctorPayments] = await Promise.all([
-        getDoctorAppointments(doctorId),
-        getSupportTickets(),
-        getDoctorPayments()
-      ]);
-      checkAndSetDoctorNotifications(appointments, supportTickets, doctorPayments);
+      try {
+        const { getDoctorAppointments, getSupportTickets, getDoctorPayments } = await import('./supabaseService');
+        const [appointments, supportTickets, doctorPayments] = await Promise.all([
+          getDoctorAppointments(doctorId),
+          getSupportTickets(),
+          getDoctorPayments()
+        ]);
+        checkAndSetDoctorNotifications(appointments || [], supportTickets || [], doctorPayments || []);
+      } catch (err) {
+        console.warn('⚠️ No se pudieron sincronizar las notificaciones del doctor en este momento:', err);
+      }
     }
 
     fetchInitial();
-    const interval = setInterval(fetchInitial, 60000); // Backup polling cada 60 segundos
+    const interval = setInterval(fetchInitial, 60000);
 
     return () => {
       clearInterval(interval);
@@ -388,6 +464,16 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
       }
     };
   }, [user, addNotification, checkAndSetDoctorNotifications]);
+
+  const value = {
+    doctorNotifications,
+    doctorUnreadCount,
+    checkAndSetDoctorNotifications,
+    markDoctorNotificationAsRead,
+    markDoctorNotificationsAsRead,
+    clearReadDoctorNotifications,
+    clearAllDoctorNotifications
+  };
 
   return (
     <DoctorNotificationContext.Provider value={value}>

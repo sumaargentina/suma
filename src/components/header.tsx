@@ -7,6 +7,7 @@ import { useNotifications } from "@/lib/notifications";
 import { useDoctorNotifications } from "@/lib/doctor-notifications";
 import { useSellerNotifications } from "@/lib/seller-notifications";
 import { useClinicNotifications } from "@/lib/clinic-notifications";
+import { useAdminNotifications } from "@/lib/admin-notifications";
 import { useChatNotifications } from "@/lib/chat-notifications";
 import * as supabaseService from "@/lib/supabaseService";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { formatDistanceToNow, parseISO } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { type AdminNotification, type DoctorNotification, type PatientNotification, type SellerNotification, type ClinicNotification } from "@/lib/types";
@@ -39,6 +40,7 @@ import {
   SheetClose,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import {
   Bell,
@@ -64,28 +66,39 @@ import {
   LogIn,
   Menu,
   Building2,
+  Trash2,
+  CheckCheck,
 } from 'lucide-react';
 import { MobileMenuBackground } from "@/components/MobileMenuBackground";
+import { WorkspaceSwitcherHeader } from "@/components/doctor/workspace-switcher-header";
 
 
 export function Header() {
-  const { user, logout } = useAuth();
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
-  const { doctorNotifications, doctorUnreadCount, markDoctorNotificationsAsRead } = useDoctorNotifications();
-  const { sellerNotifications, sellerUnreadCount, markSellerNotificationsAsRead } = useSellerNotifications();
-  const { clinicNotifications, clinicUnreadCount, markClinicNotificationsAsRead } = useClinicNotifications();
+  const { user, logout, activeWorkspace } = useAuth();
+  const { notifications, unreadCount, markNotificationAsRead, markAllAsRead, clearReadNotifications } = useNotifications();
+  const { doctorNotifications, doctorUnreadCount, markDoctorNotificationAsRead, markDoctorNotificationsAsRead, clearReadDoctorNotifications } = useDoctorNotifications();
+  const { sellerNotifications, sellerUnreadCount, markSellerNotificationAsRead, markSellerNotificationsAsRead, clearReadSellerNotifications } = useSellerNotifications();
+  const { clinicNotifications, clinicUnreadCount, markClinicNotificationAsRead, markClinicNotificationsAsRead, clearReadClinicNotifications } = useClinicNotifications();
+  const { adminNotifications, adminUnreadCount, markAdminNotificationAsRead, markAdminNotificationsAsRead, clearReadAdminNotifications } = useAdminNotifications();
   const { unreadChatCount } = useChatNotifications();
   const pathname = usePathname();
 
-  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
-  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-
+  const formatNotificationDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return formatDistanceToNow(d, { locale: es, addSuffix: true });
+    } catch {
+      return '';
+    }
+  };
 
   const getAdminNotificationIcon = (type: AdminNotification['type']) => {
     switch (type) {
@@ -138,92 +151,6 @@ export function Header() {
     }
   };
 
-  const fetchAdminNotifications = useCallback(async () => {
-    if (user?.role !== 'admin') {
-      setAdminNotifications([]);
-      setAdminUnreadCount(0);
-      return;
-    }
-
-    const [tickets, payments, doctors] = await Promise.all([
-      supabaseService.getSupportTickets(),
-      supabaseService.getDoctorPayments(),
-      supabaseService.getDoctors(),
-    ]);
-
-    const paymentNotifications: AdminNotification[] = payments
-      .filter(p => p.status === 'Pending' && !p.readByAdmin)
-      .map(p => ({
-        id: `payment-${p.id}`,
-        type: 'payment',
-        title: 'Pago Pendiente de Aprobación',
-        description: `El Dr. ${p.doctorName} ha reportado un pago.`,
-        date: p.date,
-        read: false,
-        link: `/admin/dashboard?view=finances`
-      }));
-
-    const ticketNotifications: AdminNotification[] = tickets
-      .filter(t => !t.readByAdmin)
-      .map(t => ({
-        id: `ticket-${t.id}`,
-        type: 'support_ticket',
-        title: 'Nuevo Ticket de Soporte',
-        description: `De: ${t.userName}`,
-        date: t.date,
-        read: false,
-        link: `/admin/dashboard?view=support`
-      }));
-
-    const doctorNotifications: AdminNotification[] = doctors
-      .filter(d => !d.readByAdmin)
-      .map(d => ({
-        id: `doctor-${d.id}`,
-        type: 'new_doctor',
-        title: 'Nuevo Médico Registrado',
-        description: `El Dr. ${d.name} se ha unido a la plataforma.`,
-        date: d.joinDate,
-        read: false,
-        link: `/admin/dashboard?view=doctors`
-      }));
-
-    const allNotifications = [...paymentNotifications, ...ticketNotifications, ...doctorNotifications]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    setAdminNotifications(allNotifications);
-    setAdminUnreadCount(allNotifications.filter(n => !n.read).length);
-  }, [user]);
-
-  useEffect(() => {
-    fetchAdminNotifications();
-    const interval = setInterval(fetchAdminNotifications, 60000); // Poll every 60 seconds
-    return () => clearInterval(interval);
-  }, [fetchAdminNotifications]);
-
-  const markAdminNotificationsAsRead = async () => {
-    if (adminUnreadCount === 0) return;
-
-    const unreadTicketIds = adminNotifications
-      .filter(n => n.type === 'support_ticket' && !n.read)
-      .map(n => n.id.replace('ticket-', ''));
-
-    const unreadPaymentIds = adminNotifications
-      .filter(n => n.type === 'payment' && !n.read)
-      .map(n => n.id.replace('payment-', ''));
-
-    const unreadDoctorIds = adminNotifications
-      .filter(n => n.type === 'new_doctor' && !n.read)
-      .map(n => n.id.replace('doctor-', ''));
-
-    if (unreadTicketIds.length > 0 || unreadPaymentIds.length > 0 || unreadDoctorIds.length > 0) {
-      await supabaseService.batchUpdateNotificationsAsRead(unreadTicketIds, unreadPaymentIds, unreadDoctorIds);
-
-      // Optimistically update the UI
-      setAdminUnreadCount(0);
-      setAdminNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    }
-  };
-
 
 
   const patientNavLinks = [
@@ -242,25 +169,28 @@ export function Header() {
     { href: "/admin/dashboard?view=settings", label: "Configuración" },
   ];
 
-  const isClinicDoctor = user?.role === 'doctor' && user?.isClinicEmployee;
+  const isClinicDoctor = user?.role === 'doctor' && (
+    activeWorkspace?.workspaceType === 'clinic' || 
+    activeWorkspace?.workspaceType === 'public_hospital' || 
+    (activeWorkspace && !activeWorkspace.canManageFinances) ||
+    (!activeWorkspace && user?.isClinicEmployee)
+  );
 
-  const doctorNavLinks = [
-    { href: "/doctor/dashboard?view=appointments", label: "Citas" },
-    { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
-    { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
-    { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
-    { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },
-    { href: "/doctor/dashboard?view=profile", label: "Mi Perfil" },
-    { href: "/doctor/dashboard?view=support", label: "Soporte" },
-  ];
-
-  if (!isClinicDoctor) {
-    doctorNavLinks.splice(1, 0, { href: "/doctor/dashboard?view=finances", label: "Finanzas" });
-    doctorNavLinks.splice(3, 0, { href: "/doctor/dashboard?view=addresses", label: "Consultorios" });
-    doctorNavLinks.splice(5, 0, { href: "/doctor/dashboard?view=coupons", label: "Cupones" });
-    doctorNavLinks.splice(6, 0, { href: "/doctor/dashboard?view=bank-details", label: "Cuentas" });
-    doctorNavLinks.splice(8, 0, { href: "/doctor/dashboard?view=subscription", label: "Suscripción" });
-  }
+  const doctorNavLinks = isClinicDoctor
+    ? [
+        { href: "/doctor/dashboard?view=appointments", label: "Citas" },
+        { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
+        { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
+      ]
+    : [
+        { href: "/doctor/dashboard?view=appointments", label: "Citas" },
+        { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
+        { href: "/doctor/dashboard?view=finances", label: "Finanzas" },
+        { href: "/doctor/dashboard?view=addresses", label: "Consultorios" },
+        { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
+        { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
+        { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },
+      ];
 
   const sellerNavLinks = [
     { href: "/seller/dashboard?view=referrals", label: "Mis Referidos" },
@@ -307,117 +237,226 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center">
-        <div className="flex items-center gap-2 font-bold text-lg">
+      <div className="container flex h-16 items-center justify-between gap-2 px-4 max-w-7xl">
+        <div className="flex items-center gap-2 font-bold text-lg shrink-0">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Stethoscope className="h-6 w-6 text-primary" />
             <span className="font-headline">SUMA</span>
           </Link>
         </div>
-        <nav className="hidden md:flex ml-auto items-center gap-1 flex-wrap">
-          {user && user.role === 'admin' && pathname.startsWith('/admin') && adminNavLinks.map((link) => (
-            <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} asChild>
-              <Link href={link.href}>{link.label}</Link>
-            </Button>
-          ))}
-          {user && user.role === 'doctor' && pathname.startsWith('/doctor') && doctorNavLinks.map((link) => (
-            <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} asChild className="relative">
-              <Link href={link.href}>
-                {link.label}
-                {link.unreadCount && link.unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">
-                    {link.unreadCount}
-                  </span>
-                )}
-              </Link>
-            </Button>
-          ))}
-          {user && user.role === 'seller' && pathname.startsWith('/seller') && sellerNavLinks.map((link) => (
-            <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} asChild>
-              <Link href={link.href}>{link.label}</Link>
-            </Button>
-          ))}
-          {(!user || user.role === 'patient') && patientNavLinks.map((link) => (
-            <Button key={link.href} variant="ghost" asChild className="relative">
-              <Link href={link.href}>
-                {link.label}
-              </Link>
-            </Button>
-          ))}
 
+        {/* Center / Navigation Links */}
+        <nav className="hidden md:flex items-center gap-1 flex-nowrap overflow-x-auto no-scrollbar mx-2">
+          {user && user.role === 'admin' && (
+            pathname.startsWith('/admin') ? (
+              adminNavLinks.map((link) => (
+                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
+                  <Link href={link.href}>{link.label}</Link>
+                </Button>
+              ))
+            ) : (
+              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
+                <Link href="/admin/dashboard?view=overview">
+                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                  Panel Administrador
+                </Link>
+              </Button>
+            )
+          )}
+
+          {user && user.role === 'doctor' && (
+            pathname.startsWith('/doctor') ? (
+              doctorNavLinks.map((link) => (
+                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="relative text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9 whitespace-nowrap">
+                  <Link href={link.href}>
+                    {link.label}
+                    {link.unreadCount !== undefined && link.unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                        {link.unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                </Button>
+              ))
+            ) : (
+              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
+                <Link href="/doctor/dashboard">
+                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                  Mi Panel Médico
+                </Link>
+              </Button>
+            )
+          )}
+
+          {user && user.role === 'seller' && (
+            pathname.startsWith('/seller') ? (
+              sellerNavLinks.map((link) => (
+                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
+                  <Link href={link.href}>{link.label}</Link>
+                </Button>
+              ))
+            ) : (
+              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
+                <Link href="/seller/dashboard?view=referrals">
+                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                  Panel Vendedora
+                </Link>
+              </Button>
+            )
+          )}
+
+          {(!user || user.role === 'patient' || (!pathname.startsWith('/doctor') && !pathname.startsWith('/admin') && !pathname.startsWith('/seller'))) && patientNavLinks.map((link) => (
+            <Button key={link.href} variant="ghost" size="sm" asChild className="relative text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
+              <Link href={link.href}>
+                {link.label}
+              </Link>
+            </Button>
+          ))}
+        </nav>
+
+        {/* Right Side Controls (Workspace, Notifications, Avatar) */}
+        <div className="hidden md:flex ml-auto items-center gap-1.5 shrink-0">
           {user && isAdmin && (
             <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-2">
+                <Button variant="ghost" size="icon" className="relative ml-1">
                   <Bell className="h-5 w-5" />
                   {adminUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{adminUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{adminUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de admin</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 md:w-96 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {adminUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
+                        {adminUnreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {adminUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markAdminNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {adminNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadAdminNotifications()} title="Limpiar leídas">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {adminNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {adminNotifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markAdminNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">
                           {getAdminNotificationIcon(n.type)}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
           )}
 
           {user && isDoctor && (
+            <div className="flex items-center mr-1">
+              <WorkspaceSwitcherHeader />
+            </div>
+          )}
+
+          {user && isDoctor && (
             <Popover onOpenChange={(open) => { if (open && doctorUnreadCount > 0) markDoctorNotificationsAsRead(); }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-2">
+                <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {doctorUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{doctorUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{doctorUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de doctor</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 md:w-96 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {doctorUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
+                        {doctorUnreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {doctorUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markDoctorNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {doctorNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadDoctorNotifications()} title="Limpiar leídas">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {doctorNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {doctorNotifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markDoctorNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">
                           {getDoctorNotificationIcon(n.type)}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -426,42 +465,68 @@ export function Header() {
           {user && isSeller && (
             <Popover onOpenChange={(open) => { if (open && sellerUnreadCount > 0) markSellerNotificationsAsRead(); }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-2">
+                <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {sellerUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{sellerUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{sellerUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de vendedora</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 md:w-96 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {sellerUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
+                        {sellerUnreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {sellerUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markSellerNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {sellerNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadSellerNotifications()} title="Limpiar leídas">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {sellerNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
-                    {sellerNotifications.slice(0, 5).map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {sellerNotifications.map(n => (
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markSellerNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">
                           {getSellerNotificationIcon(n.type)}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
-                    {sellerNotifications.length > 5 && (
-                      <div className="text-center py-2 text-xs text-muted-foreground">
-                        Mostrando las últimas 5 de {sellerNotifications.length} notificaciones
-                      </div>
-                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -470,37 +535,68 @@ export function Header() {
           {user && isClinicOrSecretary && (
             <Popover onOpenChange={(open) => { if (open && clinicUnreadCount > 0) markClinicNotificationsAsRead(); }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-2">
+                <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {clinicUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{clinicUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{clinicUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de clínica</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 md:w-96 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {clinicUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
+                        {clinicUnreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {clinicUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markClinicNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {clinicNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadClinicNotifications()} title="Limpiar leídas">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {clinicNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {clinicNotifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markClinicNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">
                           {getClinicNotificationIcon(n.type)}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -513,7 +609,7 @@ export function Header() {
               }
             }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-2">
+                <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
@@ -524,32 +620,58 @@ export function Header() {
                   <span className="sr-only">Ver notificaciones</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 md:w-96 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {unreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
+                        {unreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {unreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markAllAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {notifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadNotifications()} title="Limpiar leídas">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {notifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
-                    {notifications.slice(0, 5).map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-primary/10")}>
-                        <div className="mt-1">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {notifications.map(n => (
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-primary/5 hover:bg-primary/10 border-l-2 border-primary"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">
                           {getPatientNotificationIcon(n.type)}
                         </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
-                    {notifications.length > 5 && (
-                      <div className="text-center py-2 text-xs text-muted-foreground">
-                        Mostrando las últimas 5 de {notifications.length} notificaciones
-                      </div>
-                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -558,14 +680,14 @@ export function Header() {
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-1">
-                  <Avatar className="h-8 w-8">
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1 p-0">
+                  <Avatar className="h-9 w-9 border border-border">
                     {user.profileImage && <AvatarImage src={user.profileImage} alt={user.name} />}
                     <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
+              <DropdownMenuContent className="w-60" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{user.name}</p>
@@ -581,6 +703,44 @@ export function Header() {
                     <span>Panel de Control</span>
                   </Link>
                 </DropdownMenuItem>
+                {user.role === 'doctor' && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/doctor/dashboard?view=profile">
+                        <User className="mr-2 h-4 w-4" />
+                        <span>Mi Perfil</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    {!isClinicDoctor && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/doctor/dashboard?view=subscription">
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            <span>Suscripción</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/doctor/dashboard?view=bank-details">
+                            <DollarSign className="mr-2 h-4 w-4" />
+                            <span>Cuentas Bancarias</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/doctor/dashboard?view=coupons">
+                            <Ticket className="mr-2 h-4 w-4" />
+                            <span>Cupones</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href="/doctor/dashboard?view=support">
+                            <LifeBuoy className="mr-2 h-4 w-4" />
+                            <span>Soporte y Ayuda</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </>
+                )}
                 {user.role === 'patient' && (
                   <>
                     <DropdownMenuItem asChild>
@@ -619,15 +779,15 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <div className="flex items-center gap-2 ml-4">
-              <Button variant="ghost" asChild>
+            <div className="flex items-center gap-2 ml-2">
+              <Button variant="ghost" size="sm" asChild>
                 <Link href="/login">
                   <LogIn className="mr-2 h-4 w-4" /> Iniciar Sesión
                 </Link>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button>
+                  <Button size="sm">
                     <UserPlus className="mr-2 h-4 w-4" /> Regístrate
                   </Button>
                 </DropdownMenuTrigger>
@@ -648,7 +808,7 @@ export function Header() {
               </DropdownMenu>
             </div>
           )}
-        </nav>
+        </div>
         <div className="md:hidden ml-auto flex items-center gap-1">
           {user && isAdmin && (
             <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
@@ -657,33 +817,60 @@ export function Header() {
                   <Bell className="h-5 w-5" />
                   {adminUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{adminUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{adminUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de admin</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {adminUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{adminUnreadCount} nuevas</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {adminUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markAdminNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {adminNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadAdminNotifications()}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {adminNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {adminNotifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
-                          {getAdminNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markAdminNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">{getAdminNotificationIcon(n.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -696,33 +883,60 @@ export function Header() {
                   <Bell className="h-5 w-5" />
                   {doctorUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{doctorUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{doctorUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de doctor</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {doctorUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{doctorUnreadCount} nuevas</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {doctorUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markDoctorNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {doctorNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadDoctorNotifications()}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {doctorNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {doctorNotifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
-                          {getDoctorNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markDoctorNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">{getDoctorNotificationIcon(n.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -735,38 +949,126 @@ export function Header() {
                   <Bell className="h-5 w-5" />
                   {sellerUnreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{sellerUnreadCount}</span>
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{sellerUnreadCount}</span>
                     </span>
                   )}
                   <span className="sr-only">Ver notificaciones de vendedora</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {sellerUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{sellerUnreadCount} nuevas</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {sellerUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markSellerNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {sellerNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadSellerNotifications()}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {sellerNotifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
-                    {sellerNotifications.slice(0, 5).map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-blue-50")}>
-                        <div className="mt-1">
-                          {getSellerNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {sellerNotifications.map(n => (
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markSellerNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">{getSellerNotificationIcon(n.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
-                    {sellerNotifications.length > 5 && (
-                      <div className="text-center py-2 text-xs text-muted-foreground">
-                        Mostrando las últimas 5 de {sellerNotifications.length} notificaciones
-                      </div>
-                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {user && isClinicOrSecretary && (
+            <Popover onOpenChange={(open) => { if (open && clinicUnreadCount > 0) markClinicNotificationsAsRead(); }}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                  {clinicUnreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{clinicUnreadCount}</span>
+                    </span>
+                  )}
+                  <span className="sr-only">Ver notificaciones de clínica</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {clinicUnreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{clinicUnreadCount} nuevas</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {clinicUnreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markClinicNotificationsAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {clinicNotifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadClinicNotifications()}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {clinicNotifications.length > 0 ? (
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {clinicNotifications.map(n => (
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markClinicNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">{getClinicNotificationIcon(n.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -790,27 +1092,54 @@ export function Header() {
                   <span className="sr-only">Ver notificaciones</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="flex justify-between items-center mb-2 px-2">
-                  <h4 className="font-medium text-sm">Notificaciones</h4>
+              <PopoverContent align="end" className="w-80 p-3">
+                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Notificaciones</h4>
+                    {unreadCount > 0 && (
+                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{unreadCount} nuevas</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {unreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markAllAsRead()}>
+                        Leer todas
+                      </Button>
+                    )}
+                    {notifications.length > 0 && (
+                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadNotifications()}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {notifications.length > 0 ? (
-                  <div className="space-y-1 max-h-80 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {notifications.map(n => (
-                      <Link href={n.link} key={n.id} className={cn("p-2 rounded-lg flex items-start gap-3 hover:bg-muted/50", !n.read && "bg-primary/10")}>
-                        <div className="mt-1">
-                          {getPatientNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">{n.title}</p>
-                          <p className="text-xs text-muted-foreground">{n.description}</p>
-                          <p className="text-xs text-muted-foreground/80 mt-1">{n.date && formatDistanceToNow(parseISO(n.date), { locale: es, addSuffix: true })}</p>
+                      <Link
+                        href={n.link}
+                        key={n.id}
+                        onClick={() => markNotificationAsRead(n.id)}
+                        className={cn(
+                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
+                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-primary/5 hover:bg-primary/10 border-l-2 border-primary"
+                        )}
+                      >
+                        <div className="mt-0.5 shrink-0">{getPatientNotificationIcon(n.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs truncate">{n.title}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
                         </div>
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-center text-muted-foreground py-4">No tienes notificaciones.</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+                    <p className="text-xs font-medium">Estás al día</p>
+                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
+                  </div>
                 )}
               </PopoverContent>
             </Popover>
@@ -827,121 +1156,215 @@ export function Header() {
               <MobileMenuBackground />
               <SheetHeader className="text-left relative z-10">
                 <SheetTitle className="sr-only">Menú</SheetTitle>
+                <SheetDescription className="sr-only">Navegación principal de la plataforma SUMA</SheetDescription>
               </SheetHeader>
-              <div className="flex flex-col gap-4 py-6 px-2 relative z-10">
-                <div className="flex items-center gap-2 font-bold text-base mb-3">
-                  <Stethoscope className="h-5 w-5 text-primary" />
-                  <span className="font-headline text-base">SUMA</span>
-                </div>
-                {user?.role === 'admin' && pathname.startsWith('/admin') && (
-                  <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-4 py-4 px-2 relative z-10">
+                {/* Top Logo & User Card */}
+                {user ? (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/50 shadow-sm">
+                    <Avatar className="h-11 w-11 border-2 border-primary/20 shrink-0">
+                      {user.profileImage && <AvatarImage src={user.profileImage} alt={user.name} className="object-cover" />}
+                      <AvatarFallback className="bg-primary/10 text-primary font-bold text-base">
+                        {user.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm text-foreground truncate">{user.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      <span className="inline-block mt-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                        {user.role === 'doctor' ? (isClinicDoctor ? 'Médico Institucional' : 'Médico Particular') : user.role === 'patient' ? 'Paciente' : user.role === 'seller' ? 'Vendedora' : 'Administrador'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 font-bold text-base mb-1">
+                    <Stethoscope className="h-5 w-5 text-primary" />
+                    <span className="font-headline text-base">SUMA</span>
+                  </div>
+                )}
+
+                {/* Navigation Links per role */}
+                {user?.role === 'admin' && (
+                  <div className="flex flex-col gap-1.5">
+                    {!pathname.startsWith('/admin') && (
+                      <SheetClose asChild>
+                        <Link href="/admin/dashboard?view=overview" className="flex items-center justify-center gap-2 text-sm font-semibold py-2 px-3 mb-1 rounded-xl bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition">
+                          <LayoutDashboard className="h-4 w-4" /> Ir a Panel Admin
+                        </Link>
+                      </SheetClose>
+                    )}
                     <p className="text-muted-foreground font-semibold text-xs mb-1">PANEL ADMIN</p>
                     {adminNavLinks.map((link) => (
                       <SheetClose key={link.href} asChild>
-                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
+                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
                           <span>{link.label}</span>
                         </Link>
                       </SheetClose>
                     ))}
                   </div>
                 )}
-                {user?.role === 'doctor' && pathname.startsWith('/doctor') && (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-muted-foreground font-semibold text-xs mb-1">PANEL DOCTOR</p>
-                    {doctorNavLinks.map((link) => (
-                      <SheetClose key={link.href} asChild>
-                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                          <span>{link.label}</span>
-                        </Link>
-                      </SheetClose>
-                    ))}
-                  </div>
-                )}
-                {user?.role === 'seller' && pathname.startsWith('/seller') && (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-muted-foreground font-semibold text-xs mb-1">PANEL VENDEDORA</p>
-                    {sellerNavLinks.map((link) => (
-                      <SheetClose key={link.href} asChild>
-                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                          <span>{link.label}</span>
-                        </Link>
-                      </SheetClose>
-                    ))}
-                  </div>
-                )}
-                {(!user || user.role === 'patient') && (
-                  <div className="flex flex-col gap-2">
-                    {patientNavLinks.map((link) => (
-                      <SheetClose key={link.href} asChild>
-                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                          <span>{link.label}</span>
-                        </Link>
-                      </SheetClose>
-                    ))}
-                  </div>
-                )}
-                <div className="border-t pt-3 mt-2">
-                  {user ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Avatar className="h-8 w-8">
-                          {user.profileImage && <AvatarImage src={user.profileImage} alt={user.name} />}
-                          <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium text-sm leading-tight">{user.name}</p>
-                          <p className="text-xs text-muted-foreground leading-tight">{user.email}</p>
-                        </div>
-                      </div>
+
+                {user?.role === 'doctor' && (
+                  <div className="flex flex-col gap-3">
+                    {/* Botón directo si no está en /doctor */}
+                    {!pathname.startsWith('/doctor') && (
                       <SheetClose asChild>
-                        <Link href={dashboardHref} className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                          <LayoutDashboard className="h-4 w-4 text-primary" /> Panel de Control
+                        <Link href="/doctor/dashboard" className="flex items-center justify-center gap-2 text-sm font-semibold py-2 px-3 rounded-xl bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition">
+                          <LayoutDashboard className="h-4 w-4" /> Ir a mi Panel Médico
                         </Link>
                       </SheetClose>
-                      {user.role === 'patient' && (
+                    )}
+
+                    {/* Sede Actual */}
+                    <div className="pb-2 border-b border-border/50">
+                      <p className="text-muted-foreground font-semibold text-xs mb-1.5">SEDE ACTUAL</p>
+                      <WorkspaceSwitcherHeader />
+                    </div>
+
+                    {/* Operaciones del Doctor */}
+                    <div className="flex flex-col gap-1">
+                      <p className="text-muted-foreground font-semibold text-xs mb-1">OPERACIONES</p>
+                      {doctorNavLinks.map((link) => (
+                        <SheetClose key={link.href} asChild>
+                          <Link href={link.href} className="flex items-center justify-between text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                            <span>{link.label}</span>
+                            {link.unreadCount !== undefined && link.unreadCount > 0 && (
+                              <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {link.unreadCount}
+                              </span>
+                            )}
+                          </Link>
+                        </SheetClose>
+                      ))}
+                    </div>
+
+                    {/* Mi Cuenta y Ajustes */}
+                    <div className="flex flex-col gap-1 border-t border-border/50 pt-2.5">
+                      <p className="text-muted-foreground font-semibold text-xs mb-1">MI CUENTA</p>
+                      <SheetClose asChild>
+                        <Link href="/doctor/dashboard?view=profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                          <User className="h-4 w-4 text-primary" /> Mi Perfil
+                        </Link>
+                      </SheetClose>
+                      {!isClinicDoctor && (
                         <>
                           <SheetClose asChild>
-                            <Link href="/profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                              <User className="h-4 w-4 text-primary" /> Mi Perfil
+                            <Link href="/doctor/dashboard?view=subscription" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                              <CreditCard className="h-4 w-4 text-primary" /> Suscripción
                             </Link>
                           </SheetClose>
                           <SheetClose asChild>
-                            <Link href="/patient/chats" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                              <MessageSquare className="h-4 w-4 text-primary" /> Mis Mensajes
+                            <Link href="/doctor/dashboard?view=bank-details" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                              <DollarSign className="h-4 w-4 text-primary" /> Cuentas Bancarias
                             </Link>
                           </SheetClose>
                           <SheetClose asChild>
-                            <Link href="/favorites" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
-                              <Heart className="h-4 w-4 text-primary" /> Mis Favoritos
+                            <Link href="/doctor/dashboard?view=coupons" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                              <Ticket className="h-4 w-4 text-primary" /> Cupones
+                            </Link>
+                          </SheetClose>
+                          <SheetClose asChild>
+                            <Link href="/doctor/dashboard?view=support" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                              <LifeBuoy className="h-4 w-4 text-primary" /> Soporte y Ayuda
                             </Link>
                           </SheetClose>
                         </>
                       )}
-                      {user.role === 'seller' && (
+                    </div>
+
+                    {/* Explorar sitio */}
+                    <div className="flex flex-col gap-1 border-t border-border/50 pt-2.5">
+                      <p className="text-muted-foreground font-semibold text-xs mb-1">EXPLORAR</p>
+                      {patientNavLinks.map((link) => (
+                        <SheetClose key={link.href} asChild>
+                          <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                            <span>{link.label}</span>
+                          </Link>
+                        </SheetClose>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {user?.role === 'seller' && (
+                  <div className="flex flex-col gap-1.5">
+                    {!pathname.startsWith('/seller') && (
+                      <SheetClose asChild>
+                        <Link href="/seller/dashboard?view=referrals" className="flex items-center justify-center gap-2 text-sm font-semibold py-2 px-3 mb-1 rounded-xl bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition">
+                          <LayoutDashboard className="h-4 w-4" /> Ir a Panel Vendedora
+                        </Link>
+                      </SheetClose>
+                    )}
+                    <p className="text-muted-foreground font-semibold text-xs mb-1">PANEL VENDEDORA</p>
+                    {sellerNavLinks.map((link) => (
+                      <SheetClose key={link.href} asChild>
+                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                          <span>{link.label}</span>
+                        </Link>
+                      </SheetClose>
+                    ))}
+                    <div className="border-t border-border/50 pt-2 mt-1">
+                      <SheetClose asChild>
+                        <Link href="/seller/profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                          <User className="h-4 w-4 text-primary" /> Mi Perfil
+                        </Link>
+                      </SheetClose>
+                    </div>
+                  </div>
+                )}
+
+                {(!user || user.role === 'patient') && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-muted-foreground font-semibold text-xs mb-1">NAVEGACIÓN</p>
+                    {patientNavLinks.map((link) => (
+                      <SheetClose key={link.href} asChild>
+                        <Link href={link.href} className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                          <span>{link.label}</span>
+                        </Link>
+                      </SheetClose>
+                    ))}
+                    {user?.role === 'patient' && (
+                      <div className="border-t border-border/50 pt-2 mt-1 space-y-1">
                         <SheetClose asChild>
-                          <Link href="/seller/profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2 rounded hover:bg-muted transition">
+                          <Link href="/profile" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
                             <User className="h-4 w-4 text-primary" /> Mi Perfil
                           </Link>
                         </SheetClose>
-                      )}
-                      <Button onClick={logout} className="w-full h-8 text-sm flex items-center gap-2 justify-center mt-2">
-                        <LogOut className="h-4 w-4" /> Cerrar Sesión
-                      </Button>
-                    </div>
+                        <SheetClose asChild>
+                          <Link href="/patient/chats" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                            <MessageSquare className="h-4 w-4 text-primary" /> Mis Mensajes
+                          </Link>
+                        </SheetClose>
+                        <SheetClose asChild>
+                          <Link href="/favorites" className="flex items-center gap-2 text-sm font-medium py-2 px-2.5 rounded-lg hover:bg-muted transition">
+                            <Heart className="h-4 w-4 text-primary" /> Mis Favoritos
+                          </Link>
+                        </SheetClose>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Footer Action (Logout / Login) */}
+                <div className="border-t border-border/50 pt-3 mt-2">
+                  {user ? (
+                    <Button onClick={logout} variant="destructive" className="w-full h-9 text-sm flex items-center gap-2 justify-center shadow-sm">
+                      <LogOut className="h-4 w-4" /> Cerrar Sesión
+                    </Button>
                   ) : (
                     <div className="space-y-2">
                       <SheetClose asChild>
-                        <Button variant="outline" className="w-full h-8 text-sm" asChild>
+                        <Button variant="outline" className="w-full h-9 text-sm" asChild>
                           <Link href="/login">Iniciar Sesión</Link>
                         </Button>
                       </SheetClose>
                       <SheetClose asChild>
-                        <Button className="w-full h-8 text-sm" asChild>
+                        <Button className="w-full h-9 text-sm" asChild>
                           <Link href="/auth/register">Registrarse (Paciente)</Link>
                         </Button>
                       </SheetClose>
                       <SheetClose asChild>
-                        <Button className="w-full h-8 text-sm" variant="secondary" asChild>
+                        <Button className="w-full h-9 text-sm" variant="secondary" asChild>
                           <Link href="/auth/register-doctor">Registrarse (Médico)</Link>
                         </Button>
                       </SheetClose>

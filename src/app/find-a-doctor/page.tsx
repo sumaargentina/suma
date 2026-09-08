@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { SearchFilters } from "@/components/search-filters";
 import { SpecialtyPills } from "@/components/specialty-pills";
 import { HealthBackground } from "@/components/HealthBackground";
 import { MapViewToggle } from "@/components/map-view-toggle";
+import { getCitiesByState } from "@/lib/geo-data";
 
 // Force dynamic rendering to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -20,11 +20,12 @@ export const dynamic = 'force-dynamic';
 export default async function FindDoctorPage({
   searchParams,
 }: {
-  searchParams: { q?: string; specialty?: string; city?: string; minPrice?: string; maxPrice?: string; minRating?: string; verified?: string; view?: string }
+  searchParams: { q?: string; specialty?: string; state?: string; city?: string; minPrice?: string; maxPrice?: string; minRating?: string; verified?: string; view?: string }
 }) {
   const params = await searchParams;
   const query = params?.q || "";
   const specialtyFilter = params?.specialty || "all";
+  const stateFilter = params?.state || "all";
   const cityFilter = params?.city || "all";
   const minPrice = Number(params?.minPrice) || 0;
   const maxPrice = Number(params?.maxPrice) || 50000;
@@ -51,10 +52,15 @@ export default async function FindDoctorPage({
     count: doctors.filter(d => d.specialty === specialty).length
   })).filter(s => s.count > 0);
 
+  // Lista completa de ciudades venezolanas oficiales + ciudades configuradas en settings + registradas
+  const venezuelanCities = getCitiesByState('VE').map(c => c.name);
+  const configCities = (settings?.cities || []).map((c: any) => typeof c === 'string' ? c : c.name).filter(Boolean);
   const cities = Array.from(new Set([
+    ...venezuelanCities,
+    ...configCities,
     ...doctors.map(d => d.city).filter(Boolean),
     ...clinics.map(c => c.city).filter((c): c is string => !!c)
-  ])).sort();
+  ])).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
   // Helper function for search matching
   const matchesSearch = (searchTerm: string, ...fields: (string | undefined | null)[]): boolean => {
@@ -64,6 +70,14 @@ export default async function FindDoctorPage({
       field && field.toLowerCase().includes(lowerSearch)
     );
   };
+
+  // Helper para verificar si una ciudad pertenece a un estado
+  const getCitiesForState = (stName: string): string[] => {
+    if (stName === "all") return [];
+    return getCitiesByState('VE', stName).map(c => c.name.toLowerCase());
+  };
+
+  const selectedStateCities = stateFilter !== "all" ? getCitiesForState(stateFilter) : [];
 
   // Filter Logic - Doctores
   const filteredDoctors = doctors.filter(doctor => {
@@ -81,6 +95,7 @@ export default async function FindDoctorPage({
       doctor.name,           // Nombre completo
       doctor.specialty,      // Especialidad
       doctor.city,           // Ciudad
+      doctor.state,          // Estado
       doctor.address,        // Dirección
       doctor.sector,         // Sector/Zona
       doctor.description,    // Descripción del perfil
@@ -90,7 +105,17 @@ export default async function FindDoctorPage({
     );
 
     const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
-    const matchesCity = cityFilter === "all" || doctor.city === cityFilter;
+
+    // Filtro por Estado y Ciudad
+    let matchesLocation = true;
+    if (stateFilter !== "all") {
+      const docStateMatches = doctor.state?.toLowerCase() === stateFilter.toLowerCase();
+      const docCityInState = doctor.city && selectedStateCities.includes(doctor.city.toLowerCase());
+      matchesLocation = Boolean(docStateMatches || docCityInState);
+    }
+    if (matchesLocation && cityFilter !== "all") {
+      matchesLocation = doctor.city?.toLowerCase() === cityFilter.toLowerCase();
+    }
 
     // Filtros Avanzados
     const fee = doctor.consultationFee || 0;
@@ -101,7 +126,7 @@ export default async function FindDoctorPage({
 
     const matchesVerified = !verifiedOnly || doctor.verificationStatus === 'verified';
 
-    return matchesQuery && matchesSpecialty && matchesCity && matchesPrice && matchesRating && matchesVerified;
+    return matchesQuery && matchesSpecialty && matchesLocation && matchesPrice && matchesRating && matchesVerified;
   });
 
   // Filter Logic - Clínicas
@@ -120,14 +145,20 @@ export default async function FindDoctorPage({
       insurancesString       // Obras sociales
     );
 
-    // Clinics filter logic by city
-    const matchesCity = cityFilter === "all" || clinic.city === cityFilter;
+    // Clinics filter logic by state and city
+    let matchesLocation = true;
+    if (stateFilter !== "all") {
+      const clinicCityInState = clinic.city && selectedStateCities.includes(clinic.city.toLowerCase());
+      matchesLocation = Boolean(clinicCityInState);
+    }
+    if (matchesLocation && cityFilter !== "all") {
+      matchesLocation = clinic.city?.toLowerCase() === cityFilter.toLowerCase();
+    }
+
     const rating = clinic.rating || 0;
     const matchesRating = rating >= minRating;
 
-    // Clinic verification is already checked in matchesStatus ('verified'), so matchesVerified is implicit or we can enforce strict verified param if user wants ONLY verified (which clinics always are in this list basically).
-
-    return matchesStatus && matchesQuery && matchesCity && matchesRating;
+    return matchesStatus && matchesQuery && matchesLocation && matchesRating;
   });
 
   // Separar doctores: Médicos regulares vs Especialistas de Bienestar
@@ -138,6 +169,58 @@ export default async function FindDoctorPage({
   const wellnessDoctors = filteredDoctors.filter(
     doctor => beautySpecialties.includes(doctor.specialty)
   );
+
+  // Doctores y Clínicas para el Mapa (Conservan filtros de especialidad/búsqueda pero NO se limitan a una sola ciudad para permitir explorar todo el mapa)
+  const mapDoctors = doctors.filter(doctor => {
+    const isClinicDoctor = doctor.clinicId || doctor.isClinicEmployee;
+    if (isClinicDoctor) return false;
+
+    const insurancesString = doctor.acceptedInsurances?.join(' ') || '';
+    const servicesString = doctor.services?.map(s => s.name).join(' ') || '';
+    const addressesString = doctor.addresses?.map(a => `${a.name} ${a.address} ${a.city}`).join(' ') || '';
+
+    const matchesQuery = matchesSearch(
+      query,
+      doctor.name,
+      doctor.specialty,
+      doctor.city,
+      doctor.state,
+      doctor.address,
+      doctor.sector,
+      doctor.description,
+      insurancesString,
+      servicesString,
+      addressesString
+    );
+
+    const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
+    const fee = doctor.consultationFee || 0;
+    const matchesPrice = fee >= minPrice && fee <= maxPrice;
+    const rating = doctor.rating || 0;
+    const matchesRating = rating >= minRating;
+    const matchesVerified = !verifiedOnly || doctor.verificationStatus === 'verified';
+
+    return matchesQuery && matchesSpecialty && matchesPrice && matchesRating && matchesVerified;
+  });
+
+  const mapClinics = clinics.filter(clinic => {
+    const matchesStatus = clinic.verificationStatus === 'verified' && clinic.status === 'active';
+    const insurancesString = clinic.acceptedInsurances?.join(' ') || '';
+
+    const matchesQuery = matchesSearch(
+      query,
+      clinic.name,
+      clinic.description,
+      clinic.city,
+      clinic.address,
+      insurancesString
+    );
+
+    const rating = clinic.rating || 0;
+    const matchesRating = rating >= minRating;
+
+    return matchesStatus && matchesQuery && matchesRating;
+  });
 
   return (
     <div className="min-h-screen bg-neutral-50 selection:bg-secondary selection:text-white">
@@ -183,7 +266,9 @@ export default async function FindDoctorPage({
           <MapViewToggle
             doctors={filteredDoctors}
             clinics={filteredClinics}
-            centerCity={cityFilter !== "all" ? cityFilter : undefined}
+            mapDoctors={mapDoctors}
+            mapClinics={mapClinics}
+            centerCity={cityFilter !== "all" ? cityFilter : (stateFilter !== "all" ? stateFilter : undefined)}
           >
             {/* 1. MÉDICOS PARTICULARES */}
             {regularDoctors.length > 0 && viewMode !== 'clinics' && (
@@ -267,7 +352,7 @@ export default async function FindDoctorPage({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
                   {filteredClinics.map((clinic, index) => (
                     <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
                   ))}
