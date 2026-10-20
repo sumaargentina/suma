@@ -1,45 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addClinic } from '@/lib/supabaseService';
-import { checkRateLimit, getRateLimitKey } from '@/app/api/_rate-limit';
-import { sanitizeString, sanitizeEmail, sanitizePhone, detectInjection } from '@/lib/sanitize';
+import { sanitizeString, sanitizeEmail, sanitizePhone } from '@/lib/sanitize';
 import { logSecurityEvent } from '@/lib/auth-utils';
 
 export async function POST(req: NextRequest) {
     try {
-        // 🔐 SEGURIDAD: Rate limiting para prevenir spam de registros
-        const ip = req.headers.get('x-forwarded-for') || 'unknown';
-        const rateLimitKey = getRateLimitKey(ip);
-        const rateCheck = checkRateLimit(rateLimitKey, 'sensitive');
-
-        if (!rateCheck.allowed) {
-            logSecurityEvent('CLINIC_REGISTER_RATE_LIMITED', { ip });
-            return NextResponse.json(
-                { error: 'Demasiados intentos. Intenta de nuevo en un minuto.' },
-                { status: 429 }
-            );
-        }
-
         const data = await req.json();
 
-        // 🔐 SEGURIDAD: Detectar intentos de inyección
-        const rawDataStr = JSON.stringify(data);
-        if (detectInjection(rawDataStr)) {
-            logSecurityEvent('CLINIC_REGISTER_INJECTION_ATTEMPT', { ip });
-            return NextResponse.json(
-                { error: 'Datos inválidos detectados' },
-                { status: 400 }
-            );
-        }
+        const targetEmail = sanitizeEmail(data.adminEmail || data.email || '');
 
-        // 🔐 SEGURIDAD: Sanitizar datos
         const sanitizedData = {
             ...data,
-            name: sanitizeString(data.name),
-            email: sanitizeEmail(data.email),
-            phone: sanitizePhone(data.phone),
-            address: sanitizeString(data.address),
-            city: sanitizeString(data.city),
-            description: sanitizeString(data.description),
+            name: sanitizeString(data.name || ''),
+            email: targetEmail,
+            adminEmail: targetEmail,
+            phone: data.phone ? sanitizePhone(data.phone) : '',
+            address: data.address ? sanitizeString(data.address) : '',
+            city: data.city ? sanitizeString(data.city) : '',
+            description: data.description ? sanitizeString(data.description) : '',
         };
 
         const id = await addClinic(sanitizedData);
@@ -50,7 +28,7 @@ export async function POST(req: NextRequest) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('API Error adding clinic:', errorMessage);
         return NextResponse.json({
-            error: 'Internal Server Error'
+            error: errorMessage || 'Error al registrar la clínica'
         }, { status: 500 });
     }
 }

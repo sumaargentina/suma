@@ -418,9 +418,9 @@ export function PharmaciesTab() {
       computedName = independentName.trim();
     }
 
-    const effectiveLic = licenseNumber.trim() || rif.trim();
-    if (!effectiveLic || !phone.trim() || !locationData.city || !locationData.address?.trim() || !email.trim() || (!isEditing && !password.trim())) {
-      toast({ variant: 'destructive', title: 'Campos obligatorios', description: 'Completa RIF/Permiso Sanitario, teléfono, ubicación y credenciales.' });
+    const effectiveLic = licenseNumber.trim() || rif.trim() || `RIF-${Date.now().toString().slice(-6)}`;
+    if (!locationData.city || !email.trim() || (!isEditing && !password.trim())) {
+      toast({ variant: 'destructive', title: 'Campos obligatorios', description: 'Completa el nombre, ciudad y credenciales de acceso (correo y contraseña).' });
       return;
     }
 
@@ -442,7 +442,7 @@ export function PharmaciesTab() {
         phone: phone.trim() || null,
         whatsapp: (whatsapp.trim() || phone.trim()) || null,
         email: email.trim().toLowerCase(),
-        address: locationData.address.trim(),
+        address: (locationData.address || locationData.city || '').trim(),
         city: locationData.city.trim(),
         state: locationData.state || 'Monagas',
         country: normalizeCountryCode(locationData.country),

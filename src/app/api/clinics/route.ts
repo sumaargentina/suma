@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 // Force dynamic to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -34,8 +35,8 @@ export async function GET(request: Request) {
         const camelCaseClinics = clinics.map((clinic: any) => ({
             id: clinic.id,
             name: clinic.name,
-            adminEmail: clinic.admin_email,
-            email: clinic.email,
+            adminEmail: clinic.admin_email || clinic.email,
+            email: clinic.email || clinic.admin_email,
             slug: clinic.slug,
             phone: clinic.phone,
             whatsapp: clinic.whatsapp,
@@ -66,6 +67,72 @@ export async function GET(request: Request) {
     } catch (error: any) {
         console.error('Unexpected error in GET /api/clinics:', error);
         return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
+    }
+}
+
+export async function POST(request: Request) {
+    try {
+        const body = await request.json();
+        const name = (body.name || '').trim();
+        const targetEmail = (body.adminEmail || body.email || '').trim().toLowerCase();
+        const rawPassword = body.password || '';
+
+        if (!name || !targetEmail || !rawPassword) {
+            return NextResponse.json(
+                { error: 'Nombre, correo electrónico y contraseña son obligatorios.' },
+                { status: 400 }
+            );
+        }
+
+        const hashedPassword = rawPassword.startsWith('$2')
+            ? rawPassword
+            : await bcrypt.hash(rawPassword, 10);
+
+        const slug = body.slug || (
+            name
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4)
+        );
+
+        const insertData: Record<string, any> = {
+            name,
+            admin_email: targetEmail,
+            email: body.email ? body.email.trim().toLowerCase() : targetEmail,
+            password: hashedPassword,
+            phone: body.phone || null,
+            whatsapp: body.whatsapp || body.phone || null,
+            city: body.city || null,
+            state: body.state || null,
+            country: body.country || 'VE',
+            address: body.address || null,
+            description: body.description || null,
+            plan: body.plan || 'integral',
+            billing_cycle: body.billingCycle || 'monthly',
+            slug,
+            status: body.status || 'active',
+            verification_status: body.verificationStatus || 'verified',
+            logo_url: body.logoUrl || null,
+            banner_image: body.bannerImage || null,
+        };
+
+        const { data, error } = await supabaseAdmin
+            .from('clinics')
+            .insert([insertData])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Supabase error creating clinic:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, id: data.id, clinic: data }, { status: 201 });
+    } catch (error: any) {
+        console.error('Error creating clinic:', error);
+        return NextResponse.json({ error: error.message || 'No se pudo crear la clínica' }, { status: 500 });
     }
 }
 
@@ -117,7 +184,6 @@ export async function PATCH(request: Request) {
 
         // Handle password change - hash it before saving
         if (body.password && body.password.trim()) {
-            const bcrypt = await import('bcryptjs');
             dbData.password = await bcrypt.hash(body.password, 10);
         }
 
@@ -135,5 +201,45 @@ export async function PATCH(request: Request) {
     } catch (error: any) {
         console.error('Error updating clinic:', error);
         return NextResponse.json({ error: 'Failed to update clinic', details: error.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'ID de clínica requerido' }, { status: 400 });
+        }
+
+        // Limpiar referencias en cascada antes de eliminar la clínica
+        await Promise.allSettled([
+            supabaseAdmin.from('doctors').update({ clinic_id: null }).eq('clinic_id', id),
+            supabaseAdmin.from('appointments').update({ clinic_id: null, clinic_service_id: null }).eq('clinic_id', id),
+            supabaseAdmin.from('doctor_workspaces').delete().eq('clinic_id', id),
+            supabaseAdmin.from('secretaries').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_services').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_branches').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_specialties').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_payments').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_expenses').delete().eq('clinic_id', id),
+            supabaseAdmin.from('clinic_patient_messages').delete().eq('clinic_id', id),
+        ]);
+
+        const { error } = await supabaseAdmin
+            .from('clinics')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting clinic:', error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, message: 'Clínica eliminada exitosamente' });
+    } catch (error: any) {
+        console.error('Error in DELETE /api/clinics:', error);
+        return NextResponse.json({ error: error.message || 'Error al eliminar la clínica' }, { status: 500 });
     }
 }

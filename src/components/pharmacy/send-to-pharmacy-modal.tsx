@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { Pharmacy } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { PharmacyShowcaseModal } from './pharmacy-showcase-modal';
 
 interface SendToPharmacyModalProps {
   isOpen: boolean;
@@ -76,6 +77,7 @@ export function SendToPharmacyModal({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('ALL');
+  const [showcasePharmacy, setShowcasePharmacy] = useState<Pharmacy | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -89,19 +91,19 @@ export function SendToPharmacyModal({
       const res = await fetch('/api/pharmacies');
       if (res.ok) {
         const data = await res.json();
-        // Filter only active pharmacies with a phone number
         const active = (data || []).filter(
-          (p: any) => (p.status === 'active' || !p.status) && p.phone
+          (p: any) => p.status === 'active' || !p.status
         );
         setPharmacies(active);
 
-        // Pre-select city if provided
         if (defaultCity) {
           const match = active.find(
             (p: any) => p.city?.toLowerCase() === defaultCity.toLowerCase()
           );
           if (match && match.city) {
             setSelectedCity(match.city);
+          } else {
+            setSelectedCity('ALL');
           }
         }
       }
@@ -145,7 +147,7 @@ export function SendToPharmacyModal({
   }, [pharmacies, selectedCity, searchTerm]);
 
   const handleSendToPharmacy = (pharmacy: Pharmacy) => {
-    const rawPhone = pharmacy.phone;
+    const rawPhone = pharmacy.whatsapp || pharmacy.phone;
     if (!rawPhone) {
       toast({
         variant: 'destructive',
@@ -348,15 +350,24 @@ export function SendToPharmacyModal({
                     </div>
                   </div>
 
-                  {/* Botón WhatsApp */}
-                  <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex items-center justify-end">
+                  {/* Botones Ver Ficha y WhatsApp */}
+                  <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowcasePharmacy(pharmacy)}
+                      className="border-teal-600 text-teal-700 hover:bg-teal-50 font-bold text-xs rounded-xl h-9 px-3 flex items-center gap-1"
+                    >
+                      <Store className="h-3.5 w-3.5" />
+                      Ver Ficha
+                    </Button>
                     <Button
                       type="button"
                       onClick={() => handleSendToPharmacy(pharmacy)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all h-9 px-4 flex items-center gap-1.5 w-full sm:w-auto"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all h-9 px-4 flex items-center gap-1.5"
                     >
                       <MessageCircle className="h-4 w-4 fill-white" />
-                      Consultar por WhatsApp
+                      WhatsApp
                     </Button>
                   </div>
                 </div>
@@ -382,6 +393,20 @@ export function SendToPharmacyModal({
           </Button>
         </div>
       </DialogContent>
+
+      <PharmacyShowcaseModal
+        isOpen={Boolean(showcasePharmacy)}
+        onClose={() => setShowcasePharmacy(null)}
+        pharmacy={showcasePharmacy}
+        allPharmacies={pharmacies}
+        recipeCode={recipeCode}
+        patientName={patientName}
+        patientCedula={patientCedula}
+        doctorName={doctorName}
+        doctorSpecialty={doctorSpecialty}
+        prescriptionText={prescriptionText}
+        recipeUrl={recipeUrl}
+      />
     </Dialog>
   );
 }

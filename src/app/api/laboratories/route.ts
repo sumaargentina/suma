@@ -324,7 +324,7 @@ export async function PATCH(request: NextRequest) {
     }
 }
 
-// DELETE /api/laboratories - Eliminar laboratorio
+// DELETE /api/laboratories - Eliminar laboratorio y limpiar referencias
 export async function DELETE(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
@@ -333,6 +333,13 @@ export async function DELETE(request: NextRequest) {
         if (!id) {
             return NextResponse.json({ error: 'Laboratory ID is required' }, { status: 400 });
         }
+
+        await Promise.allSettled([
+            supabaseAdmin.from('laboratory_orders').update({ laboratory_id: null }).eq('laboratory_id', id),
+            supabaseAdmin.from('appointments').update({ laboratory_id: null, laboratory_service_id: null }).eq('laboratory_id', id),
+            supabaseAdmin.from('laboratory_services').delete().eq('laboratory_id', id),
+            supabaseAdmin.from('secretaries').delete().eq('laboratory_id', id),
+        ]);
 
         const { error } = await supabaseAdmin
             .from('laboratories')

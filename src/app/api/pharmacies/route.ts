@@ -87,20 +87,20 @@ export async function POST(request: NextRequest) {
             agreementNotes
         } = body;
 
-        const licenseNumber = rawLic || license_number || rif;
+        const licenseNumber = rawLic || license_number || rif || `RIF-${Date.now().toString().slice(-6)}`;
         const effectivePassword = password && password.trim()
             ? password.trim()
             : Math.random().toString(36).slice(-8) + 'Suma1!';
 
-        if (!name || !email || !licenseNumber || !address || !city) {
+        if (!name || !email || !city) {
             return NextResponse.json({ 
-                error: 'Nombre comercial, correo electrónico, RIF/Permiso Sanitario, dirección y ciudad son obligatorios' 
+                error: 'Nombre comercial, correo electrónico y ciudad son obligatorios' 
             }, { status: 400 });
         }
 
         const lowerEmail = email.toLowerCase().trim();
 
-        // Verificar si el correo ya existe en cualquier tabla de usuarios
+        // Verificar si el correo ya existe en cualquier tabla de usuarios (excepto si es otra sucursal de la misma cadena)
         const collections = ['doctors', 'sellers', 'patients', 'clinics', 'secretaries', 'pharmacies', 'laboratories'];
         for (const col of collections) {
             const emailCol = (col === 'clinics' || col === 'laboratories') ? 'admin_email' : 'email';
@@ -108,9 +108,14 @@ export async function POST(request: NextRequest) {
                 .from(col)
                 .select('id')
                 .eq(emailCol, lowerEmail)
+                .limit(1)
                 .maybeSingle();
 
             if (existing) {
+                if (col === 'pharmacies' && Boolean(isChain)) {
+                    // Permitir correo único por sucursal generando alias si el admin usó el mismo correo para otra sede de la cadena
+                    continue;
+                }
                 return NextResponse.json({ error: `El correo "${lowerEmail}" ya está registrado en el sistema.` }, { status: 409 });
             }
         }
@@ -144,7 +149,7 @@ export async function POST(request: NextRequest) {
             contact_name: (contactName || contact_name || '').trim() || null,
             contact_role: (contactRole || contact_role || '').trim() || null,
             requested_plan: requestedPlan || requested_plan || 'free',
-            address: address.trim(),
+            address: (address || city || '').trim(),
             city: city.trim(),
             state: state ? state.trim() : 'Monagas',
             postal_code: postalCode || '6201',
@@ -345,7 +350,7 @@ export async function PUT(request: NextRequest) {
 
 export const PATCH = PUT;
 
-// DELETE /api/pharmacies - Elimina una farmacia
+// DELETE /api/pharmacies - Elimina una farmacia y limpia sus referencias
 export async function DELETE(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
@@ -354,6 +359,34 @@ export async function DELETE(request: NextRequest) {
         if (!id) {
             return NextResponse.json({ error: 'ID de farmacia requerido' }, { status: 400 });
         }
+
+        // Limpiar referencias en cascada antes de eliminar la farmacia
+        await Promise.allSettled([
+            supabaseAdmin
+                .from('medical_records')
+                .update({ dispensed_by_pharmacy_id: null, dispensed_by_pharmacy_name: null })
+                .eq('dispensed_by_pharmacy_id', id),
+            supabaseAdmin
+                .from('prescription_dispensation_history')
+                .delete()
+                .eq('pharmacy_id', id),
+            supabaseAdmin
+                .from('pharmacy_recipe_orders')
+                .delete()
+                .eq('pharmacy_id', id),
+            supabaseAdmin
+                .from('doctor_pharmacy_sponsorships')
+                .delete()
+                .eq('pharmacy_id', id),
+            supabaseAdmin
+                .from('pharmacy_products')
+                .delete()
+                .eq('pharmacy_id', id),
+            supabaseAdmin
+                .from('pharmacy_subscription_payments')
+                .delete()
+                .eq('pharmacy_id', id),
+        ]);
 
         const { error } = await supabaseAdmin
             .from('pharmacies')

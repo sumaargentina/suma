@@ -93,17 +93,11 @@ export function RecipeRecommendedPharmaciesSection({
   const [recommendedPharmacies, setRecommendedPharmacies] = useState<any[]>([]);
   const [cityPharmacies, setCityPharmacies] = useState<any[]>([]);
   const [allPharmacies, setAllPharmacies] = useState<any[]>([]);
-  const [selectedCity, setSelectedCity] = useState<string>(defaultCity || '');
+  const [selectedCity, setSelectedCity] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   const [selectedPharmacy, setSelectedPharmacy] = useState<any | null>(null);
   const [isSelectedRecommended, setIsSelectedRecommended] = useState(false);
-
-  useEffect(() => {
-    if (defaultCity && !selectedCity) {
-      setSelectedCity(defaultCity);
-    }
-  }, [defaultCity]);
 
   useEffect(() => {
     async function fetchPharmaciesForRecipe() {
@@ -117,9 +111,17 @@ export function RecipeRecommendedPharmaciesSection({
 
         if (recipeRes.ok) {
           const data = await recipeRes.json();
-          setRecommendedPharmacies(data.recommendedPharmacies || []);
-          setCityPharmacies(data.cityPharmacies || []);
-          setAllPharmacies(data.allPharmacies || []);
+          const recList = data.recommendedPharmacies || [];
+          const cityList = data.cityPharmacies || [];
+          const allList = data.allPharmacies || [];
+
+          setRecommendedPharmacies(recList);
+          setAllPharmacies(allList);
+
+          // Si el filtro de ciudad no arrojó farmacias pero existen farmacias activas en la red, mostrar todas las disponibles
+          const recIds = new Set(recList.map((r: any) => r.id));
+          const fallbackOther = allList.filter((p: any) => !recIds.has(p.id));
+          setCityPharmacies(cityList.length > 0 ? cityList : fallbackOther);
         }
       } catch (e) {
         console.error('Error cargando farmacias para el récipe:', e);

@@ -481,6 +481,9 @@ export function MedicalPrescriptionModal({
               defaultCity={docCity || undefined}
               prescriptionText={prescriptionText}
               recipeCode={recipeCode}
+              recipeId={record.id}
+              patientName={patientName}
+              patientCedula={patientCedula}
             />
 
             {/* Footer Close Button (Hidden on Print) */}

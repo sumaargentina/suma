@@ -24,57 +24,6 @@ import { SplashScreen } from "@/components/splash-screen";
 import { useSettings } from "@/lib/settings";
 import type { CommercialAlly } from "@/lib/types";
 
-const DEFAULT_SHOWCASE_ALLIES: CommercialAlly[] = [
-  {
-    id: "default-1",
-    name: "Centro Médico Docente",
-    category: "clinica",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=CMD&backgroundColor=0f766e&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-  {
-    id: "default-2",
-    name: "Policlínica Metropolitana",
-    category: "clinica",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=PM&backgroundColor=0369a1&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-  {
-    id: "default-3",
-    name: "Red de Farmacias Aliadas",
-    category: "farmacia",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=FA&backgroundColor=0d9488&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-  {
-    id: "default-4",
-    name: "Hospital de Clínicas",
-    category: "clinica",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=HC&backgroundColor=1d4ed8&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-  {
-    id: "default-5",
-    name: "Bioanálisis & Diagnóstico",
-    category: "laboratorio",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=BD&backgroundColor=4338ca&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-  {
-    id: "default-6",
-    name: "Casas Médicas & Laboratorios",
-    category: "marca",
-    logoUrl: "https://api.dicebear.com/7.x/initials/svg?seed=CM&backgroundColor=7e22ce&fontColor=ffffff",
-    country: "VE",
-    isActive: true,
-  },
-];
-
 const ALLY_CATEGORY_BADGES: Record<string, string> = {
   farmacia: "Farmacia Aliada",
   clinica: "Clínica / Centro",
@@ -85,47 +34,10 @@ const ALLY_CATEGORY_BADGES: Record<string, string> = {
 
 export default function Home() {
   const { commercialAllies } = useSettings();
-  const [pharmacyAllies, setPharmacyAllies] = useState<CommercialAlly[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/pharmacies")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((list) => {
-        if (!active || !Array.isArray(list)) return;
-        const withLogo: CommercialAlly[] = list
-          .filter((p: any) => p.status === "active" && (p.logo_url || p.logoUrl))
-          .map((p: any) => ({
-            id: `pharm-${p.id}`,
-            name: p.chain_name || p.chainName || p.name,
-            logoUrl: p.logo_url || p.logoUrl,
-            category: "farmacia" as const,
-            country: p.country || "VE",
-            city: p.city,
-            isActive: true,
-          }));
-        setPharmacyAllies(withLogo);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const displayedAllies = useMemo(() => {
-    const activeConfigured = (commercialAllies || []).filter((a) => a.isActive !== false && a.logoUrl);
-    const seen = new Set(activeConfigured.map((a) => a.name.toLowerCase()));
-    const combined = [...activeConfigured];
-
-    for (const p of pharmacyAllies) {
-      if (!seen.has(p.name.toLowerCase())) {
-        seen.add(p.name.toLowerCase());
-        combined.push(p);
-      }
-    }
-
-    return combined.length > 0 ? combined : DEFAULT_SHOWCASE_ALLIES;
-  }, [commercialAllies, pharmacyAllies]);
+    return (commercialAllies || []).filter((a) => a.isActive !== false && a.logoUrl);
+  }, [commercialAllies]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background selection:bg-secondary selection:text-white">
@@ -181,29 +93,24 @@ export default function Home() {
               </Button>
             </div>
 
-            <div className="mt-12 flex flex-col items-center gap-3 animate-in fade-in duration-700 delay-400">
-              <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground/70">
-                Centros Médicos y Especialistas en Venezuela y Latinoamérica
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-muted-foreground/80">
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:border-secondary/50 hover:text-foreground transition-all">
-                  <Building2 className="h-4 w-4 text-secondary" />
-                  <span className="font-semibold text-sm">Centro Médico Docente</span>
-                </div>
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:border-secondary/50 hover:text-foreground transition-all">
-                  <Building2 className="h-4 w-4 text-secondary" />
-                  <span className="font-semibold text-sm">Policlínica Metropolitana</span>
-                </div>
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:border-secondary/50 hover:text-foreground transition-all">
-                  <Building2 className="h-4 w-4 text-secondary" />
-                  <span className="font-semibold text-sm">Hospital de Clínicas</span>
-                </div>
-                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:border-secondary/50 hover:text-foreground transition-all">
-                  <Building2 className="h-4 w-4 text-secondary" />
-                  <span className="font-semibold text-sm">Unidades de Especialidades</span>
+            {displayedAllies.length > 0 && (
+              <div className="mt-12 flex flex-col items-center gap-3 animate-in fade-in duration-700 delay-400">
+                <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground/70">
+                  Aliados Comerciales e Instituciones en Venezuela y Latinoamérica
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-muted-foreground/80">
+                  {displayedAllies.map((ally) => (
+                    <div
+                      key={`hero-${ally.id}`}
+                      className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:border-secondary/50 hover:text-foreground transition-all"
+                    >
+                      <Handshake className="h-4 w-4 text-secondary" />
+                      <span className="font-semibold text-sm">{ally.name}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </section>
 
@@ -247,70 +154,72 @@ export default function Home() {
         </section>
 
         {/* SECCIÓN DE ALIADOS COMERCIALES Y EMPRESAS AFILIADAS */}
-        <section id="aliados" className="py-16 bg-gradient-to-b from-background via-slate-50/70 to-background border-y border-slate-200/60">
-          <div className="container mx-auto px-4">
-            <div className="text-center max-w-2xl mx-auto mb-10">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 border border-teal-200 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-teal-800 mb-3">
-                <Handshake className="h-3.5 w-3.5 text-teal-600" />
-                Ecosistema de Salud Integrado
+        {displayedAllies.length > 0 && (
+          <section id="aliados" className="py-16 bg-gradient-to-b from-background via-slate-50/70 to-background border-y border-slate-200/60">
+            <div className="container mx-auto px-4">
+              <div className="text-center max-w-2xl mx-auto mb-10">
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 border border-teal-200 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-teal-800 mb-3">
+                  <Handshake className="h-3.5 w-3.5 text-teal-600" />
+                  Ecosistema de Salud Integrado
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
+                  Nuestros Aliados Comerciales e Instituciones
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground mt-2">
+                  Empresas, cadenas de farmacias, clínicas, laboratorios y marcas farmacéuticas que respaldan la red médica SUMA.
+                </p>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
-                Nuestros Aliados Comerciales e Instituciones
-              </h2>
-              <p className="text-sm sm:text-base text-muted-foreground mt-2">
-                Empresas, cadenas de farmacias, clínicas, laboratorios y marcas farmacéuticas que respaldan la red médica SUMA.
-              </p>
-            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-5">
-              {displayedAllies.map((ally) => {
-                const cardInner = (
-                  <div className="group h-full rounded-2xl bg-white border border-slate-200/80 hover:border-teal-500/40 p-4 flex flex-col items-center justify-between text-center shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-                    <div className="h-20 w-full flex items-center justify-center p-2 rounded-xl bg-slate-50/70 group-hover:bg-white transition-colors overflow-hidden">
-                      <img
-                        src={ally.logoUrl}
-                        alt={ally.name}
-                        className="max-h-14 max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                      />
-                    </div>
-                    <div className="mt-3 w-full">
-                      <p className="font-bold text-xs sm:text-sm text-slate-900 line-clamp-1 group-hover:text-teal-700 transition-colors">
-                        {ally.name}
-                      </p>
-                      <div className="flex items-center justify-center gap-1 mt-1">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] font-medium px-2 py-0 bg-slate-100 text-slate-600"
-                        >
-                          {ALLY_CATEGORY_BADGES[ally.category || "aliado"] || "Aliado Comercial"}
-                        </Badge>
-                        {ally.websiteUrl && (
-                          <ExternalLink className="h-3 w-3 text-slate-400 group-hover:text-teal-600" />
-                        )}
+              <div className="flex flex-wrap items-stretch justify-center gap-4 sm:gap-6">
+                {displayedAllies.map((ally) => {
+                  const cardInner = (
+                    <div className="group h-full w-48 sm:w-56 rounded-2xl bg-white border border-slate-200/80 hover:border-teal-500/40 p-4 flex flex-col items-center justify-between text-center shadow-xs hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+                      <div className="h-24 w-full flex items-center justify-center p-2 rounded-xl bg-slate-50/70 group-hover:bg-white transition-colors overflow-hidden">
+                        <img
+                          src={ally.logoUrl}
+                          alt={ally.name}
+                          className="max-h-16 max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                        />
+                      </div>
+                      <div className="mt-3 w-full">
+                        <p className="font-bold text-xs sm:text-sm text-slate-900 line-clamp-1 group-hover:text-teal-700 transition-colors">
+                          {ally.name}
+                        </p>
+                        <div className="flex items-center justify-center gap-1 mt-1">
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] font-medium px-2 py-0 bg-slate-100 text-slate-600"
+                          >
+                            {ALLY_CATEGORY_BADGES[ally.category || "aliado"] || "Aliado Comercial"}
+                          </Badge>
+                          {ally.websiteUrl && (
+                            <ExternalLink className="h-3 w-3 text-slate-400 group-hover:text-teal-600" />
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
+                  );
 
-                return ally.websiteUrl ? (
-                  <a
-                    key={ally.id}
-                    href={ally.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block h-full"
-                  >
-                    {cardInner}
-                  </a>
-                ) : (
-                  <div key={ally.id} className="h-full">
-                    {cardInner}
-                  </div>
-                );
-              })}
+                  return ally.websiteUrl ? (
+                    <a
+                      key={ally.id}
+                      href={ally.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block h-full"
+                    >
+                      {cardInner}
+                    </a>
+                  ) : (
+                    <div key={ally.id} className="h-full">
+                      {cardInner}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* MEDICAL CTA SECTION */}
         <section className="py-20 bg-muted/30">

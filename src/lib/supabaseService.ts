@@ -331,7 +331,17 @@ export const getSupportTickets = async (): Promise<AdminSupportTicket[]> => {
 };
 
 export const getSettings = async (): Promise<AppSettings | null> => {
-    console.log('🔍 getSettings called');
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/settings', { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data) return data as AppSettings;
+            }
+        } catch (err) {
+            console.warn('Fallback to direct getDocumentData for settings:', err);
+        }
+    }
     return getDocumentData<AppSettings>('settings', 'main');
 };
 

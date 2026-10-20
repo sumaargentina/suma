@@ -147,10 +147,11 @@ export async function GET(request: NextRequest) {
             ]);
 
             const activeLinks = activeLinksRes.data || [];
-            // Filtrar farmacias estrictamente por el país activo (VE, AR, CO, etc.)
-            const allPharmsCamel: any[] = (allPharmaciesRes.data || [])
-                .filter(p => isSameCountry(p.country, activeCountry))
-                .map(toCamel);
+            // Filtrar farmacias por el país activo (con fallback a todas las activas si no hay coincidencias en ese país)
+            const rawActivePharms = allPharmaciesRes.data || [];
+            const countryMatchedPharms = rawActivePharms.filter(p => isSameCountry(p.country, activeCountry));
+            const effectivePharms = countryMatchedPharms.length > 0 ? countryMatchedPharms : rawActivePharms;
+            const allPharmsCamel: any[] = effectivePharms.map(toCamel);
             const allProdsCamel: any[] = (allProductsRes.data || []).map(toCamel);
 
             // Agrupar productos por farmacia

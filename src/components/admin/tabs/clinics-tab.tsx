@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus, Trash2 } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -166,6 +166,35 @@ export function ClinicsTab() {
         setEditData(prev => ({ ...prev, [field]: value }));
     };
 
+    const handleDeleteClinic = async (clinic: Clinic) => {
+        if (!confirm(`¿Estás seguro de eliminar permanentemente la clínica "${clinic.name}"?`)) return;
+
+        setProcessingId(clinic.id);
+        try {
+            const res = await fetch(`/api/clinics?id=${clinic.id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo eliminar la clínica');
+
+            setClinics(prev => prev.filter(c => c.id !== clinic.id));
+            if (selectedClinic?.id === clinic.id) {
+                setSelectedClinic(null);
+            }
+            toast({
+                title: 'Clínica eliminada',
+                description: `"${clinic.name}" ha sido eliminada de la base de datos.`
+            });
+        } catch (error: any) {
+            console.error('Error deleting clinic:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error al eliminar',
+                description: error.message || 'No se pudo eliminar la clínica.'
+            });
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
     // Función para crear clínica nueva
     const handleCreateClinic = async () => {
         if (!newClinicData.name || !newClinicData.adminEmail || !newClinicData.password) {
@@ -179,31 +208,25 @@ export function ClinicsTab() {
 
         setIsCreating(true);
         try {
-            // Hash de la contraseña
-            const hashedPassword = await hashPassword(newClinicData.password);
-
-            // Generar slug
-            const slug = newClinicData.name.toLowerCase()
-                .trim()
-                .replace(/[^\w\s-]/g, '')
-                .replace(/[\s_-]+/g, '-')
-                .replace(/^-+|-+$/g, '')
-                + '-' + Date.now().toString().slice(-4);
-
-            await addClinic({
-                name: newClinicData.name,
-                adminEmail: newClinicData.adminEmail.toLowerCase(),
-                password: hashedPassword,
-                phone: newClinicData.phone,
-                city: newClinicData.city,
-                address: newClinicData.address,
-                description: newClinicData.description,
-                plan: newClinicData.plan as any,
-                billingCycle: newClinicData.billingCycle as any,
-                slug: slug,
-                status: 'active',
-                verificationStatus: 'verified',
-            } as any);
+            const res = await fetch('/api/clinics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: newClinicData.name,
+                    adminEmail: newClinicData.adminEmail.toLowerCase(),
+                    password: newClinicData.password,
+                    phone: newClinicData.phone,
+                    city: newClinicData.city,
+                    address: newClinicData.address,
+                    description: newClinicData.description,
+                    plan: newClinicData.plan,
+                    billingCycle: newClinicData.billingCycle,
+                    status: 'active',
+                    verificationStatus: 'verified',
+                }),
+            });
+            const resData = await res.json();
+            if (!res.ok) throw new Error(resData.error || 'No se pudo crear la clínica');
 
             toast({
                 title: 'Clínica creada',
@@ -303,9 +326,20 @@ export function ClinicsTab() {
                                             {clinic.createdAt ? format(new Date(clinic.createdAt), 'dd/MM/yyyy', { locale: es }) : '-'}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="sm" onClick={() => { setSelectedClinic(clinic); setIsEditing(false); }}>
-                                                <Eye className="h-4 w-4" />
-                                            </Button>
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => { setSelectedClinic(clinic); setIsEditing(false); }}>
+                                                    <Eye className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    onClick={() => handleDeleteClinic(clinic)}
+                                                    disabled={processingId === clinic.id}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))
@@ -636,8 +670,8 @@ export function ClinicsTab() {
                                         </Button>
                                     ) : (
                                         <Button
-                                            variant="destructive"
-                                            className="flex-1"
+                                            variant="outline"
+                                            className="flex-1 border-amber-500 text-amber-700 hover:bg-amber-50"
                                             onClick={() => handleUpdateStatus(selectedClinic, 'inactive', 'rejected')}
                                             disabled={!!processingId}
                                         >
@@ -645,6 +679,14 @@ export function ClinicsTab() {
                                             Suspender Cuenta
                                         </Button>
                                     )}
+                                    <Button
+                                        variant="destructive"
+                                        onClick={() => handleDeleteClinic(selectedClinic)}
+                                        disabled={!!processingId}
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Eliminar Clínica
+                                    </Button>
                                 </div>
                             )}
                         </ScrollArea>

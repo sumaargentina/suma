@@ -261,37 +261,35 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.diagnosis || !formData.treatment_plan) {
-            toast({ variant: 'destructive', title: 'Faltan datos', description: 'Por favor completa el diagnóstico y el tratamiento.' });
+        const effectiveDiagnosis = formData.diagnosis.trim() || formData.reason_for_visit.trim() || formData.evaluation.trim();
+        const effectiveTreatment = formData.treatment_plan.trim() || formData.prescription.trim();
+
+        if (!effectiveDiagnosis || !effectiveTreatment) {
+            toast({
+                variant: 'destructive',
+                title: 'Faltan datos',
+                description: 'Por favor completa el diagnóstico (o evaluación) y el plan de tratamiento (o récipe).'
+            });
             return;
         }
 
         try {
             setLoading(true);
-            let validDoctorId = initialDoctorId;
+            const validDoctorId = initialDoctorId || user?.id;
 
-            const { data: checkId } = await supabase.from('doctors').select('id').eq('id', initialDoctorId).maybeSingle();
-
-            if (!checkId) {
-                console.log('⚠️ ID de doctor no coincide. Buscando por email...');
-                if (user?.email) {
-                    const { data: checkEmail } = await supabase.from('doctors').select('id').eq('email', user.email).maybeSingle();
-                    if (checkEmail) {
-                        validDoctorId = checkEmail.id;
-                    }
-                }
-            }
-
-            if (!validDoctorId) {
-                throw new Error('No se pudo identificar tu usuario como doctor.');
+            if (!validDoctorId && !user?.email) {
+                throw new Error('No se pudo identificar tu usuario como profesional.');
             }
 
             const payload = {
                 patient_id: patientId,
-                family_member_id: familyMemberId,
+                family_member_id: familyMemberId || null,
                 doctor_id: validDoctorId,
+                doctor_email: user?.email,
                 visit_date: new Date().toISOString(),
-                ...formData
+                ...formData,
+                diagnosis: effectiveDiagnosis,
+                treatment_plan: effectiveTreatment,
             };
 
             console.log('🚀 Enviando a API Backend:', payload);
