@@ -25,7 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -71,10 +71,15 @@ import {
 } from 'lucide-react';
 import { MobileMenuBackground } from "@/components/MobileMenuBackground";
 import { WorkspaceSwitcherHeader } from "@/components/doctor/workspace-switcher-header";
+import { BcvRateWidget } from "@/components/admin/bcv-rate-widget";
+import { useSettings } from "@/lib/settings";
+import { resolveDoctorCapabilities } from "@/lib/professions-catalog";
 
 
 export function Header() {
   const { user, logout, activeWorkspace } = useAuth();
+  const { professionsCatalog } = useSettings();
+  const doctorCapabilities = resolveDoctorCapabilities(user?.role === 'doctor' ? user : null, professionsCatalog);
   const { notifications, unreadCount, markNotificationAsRead, markAllAsRead, clearReadNotifications } = useNotifications();
   const { doctorNotifications, doctorUnreadCount, markDoctorNotificationAsRead, markDoctorNotificationsAsRead, clearReadDoctorNotifications } = useDoctorNotifications();
   const { sellerNotifications, sellerUnreadCount, markSellerNotificationAsRead, markSellerNotificationsAsRead, clearReadSellerNotifications } = useSellerNotifications();
@@ -176,10 +181,11 @@ export function Header() {
     (!activeWorkspace && user?.isClinicEmployee)
   );
 
-  const doctorNavLinks = isClinicDoctor
+  const doctorNavLinks = (isClinicDoctor
     ? [
         { href: "/doctor/dashboard?view=appointments", label: "Citas" },
         { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
+        ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", label: "Farmacias" }] : []),
         { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
       ]
     : [
@@ -188,9 +194,10 @@ export function Header() {
         { href: "/doctor/dashboard?view=finances", label: "Finanzas" },
         { href: "/doctor/dashboard?view=addresses", label: "Consultorios" },
         { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
+        ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", label: "Farmacias y Patrocinios" }] : []),
         { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
         { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },
-      ];
+      ]);
 
   const sellerNavLinks = [
     { href: "/seller/dashboard?view=referrals", label: "Mis Referidos" },
@@ -316,6 +323,11 @@ export function Header() {
 
         {/* Right Side Controls (Workspace, Notifications, Avatar) */}
         <div className="hidden md:flex ml-auto items-center gap-1.5 shrink-0">
+          {user && isAdmin && (
+            <div className="mr-1">
+              <BcvRateWidget />
+            </div>
+          )}
           {user && isAdmin && (
             <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
               <PopoverTrigger asChild>
@@ -810,6 +822,9 @@ export function Header() {
           )}
         </div>
         <div className="md:hidden ml-auto flex items-center gap-1">
+          {user && isAdmin && (
+            <BcvRateWidget compact />
+          )}
           {user && isAdmin && (
             <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
               <PopoverTrigger asChild>
@@ -1397,15 +1412,21 @@ const publicBottomNavItems = [
 ];
 
 
-export function BottomNav() {
+function BottomNavContent() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
 
-  const isPublicPage = ['/', '/find-a-doctor', '/ai-assistant'].includes(pathname);
+  const isPublicPage =
+    pathname === "/" ||
+    pathname.startsWith("/find-a-doctor") ||
+    pathname.startsWith("/ai-assistant") ||
+    pathname.startsWith("/doctors") ||
+    pathname.startsWith("/clinica");
 
   let navItems;
 
-  if (user && user.role === 'patient') {
+  if (user && user.role === "patient") {
     navItems = patientBottomNavItems;
   } else if (!user && isPublicPage) {
     navItems = publicBottomNavItems;
@@ -1413,30 +1434,104 @@ export function BottomNav() {
     return null;
   }
 
+  const checkIsActive = (href: string) => {
+    const currentView = searchParams.get("view");
+
+    if (href === "/") {
+      return pathname === "/";
+    }
+
+    if (href.includes("view=doctors")) {
+      if (pathname.startsWith("/doctors")) return true;
+      if (pathname === "/find-a-doctor") {
+        return currentView === "doctors" || !currentView;
+      }
+      return false;
+    }
+
+    if (href.includes("view=clinics")) {
+      if (pathname.startsWith("/clinica")) return true;
+      if (pathname === "/find-a-doctor") {
+        return currentView === "clinics";
+      }
+      return false;
+    }
+
+    if (href.startsWith("/ai-assistant")) {
+      return pathname.startsWith("/ai-assistant");
+    }
+
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
+    }
+
+    if (href.startsWith("/dashboard/family")) {
+      return pathname.startsWith("/dashboard/family");
+    }
+
+    if (href.startsWith("/favorites")) {
+      return pathname.startsWith("/favorites");
+    }
+
+    return pathname === href;
+  };
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] md:hidden">
       <div className="container flex h-16 items-center justify-around px-2">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = checkIsActive(item.href);
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center justify-center gap-0.5 p-1.5 rounded-lg transition-colors w-1/5 h-full",
+                "group relative flex flex-col items-center justify-center gap-1 py-1.5 px-2 rounded-2xl transition-all duration-300 w-[22%] max-w-[80px] select-none active:scale-95",
                 isActive
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground hover:text-primary/80"
+                  ? "text-teal-700 dark:text-teal-300 font-bold"
+                  : "text-slate-400 dark:text-slate-500 hover:text-teal-600 dark:hover:text-teal-400 font-medium"
               )}
             >
-              <Icon className="h-5 w-5" />
-              <span className="text-xs font-medium">{item.label}</span>
+              {/* Active animated glow & background pill */}
+              {isActive && (
+                <>
+                  <span className="absolute -top-1 w-8 h-1 rounded-full bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-500 shadow-sm shadow-teal-500/50 animate-in fade-in zoom-in duration-300" />
+                  <span className="absolute inset-x-1 inset-y-1 bg-gradient-to-b from-teal-500/15 to-emerald-500/10 dark:from-teal-400/20 dark:to-emerald-400/10 rounded-xl -z-10 border border-teal-500/30 animate-in fade-in zoom-in-95 duration-300" />
+                </>
+              )}
+
+              <Icon
+                className={cn(
+                  "h-5 w-5 transition-all duration-300",
+                  isActive
+                    ? "text-teal-600 dark:text-teal-300 scale-110 -translate-y-0.5"
+                    : "group-hover:scale-105 group-hover:text-teal-600 dark:group-hover:text-teal-400"
+                )}
+              />
+              <span
+                className={cn(
+                  "text-[11px] tracking-tight leading-none transition-colors duration-300",
+                  isActive
+                    ? "text-teal-700 dark:text-teal-300 font-bold"
+                    : "text-slate-500 dark:text-slate-400"
+                )}
+              >
+                {item.label}
+              </span>
             </Link>
           );
         })}
       </div>
     </nav>
+  );
+}
+
+export function BottomNav() {
+  return (
+    <Suspense fallback={null}>
+      <BottomNavContent />
+    </Suspense>
   );
 }
 

@@ -55,11 +55,25 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <CreditCard className="h-4 w-4 text-green-600" />
-                          <Badge variant="outline" className="text-green-700">
+                          <Badge variant="outline" className="text-green-700 font-semibold">
                             {bankDetail.bank}
                           </Badge>
+                          {bankDetail.currency === 'USD' ? (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
+                              💵 USD ($)
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                              🇻🇪 Bs. (Local)
+                            </Badge>
+                          )}
+                          {bankDetail.accountType && (
+                            <Badge variant="secondary" className="text-[11px] capitalize">
+                              {bankDetail.accountType.replace('_', ' ')}
+                            </Badge>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-sm">
@@ -70,6 +84,11 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
                             <Hash className="h-3 w-3 text-muted-foreground" />
                             <span className="font-mono text-xs">{bankDetail.accountNumber}</span>
                           </div>
+                          {bankDetail.phone && (
+                            <div className="text-xs text-muted-foreground">
+                              Tel: <span className="font-mono">{bankDetail.phone}</span>
+                            </div>
+                          )}
                           {bankDetail.description && (
                             <p className="text-xs text-muted-foreground mt-1">
                               {bankDetail.description}
@@ -122,9 +141,10 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Banco</TableHead>
+                  <TableHead>Banco / Método</TableHead>
+                  <TableHead>Moneda</TableHead>
                   <TableHead>Titular</TableHead>
-                  <TableHead className="text-right">Número de Cuenta</TableHead>
+                  <TableHead className="text-right">Cuenta / Teléfono</TableHead>
                   <TableHead className="text-center w-[120px]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -134,11 +154,35 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-4 w-4 text-green-600" />
-                        {bd.bank}
+                        <div>
+                          <div>{bd.bank}</div>
+                          {bd.accountType && (
+                            <span className="text-xs text-muted-foreground capitalize">
+                              {bd.accountType.replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell>{bd.accountHolder}</TableCell>
-                    <TableCell className="text-right font-mono">{bd.accountNumber}</TableCell>
+                    <TableCell>
+                      {bd.currency === 'USD' ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold text-xs">
+                          💵 Dólares (USD)
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-blue-100 text-blue-800 border-blue-300 font-semibold text-xs">
+                          🇻🇪 Bolívares (Bs.)
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div>{bd.accountHolder}</div>
+                      <div className="text-xs text-muted-foreground">{bd.idNumber}</div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      <div>{bd.accountNumber}</div>
+                      {bd.phone && <div className="text-xs text-muted-foreground font-sans">Tel: {bd.phone}</div>}
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex justify-center gap-2">
                         <Button variant="outline" size="icon" onClick={() => onOpenDialog(bd)}>
@@ -152,7 +196,7 @@ export function BankDetailsTab({ bankDetails, onOpenDialog, onDeleteItem }: Bank
                   </TableRow>
                 )) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center h-24">
+                    <TableCell colSpan={5} className="text-center h-24">
                       <div className="flex flex-col items-center gap-2">
                         <CreditCard className="h-8 w-8 text-muted-foreground" />
                         <p className="text-muted-foreground">No has registrado cuentas bancarias.</p>

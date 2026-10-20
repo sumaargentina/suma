@@ -94,7 +94,10 @@ async function updateDoctorRating(doctorId: string) {
 
         await supabaseAdmin
             .from('doctors')
-            .update({ rating: Math.round(avgRating * 10) / 10 })
+            .update({
+                rating: Math.round(avgRating * 10) / 10,
+                review_count: reviews.length
+            })
             .eq('id', doctorId);
     } catch (err) {
         console.error('Error updating doctor rating:', err);

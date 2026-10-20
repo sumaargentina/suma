@@ -22,7 +22,7 @@ function CallbackHandler() {
                 const storedRole = typeof window !== 'undefined'
                     ? (sessionStorage.getItem('suma_intended_role') || localStorage.getItem('suma_intended_role'))
                     : null;
-                const intendedRole = roleParam || storedRole || (nextParam && nextParam.includes('/doctor') ? 'doctor' : undefined);
+                const intendedRole = roleParam || storedRole || (nextParam && nextParam.startsWith('/doctor/') ? 'doctor' : undefined);
 
                 if (typeof window !== 'undefined') {
                     sessionStorage.removeItem('suma_intended_role');
@@ -89,9 +89,21 @@ function CallbackHandler() {
                     localStorage.setItem('user', JSON.stringify(syncResult.user));
                 }
 
-                const destination = nextParam || syncResult.redirectUrl || '/dashboard';
+                const storedReturnToDoctor = typeof window !== 'undefined'
+                    ? (sessionStorage.getItem('returnToDoctorUrl') || localStorage.getItem('returnToDoctorUrl'))
+                    : null;
 
-                // Redirigir al dashboard correspondiente
+                if (typeof window !== 'undefined' && storedReturnToDoctor) {
+                    sessionStorage.removeItem('returnToDoctorUrl');
+                    localStorage.removeItem('returnToDoctorUrl');
+                }
+
+                const destination =
+                    (syncResult.user?.role === 'patient' && (nextParam?.startsWith('/doctors/') ? nextParam : storedReturnToDoctor))
+                        ? (nextParam?.startsWith('/doctors/') ? nextParam : storedReturnToDoctor!)
+                        : (nextParam || syncResult.redirectUrl || '/dashboard');
+
+                // Redirigir al destino correspondiente
                 window.location.href = destination;
 
             } catch (err) {

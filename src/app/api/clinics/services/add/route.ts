@@ -18,8 +18,9 @@ export async function POST(req: NextRequest) {
         const { user } = authResult;
         const data = await req.json();
 
-        // 🔐 SEGURIDAD: Verificar que la clínica solo añade servicios a sí misma
-        if (user.role === 'clinic' && data.clinicId !== user.id) {
+        // 🔐 SEGURIDAD: Verificar que la clínica o su secretaria solo añade servicios a sí misma
+        const authorizedClinicId = user.clinicId || user.id;
+        if ((user.role === 'clinic' || user.role === 'secretary') && data.clinicId !== authorizedClinicId) {
             logSecurityEvent('CLINIC_SERVICE_ADD_FORBIDDEN', {
                 userId: user.id,
                 attemptedClinicId: data.clinicId

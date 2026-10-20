@@ -3,15 +3,16 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Doctor, Clinic } from "@/lib/types";
+import type { Doctor, Clinic, Pharmacy } from "@/lib/types";
 
 // ─── Types ───────────────────────────────────────────
 
 type MapItem = {
   id: string;
   doctorId?: string;
-  type: "doctor" | "clinic";
+  type: "doctor" | "clinic" | "pharmacy";
   name: string;
+  branchName?: string;
   specialty?: string;
   address: string;
   city: string;
@@ -21,6 +22,8 @@ type MapItem = {
   profileImage?: string | null;
   consultationFee?: number;
   slug?: string;
+  phone?: string;
+  is24Hours?: boolean;
 };
 
 type PublicHealthFacility = {
@@ -37,7 +40,7 @@ type PublicHealthFacility = {
 
 import { GEO_DATA, resolveLocation } from "@/lib/geo-data";
 
-function toMapItems(doctors: Doctor[], clinics: Clinic[]): MapItem[] {
+function toMapItems(doctors: Doctor[], clinics: Clinic[], pharmacies: Pharmacy[] = []): MapItem[] {
   const items: MapItem[] = [];
 
   doctors.forEach((d, i) => {
@@ -131,6 +134,40 @@ function toMapItems(doctors: Doctor[], clinics: Clinic[]): MapItem[] {
     });
   });
 
+  pharmacies.forEach((p, i) => {
+    let lat = Number(p.latitude);
+    let lng = Number(p.longitude);
+
+    if (!lat || !lng || (lat === 0 && lng === 0) || isNaN(lat) || isNaN(lng)) {
+      const resolved = resolveLocation((p.country as string) || 'VE', p.state || undefined, p.city || 'Maturín');
+      lat = resolved.lat;
+      lng = resolved.lng;
+
+      const angle = ((i + 13) * 137.5) * (Math.PI / 180);
+      const radius = 0.0038 * Math.sqrt((i % 8) + 1);
+      lat += Math.sin(angle) * radius;
+      lng += Math.cos(angle) * radius;
+    }
+
+    const displayName = p.chainName || p.name;
+    const branch = (p.isChain || p.chainName) && p.branchName ? `Sucursal ${p.branchName}` : (p.branchName || undefined);
+
+    items.push({
+      id: p.id,
+      type: "pharmacy",
+      name: displayName,
+      branchName: branch,
+      address: p.address || p.city || "Farmacia Aliada",
+      city: p.city || "",
+      lat,
+      lng,
+      rating: p.rating || 5.0,
+      profileImage: p.logoUrl || null,
+      phone: p.phone || undefined,
+      is24Hours: Boolean(p.is24Hours || p.is_24_hours),
+    });
+  });
+
   return items;
 }
 
@@ -169,8 +206,9 @@ function createMarkerEl(item: MapItem): HTMLElement {
   el.className = "maplibre-marker-custom";
 
   const isDoctor = item.type === "doctor";
-  const borderColor = isDoctor ? "#0d9488" : "#6366f1";
-  const bgColor = isDoctor ? "#f0fdfa" : "#eef2ff";
+  const isPharmacy = item.type === "pharmacy";
+  const borderColor = isDoctor ? "#0d9488" : isPharmacy ? "#059669" : "#6366f1";
+  const bgColor = isDoctor ? "#f0fdfa" : isPharmacy ? "#ecfdf5" : "#eef2ff";
 
   el.innerHTML = `
     <div style="
@@ -185,7 +223,9 @@ function createMarkerEl(item: MapItem): HTMLElement {
     ">
       ${item.profileImage
       ? `<img src="${item.profileImage}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-      : `<span style="font-size:18px;font-weight:700;color:${borderColor}">${item.name.charAt(0)}</span>`
+      : isPharmacy
+        ? `<span style="font-size:20px;">💊</span>`
+        : `<span style="font-size:18px;font-weight:700;color:${borderColor}">${item.name.charAt(0)}</span>`
     }
     </div>
     <div style="
@@ -256,6 +296,54 @@ function createPublicHealthMarkerEl(facility: PublicHealthFacility): HTMLElement
 }
 
 function createPopupHTML(item: MapItem): string {
+  if (item.type === "pharmacy") {
+    const stars = "★".repeat(Math.round(item.rating)) + "☆".repeat(5 - Math.round(item.rating));
+    return `
+    <div style="font-family:system-ui,-apple-system,sans-serif;width:245px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:46px;height:46px;border-radius:10px;overflow:hidden;flex-shrink:0;background:#ecfdf5;display:flex;align-items:center;justify-content:center;border:1px solid #a7f3d0;">
+          ${item.profileImage
+      ? `<img src="${item.profileImage}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;" />`
+      : `<span style="font-size:22px;">💊</span>`
+    }
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:13.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
+          ${item.branchName ? `<div style="font-size:11px;color:#059669;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.branchName}</div>` : ""}
+          <span style="background:#ecfdf5;color:#059669;padding:1px 7px;border-radius:12px;font-size:10px;font-weight:700;">Farmacia Aliada SUMA</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+        <span style="color:#eab308;font-size:12px;letter-spacing:1px;">${stars}</span>
+        <span style="font-size:12px;color:#64748b;font-weight:600;">${item.rating.toFixed(1)}</span>
+        ${item.is24Hours ? `<span style="margin-left:auto;background:#dbeafe;color:#1d4ed8;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;">24 Horas</span>` : ""}
+      </div>
+      <div style="font-size:11.5px;color:#64748b;margin-bottom:6px;display:flex;align-items:start;gap:4px;">
+        <span style="flex-shrink:0;">📍</span>
+        <span style="line-height:1.3;">${item.address}${item.city ? `, ${item.city}` : ""}</span>
+      </div>
+      ${item.phone ? `
+        <div style="font-size:11.5px;color:#059669;margin-bottom:8px;display:flex;align-items:center;gap:4px;font-weight:600;">
+          <span style="flex-shrink:0;">📞</span>
+          <a href="tel:${item.phone}" style="color:#059669;text-decoration:none;">${item.phone}</a>
+        </div>
+      ` : ""}
+      <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:10.5px;color:#059669;font-weight:700;display:flex;align-items:center;gap:3px;">
+          ✓ Validación de Récipes
+        </span>
+        <a href="https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}" target="_blank" rel="noopener noreferrer" style="
+          display:inline-flex;align-items:center;gap:3px;
+          background:#059669;color:white;
+          padding:4px 8px;border-radius:6px;
+          font-size:11px;font-weight:600;
+          text-decoration:none;
+        ">Cómo llegar →</a>
+      </div>
+    </div>
+    `;
+  }
+
   const isDoctor = item.type === "doctor";
   const link = isDoctor ? `/doctors/${item.doctorId || item.id}` : `/clinica/${item.slug || item.id}`;
   const label = isDoctor ? "Reservar Cita" : "Ver Clínica";
@@ -357,17 +445,25 @@ function getCityCoordinates(cityName?: string): [number, number] {
 interface DoctorMapProps {
   doctors: Doctor[];
   clinics: Clinic[];
+  pharmacies?: Pharmacy[];
   centerCity?: string;
 }
 
-export default function DoctorMapComponent({ doctors, clinics, centerCity }: DoctorMapProps) {
+export default function DoctorMapComponent({ doctors, clinics, pharmacies = [], centerCity }: DoctorMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [filterType, setFilterType] = useState<"all" | "doctor" | "clinic" | "pharmacy">("all");
   const [showPublicHealth, setShowPublicHealth] = useState(false);
   const [publicHealthLoading, setPublicHealthLoading] = useState(false);
   const [publicFacilityCount, setPublicFacilityCount] = useState(0);
   const publicMarkersRef = useRef<maplibregl.Marker[]>([]);
+
+  // Calculate counts for filters
+  const allMapItems = toMapItems(doctors, clinics, pharmacies);
+  const doctorCount = allMapItems.filter(i => i.type === "doctor").length;
+  const clinicCount = allMapItems.filter(i => i.type === "clinic").length;
+  const pharmacyCount = allMapItems.filter(i => i.type === "pharmacy").length;
 
   // Initialize map
   useEffect(() => {
@@ -426,12 +522,13 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
     };
   }, [centerCity]);
 
-  // Add doctor/clinic markers
+  // Add doctor/clinic/pharmacy markers
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
 
     const map = mapRef.current;
-    const mapItems = toMapItems(doctors, clinics);
+    const allItems = toMapItems(doctors, clinics, pharmacies);
+    const mapItems = filterType === "all" ? allItems : allItems.filter(i => i.type === filterType);
     const markers: maplibregl.Marker[] = [];
 
     for (const item of mapItems) {
@@ -467,7 +564,7 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
     return () => {
       for (const m of markers) m.remove();
     };
-  }, [doctors, clinics, mapLoaded, centerCity]);
+  }, [doctors, clinics, pharmacies, filterType, mapLoaded, centerCity]);
 
   // Load/unload public health facilities
   const loadPublicFacilities = useCallback(async () => {
@@ -542,28 +639,75 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
     <div className="relative w-full rounded-xl overflow-hidden border border-slate-200 shadow-sm">
       <div ref={mapContainerRef} className="w-full h-[500px] md:h-[600px]" />
 
-      {/* Public Health Toggle — top left */}
-      <button
-        onClick={() => setShowPublicHealth((v) => !v)}
-        className={`absolute top-3 left-3 z-10 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold shadow-lg transition-all duration-200 ${showPublicHealth
-          ? "bg-green-600 text-white hover:bg-green-700"
-          : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
-          }`}
-      >
-        <span className="text-sm">💚</span>
-        <span>{showPublicHealth ? "Ocultar" : "Mostrar"} Salud Pública</span>
-        {publicHealthLoading && (
-          <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        )}
-        {showPublicHealth && publicFacilityCount > 0 && !publicHealthLoading && (
-          <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">
-            {publicFacilityCount}
-          </span>
-        )}
-      </button>
+      {/* Top Filter Controls: Categorías + Salud Pública */}
+      <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 max-w-[calc(100%-80px)]">
+        {/* Type Filter Buttons */}
+        <div className="bg-white/95 backdrop-blur-sm p-1 rounded-xl shadow-lg border border-slate-200 flex items-center gap-1 text-xs font-semibold">
+          <button
+            onClick={() => setFilterType("all")}
+            className={`px-2.5 py-1.5 rounded-lg transition-all ${filterType === "all"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            Todos ({allMapItems.length})
+          </button>
+          <button
+            onClick={() => setFilterType("doctor")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all ${filterType === "doctor"
+              ? "bg-teal-600 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <span>🩺</span>
+            <span>Médicos ({doctorCount})</span>
+          </button>
+          <button
+            onClick={() => setFilterType("clinic")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all ${filterType === "clinic"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <span>🏥</span>
+            <span>Clínicas ({clinicCount})</span>
+          </button>
+          <button
+            onClick={() => setFilterType("pharmacy")}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all ${filterType === "pharmacy"
+              ? "bg-emerald-600 text-white shadow-xs"
+              : "text-emerald-700 hover:bg-emerald-50"
+            }`}
+          >
+            <span>💊</span>
+            <span>Farmacias ({pharmacyCount})</span>
+          </button>
+        </div>
+
+        {/* Public Health Toggle */}
+        <button
+          onClick={() => setShowPublicHealth((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all duration-200 ${showPublicHealth
+            ? "bg-green-600 text-white hover:bg-green-700"
+            : "bg-white/95 backdrop-blur-sm text-slate-600 hover:bg-slate-50 border border-slate-200"
+            }`}
+        >
+          <span className="text-sm">💚</span>
+          <span className="hidden sm:inline">{showPublicHealth ? "Ocultar" : "Mostrar"}</span>
+          <span>Salud Pública</span>
+          {publicHealthLoading && (
+            <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          )}
+          {showPublicHealth && publicFacilityCount > 0 && !publicHealthLoading && (
+            <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">
+              {publicFacilityCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
+      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex flex-wrap items-center gap-3 text-xs border border-slate-100">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full border-2 border-teal-600 bg-teal-50" />
           <span className="text-slate-600 font-medium">Médicos</span>
@@ -571,6 +715,10 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full border-2 border-indigo-500 bg-indigo-50" />
           <span className="text-slate-600 font-medium">Clínicas</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full border-2 border-emerald-600 bg-emerald-50 flex items-center justify-center text-[8px]">💊</div>
+          <span className="text-emerald-700 font-semibold">Farmacias Aliadas</span>
         </div>
         {showPublicHealth && (
           <div className="flex items-center gap-1.5">
@@ -582,7 +730,7 @@ export default function DoctorMapComponent({ doctors, clinics, centerCity }: Doc
 
       {/* Zoom hint for public health */}
       {showPublicHealth && publicFacilityCount === 0 && !publicHealthLoading && mapLoaded && (
-        <div className="absolute top-16 left-3 z-10 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg shadow-sm max-w-[200px]">
+        <div className="absolute top-20 left-3 z-10 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg shadow-sm max-w-[200px]">
           💡 Hacé zoom a una ciudad para ver centros de salud públicos
         </div>
       )}

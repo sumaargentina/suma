@@ -14,9 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from '@/lib/supabaseService';
-import { Loader2, User, Pencil, Trash2, Search, History, CheckCircle, XCircle, Clock, ShieldCheck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Loader2, User, Pencil, Trash2, Search, History, CheckCircle, XCircle, Clock, ShieldCheck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Pill } from 'lucide-react';
 import { z } from 'zod';
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { ProfessionSpecialtySelector } from "@/components/ui/profession-specialty-selector";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { resolveDoctorCapabilities } from "@/lib/professions-catalog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,7 +61,8 @@ interface InactivationLog {
 
 export function DoctorsTab() {
   const { toast } = useToast();
-  const { specialties, cities } = useDynamicData();
+  const { cities } = useDynamicData();
+  const { professionsCatalog } = useSettings();
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -66,6 +71,14 @@ export function DoctorsTab() {
 
   const [isDoctorDialogOpen, setIsDoctorDialogOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
+
+  // Estado del selector de profesión, especialidad, ciudad y permisos clínicos dentro del modal
+  const [formProfession, setFormProfession] = useState<string>('Médico');
+  const [formSpecialty, setFormSpecialty] = useState<string>('');
+  const [formCity, setFormCity] = useState<string>('');
+  const [formSellerId, setFormSellerId] = useState<string>('none');
+  const [formHasMedicalRecord, setFormHasMedicalRecord] = useState<boolean>(true);
+  const [formHasPrescription, setFormHasPrescription] = useState<boolean>(true);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Doctor | null>(null);
@@ -97,6 +110,46 @@ export function DoctorsTab() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (editingDoctor) {
+      const resolved = resolveDoctorCapabilities(editingDoctor, professionsCatalog);
+      setFormProfession(resolved.profession || 'Médico');
+      setFormSpecialty(editingDoctor.specialty || '');
+      setFormCity(editingDoctor.city || '');
+      setFormSellerId(editingDoctor.sellerId || 'none');
+      setFormHasMedicalRecord(resolved.hasMedicalRecord);
+      setFormHasPrescription(resolved.hasPrescription);
+    } else {
+      setFormProfession('Médico');
+      setFormSpecialty('');
+      setFormCity('');
+      setFormSellerId('none');
+      setFormHasMedicalRecord(true);
+      setFormHasPrescription(true);
+    }
+  }, [editingDoctor, professionsCatalog, isDoctorDialogOpen]);
+
+  const handleQuickToggleCapability = async (
+    doctor: Doctor,
+    field: 'hasMedicalRecord' | 'hasPrescription'
+  ) => {
+    const resolved = resolveDoctorCapabilities(doctor, professionsCatalog);
+    const nextVal = field === 'hasMedicalRecord' ? !resolved.hasMedicalRecord : !resolved.hasPrescription;
+    try {
+      await supabaseService.updateDoctor(doctor.id, {
+        [field]: nextVal,
+        profession: resolved.profession,
+      });
+      toast({
+        title: 'Permiso actualizado',
+        description: `${field === 'hasMedicalRecord' ? 'Historia Médica' : 'Récipe Médico'} ${nextVal ? 'habilitado' : 'deshabilitado'} para ${doctor.name}.`,
+      });
+      fetchData();
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo actualizar el permiso.' });
+    }
+  };
 
   // Resetear a página 1 cuando cambia el filtro
   useEffect(() => {
@@ -148,7 +201,7 @@ export function DoctorsTab() {
       email: formData.get('email') as string,
       password: formData.get('password') as string,
       confirmPassword: formData.get('confirmPassword') as string,
-      specialty: formData.get('specialty') as string,
+      specialty: formSpecialty || (formData.get('specialty') as string),
       city: formData.get('city') as string,
       address: formData.get('address') as string,
       sellerId: (formData.get('sellerId') as string) === 'none' ? null : (formData.get('sellerId') as string),
@@ -182,7 +235,10 @@ export function DoctorsTab() {
       const updateData: Partial<Doctor> = {
         name: result.data.name,
         email: normalizedEmail,
+        profession: formProfession,
         specialty: result.data.specialty,
+        hasMedicalRecord: formHasMedicalRecord,
+        hasPrescription: formHasPrescription,
         city: result.data.city,
         address: result.data.address,
         sellerId: result.data.sellerId,
@@ -221,6 +277,9 @@ export function DoctorsTab() {
 
       const newDoctorData: Omit<Doctor, 'id'> = {
         ...restOfData,
+        profession: formProfession,
+        hasMedicalRecord: formHasMedicalRecord,
+        hasPrescription: formHasPrescription,
         email: normalizedEmail,
         password: hashedPassword,
         cedula: '', // Vacío por defecto, el doctor lo completará después
@@ -342,12 +401,55 @@ export function DoctorsTab() {
 
           <div className="hidden md:block">
             <Table>
-              <TableHeader><TableRow><TableHead>Médico</TableHead><TableHead>Especialidad</TableHead><TableHead>Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora Asignada</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Especialista</TableHead><TableHead>Profesión / Especialidad</TableHead><TableHead>Módulos Clínicos (Clic para editar)</TableHead><TableHead>Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
               <TableBody>
-                {paginatedDoctors.map((doctor) => (
+                {paginatedDoctors.map((doctor) => {
+                  const caps = resolveDoctorCapabilities(doctor, professionsCatalog);
+                  return (
                   <TableRow key={doctor.id}>
                     <TableCell className="font-medium">{doctor.name}</TableCell>
-                    <TableCell>{doctor.specialty}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700">
+                          {caps.profession}
+                        </span>
+                        <span className="text-xs font-medium text-slate-800">
+                          {doctor.specialty}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge
+                          variant="outline"
+                          onClick={() => handleQuickToggleCapability(doctor, 'hasMedicalRecord')}
+                          title="Clic para activar/desactivar Historia Médica en este especialista"
+                          className={cn(
+                            "cursor-pointer text-[11px] gap-1 transition-all select-none",
+                            caps.hasMedicalRecord
+                              ? "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                              : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through"
+                          )}
+                        >
+                          <FileText className="h-3 w-3" />
+                          Historia Médica
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          onClick={() => handleQuickToggleCapability(doctor, 'hasPrescription')}
+                          title="Clic para activar/desactivar Récipe Médico en este especialista"
+                          className={cn(
+                            "cursor-pointer text-[11px] gap-1 transition-all select-none",
+                            caps.hasPrescription
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                              : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 line-through"
+                          )}
+                        >
+                          <Pill className="h-3 w-3" />
+                          Récipe Médico
+                        </Badge>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium">{doctor.medicalLicense || '-'}</span>
@@ -400,7 +502,8 @@ export function DoctorsTab() {
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -543,38 +646,66 @@ export function DoctorsTab() {
 
             {/* Información Profesional */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Información Profesional</h3>
+              <h3 className="text-sm font-medium text-muted-foreground border-b pb-2">Información Profesional y Permisos Clínicos</h3>
+
+              <ProfessionSpecialtySelector
+                profession={formProfession}
+                specialty={formSpecialty}
+                onChange={({ profession, specialty, hasMedicalRecord, hasPrescription }) => {
+                  setFormProfession(profession);
+                  setFormSpecialty(specialty);
+                  setFormHasMedicalRecord(hasMedicalRecord);
+                  setFormHasPrescription(hasPrescription);
+                }}
+              />
+
+              {/* Interruptores manuales para que el Admin pueda sobreescribir permisos del especialista */}
+              <div className="rounded-xl border border-teal-200 bg-teal-50/40 p-3.5 space-y-2.5">
+                <p className="text-xs font-bold text-teal-950">
+                  Permisos de Módulos Clínicos para este Especialista
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">Historia Médica</p>
+                        <p className="text-[10px] text-slate-500">Acceso a evolución clínica</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={formHasMedicalRecord}
+                      onCheckedChange={setFormHasMedicalRecord}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <Pill className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">Récipe Médico</p>
+                        <p className="text-[10px] text-slate-500">Emisión de recetas y farmacia</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={formHasPrescription}
+                      onCheckedChange={setFormHasPrescription}
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="specialty" className="text-sm font-medium">Especialidad</Label>
-                  <Select name="specialty" defaultValue={editingDoctor?.specialty}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona una especialidad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {specialties.length > 0 ? (
-                        specialties.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
-                      ) : (
-                        <SelectItem value="no-specialties" disabled>No hay especialidades disponibles</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="city" className="text-sm font-medium">Ciudad</Label>
-                  <Select name="city" defaultValue={editingDoctor?.city}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona una ciudad" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cities.length > 0 ? (
-                        cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)
-                      ) : (
-                        <SelectItem value="no-cities" disabled>No hay ciudades disponibles</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="city" className="text-sm font-medium">Ciudad (puedes escribir para filtrar)</Label>
+                  <SearchableSelect
+                    name="city"
+                    value={formCity}
+                    onValueChange={(val) => setFormCity(val)}
+                    options={cities.map((c) => ({ value: c, label: c }))}
+                    placeholder="Selecciona o escribe la ciudad..."
+                    searchPlaceholder="Escribe las iniciales de la ciudad..."
+                    emptyMessage="No se encontró esa ciudad."
+                  />
                 </div>
               </div>
 
@@ -645,15 +776,18 @@ export function DoctorsTab() {
 
               <div className="space-y-2">
                 <Label htmlFor="sellerId" className="text-sm font-medium">Vendedora Asignada</Label>
-                <Select name="sellerId" defaultValue={editingDoctor?.sellerId || 'none'}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecciona una vendedora" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ninguna</SelectItem>
-                    {sellers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  name="sellerId"
+                  value={formSellerId}
+                  onValueChange={(val) => setFormSellerId(val)}
+                  options={[
+                    { value: 'none', label: 'Ninguna' },
+                    ...sellers.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                  placeholder="Selecciona o escribe una vendedora..."
+                  searchPlaceholder="Escribe el nombre de la vendedora..."
+                  emptyMessage="No se encontró esa vendedora."
+                />
               </div>
             </div>
 

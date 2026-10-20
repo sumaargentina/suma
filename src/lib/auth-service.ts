@@ -16,7 +16,7 @@
  * @date 2025-12-14
  */
 
-import { supabase } from './supabase';
+import { supabase, clearStaleSupabaseAuth } from './supabase';
 import { supabaseAdmin } from './supabase-admin';
 import type { User, Session, AuthError, Provider } from '@supabase/supabase-js';
 
@@ -262,13 +262,25 @@ class SupabaseAuthService {
         try {
             const { data: { session }, error } = await supabase.auth.getSession();
 
-            if (error) throw error;
+            if (error) {
+                if (error.message?.includes('Refresh Token') || error.name === 'AuthApiError') {
+                    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                    clearStaleSupabaseAuth();
+                    return { session: null, user: null };
+                }
+                throw error;
+            }
             if (!session) return { session: null, user: null };
 
             const user = await this.getUserProfile(session.user.id);
 
             return { session, user };
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.message?.includes('Refresh Token') || error?.name === 'AuthApiError') {
+                await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                clearStaleSupabaseAuth();
+                return { session: null, user: null };
+            }
             console.error('❌ Error getting session:', error);
             return { session: null, user: null };
         }
@@ -373,7 +385,7 @@ class SupabaseAuthService {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Not authenticated');
 
-            const { error } = await supabase.auth.mfa.verify({
+            const { error } = await supabase.auth.mfa.challengeAndVerify({
                 factorId,
                 code,
             });

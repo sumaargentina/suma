@@ -277,6 +277,33 @@ npx tsc --noEmit
 
 ---
 
+## 🌎 Estrategia de Expansión Internacional y Multi-País (Decisión Arquitectónica)
+
+### 1. Enfoque Oficial Seleccionado: Opción 1 (Multi-Instance / Instancias Dedicadas)
+- **Decisión:** Para la internacionalización (planificada para **2027** en Argentina u otros países), se adoptará una **arquitectura Multi-Instancia**:
+  - Cada país operará con su propio despliegue y su propia base de datos Supabase independiente (ej. `ve.suma.com`, `ar.suma.com`).
+  - **Motivos fundamentales:**
+    1. **Cumplimiento legal y privacidad en salud:** Leyes locales de protección de datos de pacientes (los historiales clínicos no deben mezclarse ni salir de la jurisdicción local).
+    2. **Aislamiento total:** Cero riesgo de cruce de citas, catálogos médicos, pacientes o balances financieros.
+    3. **Independencia operacional:** Pasarelas de pago locales (Pago Móvil/Zelle en VE vs MercadoPago/CBU en AR), husos horarios independientes y tipos de identificación médica distintos.
+
+### 2. Estado Actual y Foco Inmediato: LANZAMIENTO VENEZUELA (2026)
+- El despliegue inicial arranca 100% enfocado en **Venezuela**.
+- **Puntos de atención técnica para Venezuela:**
+  - **Moneda:** USD y VES (Bolívares con tasa BCV y pagos vía Pago Móvil / Transferencia).
+  - **Monitor y Widget BCV en Vivo:** Widget interactivo `BcvRateWidget` ubicado en la cabecera del menú y en el dashboard de administración. Consulta en vivo la tasa oficial del Banco Central de Venezuela (vía API `/api/admin/bcv-rate`), detecta variaciones automáticamente y permite actualizarla con 1 solo clic sin salir al menú de configuración.
+  - **Zona Horaria:** `America/Caracas` (GMT-4).
+  - **Documentos:** Cédula venezolana (V/E) y matrícula médica MPPS.
+  - **Teléfono / WhatsApp:** Prefijo nacional `+58`.
+
+### 3. Funcionalidades Planificadas en Roadmap:
+- **📅 Integración con Google Calendar**:
+  - Botón de vinculación OAuth2 en perfiles de Médicos, Clínicas y Pacientes.
+  - Sincronización automática de citas (creación, reprogramación y cancelación de eventos en tiempo real).
+  - Requiere: Proyecto Google Cloud Console con Google Calendar API activa (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`), tabla `user_calendar_integrations` y mapeo de IDs de eventos en `appointments`.
+
+---
+
 ## 📞 Contacto del Proyecto
 
 **Repositorio local**: `c:\Users\peroz\OneDrive\Escritorio\suma - argentina`

@@ -509,7 +509,7 @@ export function ServicesTab() {
                                                 <Badge variant="secondary">{serviceAppts.length}</Badge>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-green-700">
-                                                ${income.toLocaleString('es-AR')}
+                                                ${income.toLocaleString('en-US')}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <Button size="sm" variant="outline" onClick={() => handleViewDetails(service)}>
@@ -565,7 +565,7 @@ export function ServicesTab() {
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0">
                                             <div className="text-2xl font-bold">
-                                                ${serviceHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('es-AR')}
+                                                ${serviceHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('en-US')}
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -599,7 +599,7 @@ export function ServicesTab() {
                                                         <TableCell>
                                                             <Badge variant="outline">{appt.attendance || 'Pendiente'}</Badge>
                                                         </TableCell>
-                                                        <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('es-AR')}</TableCell>
+                                                        <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('en-US')}</TableCell>
                                                     </TableRow>
                                                 ))
                                             )}

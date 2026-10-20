@@ -90,7 +90,7 @@ export const validateAddress = (address: string): { isValid: boolean; sanitized:
 
 export const validateSpecialty = (specialty: string): { isValid: boolean; sanitized: string } => {
   const sanitized = sanitizeText(specialty);
-  const specialtyRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-0-9.]{2,50}$/;
+  const specialtyRegex = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s\-0-9.,()/]{2,100}$/;
 
   return {
     isValid: specialtyRegex.test(sanitized) && sanitized.length >= 2,

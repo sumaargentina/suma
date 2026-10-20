@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useSettings } from '@/lib/settings';
+import { resolveDoctorCapabilities } from '@/lib/professions-catalog';
 import { supabase } from '@/lib/supabase';
 import * as supabaseService from '@/lib/supabaseService';
 import { HeaderWrapper } from '@/components/header';
@@ -12,6 +14,7 @@ import { ArrowLeft, Loader2, Plus, FileText, Activity, Image as ImageIcon } from
 import { PatientProfileHeader } from '@/components/doctor/patient-history/patient-profile-header';
 import { MedicalRecordTimeline } from '@/components/doctor/patient-history/medical-record-timeline';
 import { NewRecordForm } from '@/components/doctor/patient-history/new-record-form';
+import { PatientFilesGallery } from '@/components/doctor/patient-history/patient-files-gallery';
 import { useToast } from '@/hooks/use-toast';
 
 export default function PatientHistoryPage() {
@@ -19,6 +22,8 @@ export default function PatientHistoryPage() {
     const searchParams = useSearchParams();
     const familyMemberId = searchParams.get('familyMemberId');
     const { user, loading } = useAuth();
+    const { professionsCatalog } = useSettings();
+    const capabilities = resolveDoctorCapabilities(user, professionsCatalog);
     const router = useRouter();
     const { toast } = useToast();
 
@@ -122,6 +127,17 @@ export default function PatientHistoryPage() {
                 <PatientProfileHeader patient={patient} familyMember={familyMember} />
 
                 {/* Main Content Tabs */}
+                {!capabilities.hasMedicalRecord ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-6 text-center space-y-2">
+                        <FileText className="h-8 w-8 text-amber-600 mx-auto" />
+                        <h3 className="font-bold text-amber-950 text-base">
+                            Módulo de Historia Clínica no requerido para tu especialidad ({user?.specialty})
+                        </h3>
+                        <p className="text-xs text-amber-800 max-w-md mx-auto">
+                            Tu categoría profesional está configurada para gestión de citas sin historia médica clínica. Si necesitas habilitar este módulo, solicítalo al administrador de SUMA.
+                        </p>
+                    </div>
+                ) : (
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                     <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
                         <TabsTrigger value="summary">Resumen</TabsTrigger>
@@ -210,13 +226,10 @@ export default function PatientHistoryPage() {
                     </TabsContent>
 
                     <TabsContent value="files">
-                        <div className="p-8 text-center border-2 border-dashed rounded-xl">
-                            <ImageIcon className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-                            <h3 className="text-lg font-medium">Galería de Archivos</h3>
-                            <p className="text-muted-foreground">Próximamente: Radiografías, Laboratorios y Fotos.</p>
-                        </div>
+                        <PatientFilesGallery patientId={patientId as string} />
                     </TabsContent>
                 </Tabs>
+                )}
             </main>
         </div>
     );

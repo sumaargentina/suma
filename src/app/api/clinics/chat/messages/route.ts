@@ -9,7 +9,7 @@ import { sanitizeString, detectInjection } from '@/lib/sanitize';
 export async function GET(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Requiere autenticación
-        const authResult = await requireAuth(request, ['clinic', 'patient', 'secretary', 'admin']);
+        const authResult = await requireAuth(request, ['clinic', 'laboratory', 'patient', 'secretary', 'admin']);
 
         if (authResult instanceof NextResponse) {
             return authResult;
@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
         const canAccess =
             user.role === 'admin' ||
             (user.role === 'patient' && patientId === user.id) ||
-            (user.role === 'clinic' && clinicId === user.id) ||
-            (user.role === 'secretary' && clinicId === user.clinicId);
+            ((user.role === 'clinic' || user.role === 'laboratory') && clinicId === user.id) ||
+            (user.role === 'secretary' && (clinicId === user.clinicId || clinicId === user.laboratoryId));
 
         if (!canAccess) {
             logSecurityEvent('CHAT_ACCESS_FORBIDDEN', {
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Requiere autenticación
-        const authResult = await requireAuth(request, ['clinic', 'patient', 'secretary', 'admin']);
+        const authResult = await requireAuth(request, ['clinic', 'laboratory', 'patient', 'secretary', 'admin']);
 
         if (authResult instanceof NextResponse) {
             return authResult;
@@ -70,7 +70,8 @@ export async function POST(request: NextRequest) {
         if (senderType === 'patient' && patientId !== user.id && user.role !== 'admin') {
             return NextResponse.json({ error: 'No puedes enviar mensajes como otro paciente' }, { status: 403 });
         }
-        if (senderType === 'clinic' && clinicId !== user.id && user.role !== 'secretary' && user.role !== 'admin') {
+        const authorizedEntityId = user.clinicId || user.laboratoryId || user.id;
+        if (senderType === 'clinic' && clinicId !== authorizedEntityId && user.role !== 'admin') {
             return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
         }
 

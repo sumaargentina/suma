@@ -7,34 +7,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getStatesByCountry } from "@/lib/geo-data";
+import { getStatesByCountry, getSupportedCountries, getCountryDisplay, normalizeCountryCode } from "@/lib/geo-data";
 import { cn } from "@/lib/utils";
 
 interface LocationFilterPopoverProps {
+  selectedCountry?: string;
   selectedState?: string;
   selectedCity?: string;
-  onLocationChange: (state: string, city: string) => void;
+  onLocationChange: (state: string, city: string, country?: string) => void;
+  lockCountry?: boolean;
   className?: string;
   variant?: "desktop" | "sheet";
 }
 
 export function LocationFilterPopover({
+  selectedCountry = "VE",
   selectedState = "all",
   selectedCity = "all",
   onLocationChange,
+  lockCountry = false,
   className,
   variant = "desktop",
 }: LocationFilterPopoverProps) {
   const [open, setOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const activeCountryCode = normalizeCountryCode(selectedCountry);
+  const countryInfo = getCountryDisplay(activeCountryCode);
+  const supportedCountries = React.useMemo(() => getSupportedCountries(), []);
+
   const [activeStateTab, setActiveStateTab] = React.useState<string>(
     selectedState !== "all" ? selectedState : "all"
   );
 
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Cargar todos los estados y ciudades de Venezuela
-  const states = React.useMemo(() => getStatesByCountry("VE"), []);
+  // Cargar todos los estados/provincias y ciudades del país activo
+  const states = React.useMemo(() => getStatesByCountry(activeCountryCode), [activeCountryCode]);
 
   // Lista aplanada de todas las ciudades con su respectivo estado para búsqueda global
   const allCitiesWithState = React.useMemo(() => {
@@ -51,8 +59,10 @@ export function LocationFilterPopover({
   React.useEffect(() => {
     if (selectedState && selectedState !== "all") {
       setActiveStateTab(selectedState);
+    } else {
+      setActiveStateTab("all");
     }
-  }, [selectedState]);
+  }, [selectedState, activeCountryCode]);
 
   // Filtrado reactivo en tiempo real con las letras que escribe el usuario
   const trimmedSearch = searchTerm.trim().toLowerCase();
@@ -101,31 +111,37 @@ export function LocationFilterPopover({
   const getButtonLabel = () => {
     if (selectedCity && selectedCity !== "all") {
       if (selectedState && selectedState !== "all") {
-        return `${selectedCity}, ${selectedState}`;
+        return `${countryInfo.flag} ${selectedCity}, ${selectedState}`;
       }
-      return selectedCity;
+      return `${countryInfo.flag} ${selectedCity}`;
     }
     if (selectedState && selectedState !== "all") {
-      return `Todo ${selectedState}`;
+      return `${countryInfo.flag} Todo ${selectedState}`;
     }
-    return "Toda Venezuela";
+    return countryInfo.nationalLabel;
+  };
+
+  const handleSelectCountry = (newCountryCode: string) => {
+    onLocationChange("all", "all", newCountryCode);
+    setActiveStateTab("all");
+    setSearchTerm("");
   };
 
   const handleSelectAllCountry = () => {
-    onLocationChange("all", "all");
+    onLocationChange("all", "all", activeCountryCode);
     setSearchTerm("");
     setOpen(false);
   };
 
   const handleSelectStateOnly = (stateName: string) => {
-    onLocationChange(stateName, "all");
+    onLocationChange(stateName, "all", activeCountryCode);
     setActiveStateTab(stateName);
     setSearchTerm("");
     setOpen(false);
   };
 
   const handleSelectCity = (stateName: string, cityName: string) => {
-    onLocationChange(stateName, cityName);
+    onLocationChange(stateName, cityName, activeCountryCode);
     setActiveStateTab(stateName);
     setSearchTerm("");
     setOpen(false);
@@ -136,12 +152,43 @@ export function LocationFilterPopover({
   // CONTENIDO COMÚN (Buscador + Resultados)
   const renderFilterBody = (isInsideSheet: boolean) => (
     <div className={cn("space-y-3", isInsideSheet && "bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200")}>
+      {/* Selector de País (Bloqueado al país del paciente si está autenticado, o seleccionable para visitantes) */}
+      <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          País Activo:
+        </span>
+        {lockCountry ? (
+          <Badge variant="secondary" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-semibold">
+            {countryInfo.flag} {countryInfo.name} (Tu país)
+          </Badge>
+        ) : (
+          <div className="flex items-center gap-1 flex-wrap">
+            {supportedCountries.map((c) => (
+              <button
+                key={c.code}
+                type="button"
+                onClick={() => handleSelectCountry(c.code)}
+                className={cn(
+                  "text-xs px-2.5 py-1 rounded-lg font-semibold transition-all flex items-center gap-1",
+                  activeCountryCode === c.code
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                <span>{c.flag}</span>
+                <span>{c.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Buscador de letras en vivo */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
           <span className="flex items-center gap-1.5">
             <Search className="w-3.5 h-3.5 text-rose-500" />
-            Buscar por letra o ciudad:
+            Buscar ciudad o provincia en {countryInfo.name}:
           </span>
           {hasActiveFilter && (
             <button
@@ -160,7 +207,7 @@ export function LocationFilterPopover({
             ref={searchInputRef}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Escribe: M, Ma, Maturín, Miranda..."
+            placeholder={activeCountryCode === "AR" ? "Escribe: Buenos Aires, Córdoba, Rosario..." : "Escribe: M, Ma, Maturín, Miranda..."}
             className="pl-9 pr-8 h-10 text-xs md:text-sm bg-white border-slate-200 rounded-xl focus-visible:ring-rose-500"
           />
           {searchTerm && (
@@ -177,7 +224,7 @@ export function LocationFilterPopover({
 
       {/* Contenido Scrolleable */}
       <ScrollArea className={cn("rounded-xl bg-white border border-slate-100 p-2", isInsideSheet ? "h-[280px]" : "h-[300px]")}>
-        {/* Opción Global: Toda Venezuela */}
+        {/* Opción Global: Todo el país activo */}
         {!trimmedSearch && (
           <button
             type="button"
@@ -194,8 +241,8 @@ export function LocationFilterPopover({
                 <Globe className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-semibold">Toda Venezuela 🇻🇪</div>
-                <div className="text-[11px] text-slate-400 font-normal">Mostrar médicos de todo el país</div>
+                <div className="font-semibold">{countryInfo.nationalLabel}</div>
+                <div className="text-[11px] text-slate-400 font-normal">Mostrar servicios de salud de {countryInfo.name}</div>
               </div>
             </div>
             {selectedState === "all" && selectedCity === "all" && (

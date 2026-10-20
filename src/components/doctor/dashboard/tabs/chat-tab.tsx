@@ -31,6 +31,8 @@ interface Conversation {
 
 interface ChatTabProps {
   doctorId?: string;
+  appointments?: any[];
+  onOpenChat?: (appointment: any) => void;
   initialPatientId?: string | null;
   initialPatientName?: string | null;
 }

@@ -393,7 +393,7 @@ export default function ClinicPublicProfilePage() {
                                                                     if (doctor.consultationFee) prices.push(doctor.consultationFee);
                                                                     if (prices.length === 0) return <span>Consultar</span>;
                                                                     const minPrice = Math.min(...prices);
-                                                                    return <span>Desde ${new Intl.NumberFormat('es-AR').format(minPrice)}</span>;
+                                                                    return <span>Desde ${new Intl.NumberFormat('en-US').format(minPrice)}</span>;
                                                                 })()}
                                                             </div>
                                                         </div>

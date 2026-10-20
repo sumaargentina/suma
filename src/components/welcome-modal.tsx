@@ -27,7 +27,7 @@ import {
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
-import { COUNTRY_CODES, DOCUMENT_TYPES, DocumentType } from '@/lib/types';
+import { COUNTRY_CODES, DOCUMENT_TYPES, DocumentType, Patient } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 import { validateCedula } from '@/lib/validation-utils';
@@ -216,9 +216,9 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         city: locationData.city || null,
         sector: locationData.sector || null,
         address: locationData.address || null,
-        bloodType: bloodType || null,
+        bloodType: (bloodType || null) as Patient['bloodType'],
         religion: religion || null,
-        maritalStatus: maritalStatus || null,
+        maritalStatus: (maritalStatus || null) as Patient['maritalStatus'],
         education: education || null,
         occupation: occupation || null,
         profileCompleted: true

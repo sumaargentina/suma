@@ -8,6 +8,9 @@ import { GeneralSettingsCard } from './settings/general-settings-card';
 import { ListManagementCard } from './settings/list-management-card';
 import { CouponManagementCard } from './settings/coupon-management-card';
 import { BankManagementCard } from './settings/bank-management-card';
+import { CountryPricingMatrix } from './settings/country-pricing-matrix';
+import { CommercialAlliesCard } from './settings/commercial-allies-card';
+import { ProfessionsSpecialtiesCard } from './settings/professions-specialties-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +30,8 @@ import {
   ChevronRight,
   Menu,
   Globe,
-  Map
+  Map,
+  Handshake
 } from 'lucide-react';
 
 export function SettingsTab() {
@@ -170,6 +174,12 @@ export function SettingsTab() {
       count: null
     },
     {
+      value: "countries-pricing",
+      icon: Globe,
+      label: "Países y Tarifas",
+      count: configCountries.length
+    },
+    {
       value: "realtime",
       icon: Database,
       label: "Datos Reales",
@@ -198,6 +208,12 @@ export function SettingsTab() {
       icon: Building2,
       label: "Bancario",
       count: companyBankDetails.length
+    },
+    {
+      value: "allies",
+      icon: Handshake,
+      label: "Aliados",
+      count: settings.commercialAllies?.length || 0
     }
   ];
 
@@ -283,7 +299,7 @@ export function SettingsTab() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         {/* TabsList solo visible en desktop */}
         <div className="hidden md:block">
-          <TabsList className="grid w-full grid-cols-5 gap-2 h-12">
+          <TabsList className="grid w-full grid-cols-8 gap-1 h-12">
             {tabConfig.map((tab) => (
               <TabsTrigger
                 key={tab.value}
@@ -312,10 +328,21 @@ export function SettingsTab() {
             allSpecialties={configSpecialties}
             billingCycleStartDay={billingCycleStartDay}
             billingCycleEndDay={billingCycleEndDay}
+            bcvRate={settings.bcvRate || 65.50}
+            bcvLastUpdated={settings.bcvLastUpdated}
             onSave={updateSetting}
             onAddBeautySpecialty={handleAddBeautySpecialty}
             onRemoveBeautySpecialty={handleRemoveBeautySpecialty}
           />
+          <CommercialAlliesCard />
+        </TabsContent>
+
+        <TabsContent value="countries-pricing" className="space-y-6 mt-0">
+          <CountryPricingMatrix />
+        </TabsContent>
+
+        <TabsContent value="allies" className="space-y-6 mt-0">
+          <CommercialAlliesCard />
         </TabsContent>
 
         <TabsContent value="realtime" className="space-y-6 mt-0">
@@ -474,7 +501,8 @@ export function SettingsTab() {
             </div>
 
             {/* TAB: PAÍSES */}
-            <TabsContent value="countries-list" className="space-y-4">
+            <TabsContent value="countries-list" className="space-y-6">
+              <CountryPricingMatrix />
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <h4 className="font-semibold text-emerald-800 mb-1">🌎 Países Habilitados</h4>
                 <p className="text-sm text-emerald-700">
@@ -712,38 +740,7 @@ export function SettingsTab() {
             )}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>⚙️ Gestión de Especialidades</CardTitle>
-              <CardDescription>
-                Administra las especialidades médicas disponibles. Los médicos eligen de esta lista al registrarse.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-green-800 mb-2">🩺 Cómo funciona</h4>
-                  <p className="text-sm text-green-700">
-                    Tú defines las especialidades disponibles y los médicos eligen una al registrarse.
-                    En la sección "Datos Reales" puedes ver cuántos médicos hay en cada especialidad.
-                  </p>
-                </div>
-
-                <ListManagementCard
-                  title="Especialidades Configuradas"
-                  description="Especialidades que aparecerán en los formularios de registro de doctores"
-                  listName="specialties"
-                  items={configSpecialties.map(s => ({ id: s, name: s }))}
-                  onAddItem={(item) => addListItem('specialties', (item as { name: string }).name)}
-                  onUpdateItem={(id, item) => updateListItem('specialties', id, (item as { name: string }).name)}
-                  onDeleteItem={(id) => deleteListItem('specialties', id)}
-                  columns={[{ header: 'Nombre', key: 'name' }]}
-                  itemSchema={{ name: { label: 'Nombre de la Especialidad', type: 'text' } }}
-                  itemNameSingular="Especialidad"
-                />
-              </div>
-            </CardContent>
-          </Card>
+          <ProfessionsSpecialtiesCard />
         </TabsContent>
 
         <TabsContent value="coupons" className="space-y-6 mt-0">

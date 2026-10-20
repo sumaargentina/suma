@@ -40,6 +40,7 @@ function LoginForm() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const errorParam = searchParams.get('error');
+  const redirectParam = searchParams.get('redirect');
 
   const logoUrl = "/images/logo_suma.png";
   const [email, setEmail] = useState("");
@@ -278,7 +279,7 @@ function LoginForm() {
 
           <div className="mt-4 text-center text-sm">
             ¿No tienes una cuenta?{" "}
-            <Link href="/auth/register" className="underline">
+            <Link href={redirectParam ? `/auth/register?redirect=${encodeURIComponent(redirectParam)}` : "/auth/register"} className="underline">
               Regístrate
             </Link>
           </div>

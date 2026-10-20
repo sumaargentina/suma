@@ -9,25 +9,27 @@ import { Plus, Trash2, ShieldCheck, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
-import type { Clinic } from '@/lib/types';
+import type { Clinic, Laboratory } from '@/lib/types';
 
 export function InsurancesTab() {
     const { user } = useAuth();
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
-    const [clinic, setClinic] = useState<Clinic | null>(null);
+    const [clinic, setClinic] = useState<Clinic | Laboratory | null>(null);
     const [insurances, setInsurances] = useState<string[]>([]);
     const [newInsurance, setNewInsurance] = useState('');
 
+    const isLab = user?.role === 'laboratory' || (user?.role === 'secretary' && !!(user as any).laboratoryId);
+    const entityId = user?.role === 'secretary' ? ((user as any).laboratoryId || user.clinicId) : user?.id;
+
     useEffect(() => {
         const loadData = async () => {
-            if (user?.id) {
+            if (entityId) {
                 try {
                     setLoading(true);
-                    // Asumimos que el user.id es el clinicId o está vinculado
-                    // En la implementación actual, getClinic usa el ID directo.
-                    // Si el usuario es 'clinic', su ID es el ID de la clínica.
-                    const data = await supabaseService.getClinic(user.id);
+                    const data = isLab
+                        ? await supabaseService.getLaboratory(entityId)
+                        : await supabaseService.getClinic(entityId);
                     if (data) {
                         setClinic(data);
                         setInsurances(data.acceptedInsurances || []);
@@ -40,7 +42,7 @@ export function InsurancesTab() {
             }
         };
         loadData();
-    }, [user]);
+    }, [entityId, isLab]);
 
     const handleAddInsurance = () => {
         if (!newInsurance.trim()) return;
@@ -61,9 +63,15 @@ export function InsurancesTab() {
         if (!clinic) return;
         setLoading(true);
         try {
-            await supabaseService.updateClinic(clinic.id, {
-                acceptedInsurances: insurances
-            });
+            if (isLab) {
+                await supabaseService.updateLaboratory(clinic.id, {
+                    acceptedInsurances: insurances
+                });
+            } else {
+                await supabaseService.updateClinic(clinic.id, {
+                    acceptedInsurances: insurances
+                });
+            }
             toast({ title: "Guardado", description: "La lista de coberturas ha sido actualizada." });
         } catch (error) {
             console.error("Error saving insurances", error);

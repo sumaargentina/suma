@@ -23,6 +23,12 @@ export async function GET(request: NextRequest) {
                 visit_date,
                 diagnosis,
                 prescription,
+                prescription_expires_at,
+                recipe_status,
+                dispensed_by_pharmacy_id,
+                dispensed_by_pharmacy_name,
+                dispensed_at,
+                dispensation_notes,
                 treatment_plan,
                 requested_studies,
                 medical_report,
@@ -37,6 +43,7 @@ export async function GET(request: NextRequest) {
                 notes,
                 created_at,
                 doctors (
+                    id,
                     name,
                     specialty,
                     medical_license,
@@ -60,7 +67,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Consultar datos básicos del paciente
-        let patientInfo: { name: string; cedula: string; email?: string } = {
+        let patientInfo: { name: string; cedula: string; email?: string; city?: string } = {
             name: 'Paciente',
             cedula: 'N/A'
         };
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
         if (record.patient_id) {
             const { data: patient } = await supabaseAdmin
                 .from('patients')
-                .select('name, cedula, email')
+                .select('name, cedula, email, city')
                 .eq('id', record.patient_id)
                 .maybeSingle();
 
@@ -76,7 +83,8 @@ export async function GET(request: NextRequest) {
                 patientInfo = {
                     name: patient.name || 'Paciente',
                     cedula: patient.cedula || 'N/A',
-                    email: patient.email
+                    email: patient.email,
+                    city: patient.city
                 };
             }
         }
@@ -91,9 +99,17 @@ export async function GET(request: NextRequest) {
             reportCode,
             record: {
                 id: record.id,
+                doctorId: record.doctor_id,
+                patientId: record.patient_id,
                 visitDate: record.visit_date || record.created_at,
                 diagnosis: record.diagnosis,
                 prescription: record.prescription,
+                prescriptionExpiresAt: record.prescription_expires_at,
+                recipeStatus: record.recipe_status || 'active',
+                dispensedByPharmacyId: record.dispensed_by_pharmacy_id,
+                dispensedByPharmacyName: record.dispensed_by_pharmacy_name,
+                dispensedAt: record.dispensed_at,
+                dispensationNotes: record.dispensation_notes,
                 treatmentPlan: record.treatment_plan,
                 requestedStudies: record.requested_studies,
                 medicalReport: record.medical_report,
@@ -108,6 +124,7 @@ export async function GET(request: NextRequest) {
                 createdAt: record.created_at
             },
             doctor: record.doctors || {
+                id: record.doctor_id,
                 name: 'Médico Tratante',
                 specialty: 'Medicina General',
                 medical_license: '',

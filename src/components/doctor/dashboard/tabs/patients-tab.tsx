@@ -439,7 +439,7 @@ function PatientDetailDialog({
                                                 <div className="flex items-center gap-2"><MapPin className="h-4 w-4 opacity-70" /> {patientDetails.city}</div>
                                             )}
                                             {patientDetails?.cedula && (
-                                                <div className="flex items-center gap-2"><User className="h-4 w-4 opacity-70" /> {patientDetails.documentType || 'DNI'}: {patientDetails.cedula}</div>
+                                                <div className="flex items-center gap-2"><User className="h-4 w-4 opacity-70" /> {patientDetails.documentType || 'Cédula'}: {patientDetails.cedula}</div>
                                             )}
                                         </CardContent>
                                     </Card>

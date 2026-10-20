@@ -398,7 +398,7 @@ export function AuditLogTable() {
                       className={`border-b hover:bg-muted/50 ${log.result === 'error' ? 'bg-red-50 dark:bg-red-950/20' : ''}`}
                     >
                       <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                        {new Date(log.timestamp).toLocaleString('es-AR', {
+                        {new Date(log.timestamp).toLocaleString('es-VE', {
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',

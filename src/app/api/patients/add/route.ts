@@ -54,6 +54,16 @@ export async function POST(request: NextRequest) {
         console.log('API: Adding patient with data:', JSON.stringify(sanitizedData, null, 2));
 
         const snakeCaseData = toSnakeCase(sanitizedData);
+        if ('favorited_doctor_ids' in snakeCaseData) {
+            if (!('favorite_doctor_ids' in snakeCaseData)) {
+                snakeCaseData.favorite_doctor_ids = snakeCaseData.favorited_doctor_ids;
+            }
+            delete snakeCaseData.favorited_doctor_ids;
+        }
+        if (typeof snakeCaseData.password === 'string' && !snakeCaseData.password.startsWith('$2')) {
+            const { hashPassword } = await import('@/lib/password-utils');
+            snakeCaseData.password = await hashPassword(snakeCaseData.password);
+        }
 
         const { data, error } = await supabaseAdmin
             .from('patients')

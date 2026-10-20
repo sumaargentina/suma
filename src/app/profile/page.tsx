@@ -120,8 +120,8 @@ export default function ProfilePage() {
     if (user.password === 'OAUTH_GOOGLE_USER') {
       setIsGoogleLinked(true);
     } else {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user?.app_metadata?.provider === 'google') {
+      supabase.auth.getSession().then(({ data, error }) => {
+        if (!error && data?.session?.user?.app_metadata?.provider === 'google') {
           setIsGoogleLinked(true);
         }
       }).catch(() => {});

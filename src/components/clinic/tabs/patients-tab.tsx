@@ -158,7 +158,9 @@ export function PatientsTab() {
         // Format phone for WhatsApp (remove spaces, dashes, add country code if needed)
         let phone = selectedPatient.phone.replace(/[\s\-\(\)]/g, '');
         if (!phone.startsWith('+')) {
-            phone = '+54' + phone; // Argentina default
+            // Si no tiene prefijo, agregar +58 por defecto (Venezuela)
+            if (phone.startsWith('0')) phone = phone.substring(1);
+            phone = phone.startsWith('58') ? `+${phone}` : `+58${phone}`;
         }
 
         const encodedMessage = encodeURIComponent(messageText);
@@ -297,9 +299,9 @@ export function PatientsTab() {
     }, [selectedPatient, appointments]);
 
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-AR', {
+        return new Intl.NumberFormat('en-US', {
             style: 'currency',
-            currency: 'ARS',
+            currency: 'USD',
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
         }).format(amount);
@@ -456,7 +458,7 @@ export function PatientsTab() {
                                                 <div>
                                                     <p className="font-medium">{patient.name}</p>
                                                     {patient.cedula && (
-                                                        <p className="text-xs text-muted-foreground">{patient.documentType || 'DNI'}: {patient.cedula}</p>
+                                                        <p className="text-xs text-muted-foreground">{patient.documentType || 'Cédula'}: {patient.cedula}</p>
                                                     )}
                                                 </div>
                                             </div>
@@ -564,7 +566,7 @@ export function PatientsTab() {
                                         </div>
                                         <div className="flex items-center gap-2 text-sm">
                                             <User className="h-4 w-4 text-muted-foreground" />
-                                            <span>{selectedPatient.documentType || 'DNI'}: {selectedPatient.cedula || 'No registrado'}</span>
+                                            <span>{selectedPatient.documentType || 'Cédula'}: {selectedPatient.cedula || 'No registrado'}</span>
                                         </div>
                                         <div className="flex items-center gap-2 text-sm">
                                             <MapPin className="h-4 w-4 text-muted-foreground" />

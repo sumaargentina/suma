@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAuth, logSecurityEvent } from '@/lib/auth-utils';
 import { sanitizeString, sanitizeEmail, detectInjection } from '@/lib/sanitize';
+import { hashPassword } from '@/lib/password-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create auth user' }, { status: 500 });
         }
 
+        const hashedPassword = await hashPassword(password);
+
         // 2. Insert into secretaries table linked by ID
         const { data, error } = await supabaseAdmin
             .from('secretaries')
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
                 id: authData.user.id,
                 name: sanitizedName,
                 email: sanitizedEmail,
-                password: 'MANAGED_BY_AUTH',
+                password: hashedPassword,
                 clinic_id: clinicId,
                 permissions: permissions || ['agenda'],
                 role: 'secretary',

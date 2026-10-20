@@ -41,6 +41,9 @@ export async function GET(request: Request) {
             whatsapp: clinic.whatsapp,
             website: clinic.website,
             description: clinic.description,
+            country: clinic.country || 'VE',
+            state: clinic.state,
+            sector: clinic.sector,
             address: clinic.address,
             city: clinic.city,
             lat: clinic.lat,
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
             createdAt: clinic.created_at,
             acceptedInsurances: clinic.accepted_insurances,
             paymentSettings: clinic.payment_settings,
+            coupons: clinic.coupons || [],
         }));
 
         return NextResponse.json(camelCaseClinics);
@@ -77,13 +81,12 @@ export async function PATCH(request: Request) {
         }
 
         const { searchParams } = new URL(request.url);
-        const id = searchParams.get('id');
+        const body = await request.json();
+        const id = searchParams.get('id') || body.id;
 
         if (!id) {
             return NextResponse.json({ error: 'Clinic ID is required' }, { status: 400 });
         }
-
-        const body = await request.json();
 
         // Manual mapping to snake_case for critical fields
         const dbData: Record<string, any> = {};
@@ -92,9 +95,13 @@ export async function PATCH(request: Request) {
         if (body.description !== undefined) dbData.description = body.description;
         if (body.logoUrl !== undefined) dbData.logo_url = body.logoUrl;
         if (body.bannerImage !== undefined) dbData.banner_image = body.bannerImage;
+        if (body.country !== undefined) dbData.country = body.country;
+        if (body.state !== undefined) dbData.state = body.state;
+        if (body.sector !== undefined) dbData.sector = body.sector;
         if (body.address !== undefined) dbData.address = body.address;
         if (body.city !== undefined) dbData.city = body.city;
         if (body.paymentSettings !== undefined) dbData.payment_settings = body.paymentSettings;
+        if (body.coupons !== undefined) dbData.coupons = body.coupons;
         if (body.slug !== undefined) dbData.slug = body.slug;
         if (body.status !== undefined) dbData.status = body.status;
         if (body.whatsapp !== undefined) dbData.whatsapp = body.whatsapp;

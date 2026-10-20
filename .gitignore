@@ -44,3 +44,8 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 medagenda-4hxll-firebase-adminsdk-fbsvc-54e45e489b.json
+
+
+# scratch & local backups
+/scratch/
+/scripts/backups/

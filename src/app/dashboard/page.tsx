@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users, Video, Pill, Printer, Sparkles, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Bot, BedDouble } from 'lucide-react';
+import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users, Video, Pill, Printer, Sparkles, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Bot, BedDouble, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ import type { Appointment, Doctor, ChatMessage, FamilyMember, MedicalRecord } fr
 import { HeaderWrapper, BottomNav } from '@/components/header';
 import { MedicalPrescriptionModal } from '@/components/medical/medical-prescription-modal';
 import { MedicalReportModal } from '@/components/medical/medical-report-modal';
+import { SendToPharmacyModal } from '@/components/pharmacy/send-to-pharmacy-modal';
 import {
   Select,
   SelectContent,
@@ -38,6 +39,8 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { WelcomeModal } from '@/components/welcome-modal';
 import { DoctorPatientChat } from '@/components/chat/DoctorPatientChat';
+import { useSettings } from '@/lib/settings';
+import { resolveAppointmentFinancials, getExchangeRate } from '@/lib/currency-utils';
 
 
 function AppointmentCard({
@@ -58,6 +61,9 @@ function AppointmentCard({
   onOpenPrescription?: (appointment: Appointment) => void,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { settings } = useSettings();
+  const currentRate = getExchangeRate(settings, 'VES');
+  const financials = appointment ? resolveAppointmentFinancials(appointment, currentRate) : null;
 
   return (
     <Card className={cn(
@@ -120,9 +126,17 @@ function AppointmentCard({
 
           {/* Precio y Estado */}
           <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1.5 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-            <span className={cn("font-bold text-sm sm:text-base font-mono", appointment.paymentStatus === 'Reembolsado' ? "line-through text-slate-400" : "text-slate-900")}>
-              ${appointment.totalPrice.toFixed(2)}
-            </span>
+            <div className="flex flex-col items-start sm:items-end">
+              <span className={cn("font-bold text-sm sm:text-base font-mono", appointment.paymentStatus === 'Reembolsado' ? "line-through text-slate-400" : "text-slate-900")}>
+                ${appointment.totalPrice.toFixed(2)} USD
+              </span>
+              {financials && financials.paymentCurrency === 'VES' && (
+                <span className="text-[11px] font-mono text-muted-foreground font-medium">
+                  {financials.formattedLocal}
+                  {financials.isHistorical ? ' 🔒' : ' (tasa hoy)'}
+                </span>
+              )}
+            </div>
             {isPast ? (
               <div className="flex flex-col sm:items-end gap-1">
                 <Badge variant={appointment.attendance === 'Atendido' ? 'default' : 'destructive'} className={cn("text-[10px] px-2 py-0.5", appointment.attendance === 'Atendido' ? 'bg-green-600 text-white' : '')}>
@@ -229,8 +243,25 @@ function AppointmentCard({
               )}
               <div className="flex justify-between pt-1 border-t border-slate-200/60 font-semibold text-slate-800">
                 <span>Método de Pago:</span>
-                <span>{appointment.paymentMethod === 'efectivo' ? '💵 Efectivo' : '💳 Transferencia'}</span>
+                <span>{appointment.paymentMethod === 'efectivo' ? '💵 Efectivo en Consultorio' : '💳 Transferencia / Pago Móvil'}</span>
               </div>
+              {financials && financials.paymentCurrency === 'VES' && (
+                <div className="p-2 bg-blue-50/70 rounded-lg border border-blue-100 space-y-1 text-[11px] text-slate-700">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600 font-medium">Total en Bolívares:</span>
+                    <span className="font-mono font-bold text-blue-800">{financials.formattedLocal}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
+                    <span>Tasa oficial de cambio:</span>
+                    <span className="font-mono">Bs. {financials.exchangeRate.toFixed(2)} / $1 USD</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pt-1 border-t border-blue-200/50 leading-relaxed">
+                    {financials.isHistorical
+                      ? '🔒 Pago confirmado. La tasa y monto en Bolívares quedaron congelados.'
+                      : '⏳ Cita en efectivo: El monto en Bolívares se calcula a la tasa del día en que asistas y pagues en la consulta.'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -342,6 +373,7 @@ export default function DashboardPage() {
   const [selectedPrescriptionRecord, setSelectedPrescriptionRecord] = useState<MedicalRecord | null>(null);
   const [selectedPrescriptionDoctor, setSelectedPrescriptionDoctor] = useState<Doctor | null>(null);
   const [selectedPrescriptionAppointment, setSelectedPrescriptionAppointment] = useState<Appointment | null>(null);
+  const [isSendToPharmacyOpen, setIsSendToPharmacyOpen] = useState(false);
 
   // Estados para Informes Médicos y Constancias de Reposo
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -418,7 +450,9 @@ export default function DashboardPage() {
       else if (user.role === 'admin') router.push('/admin/dashboard');
       else if (user.role === 'doctor') router.push('/doctor/dashboard');
       else if (user.role === 'seller') router.push('/seller/dashboard');
-      else if (user.role === 'clinic' || user.role === 'secretary') router.push('/clinic/dashboard');
+      else if (user.role === 'clinic' || (user.role === 'secretary' && !user.laboratoryId)) router.push('/clinic/dashboard');
+      else if (user.role === 'pharmacy') router.push('/pharmacy/dashboard');
+      else if (user.role === 'laboratory' || (user.role === 'secretary' && user.laboratoryId)) router.push('/laboratory/dashboard');
     }
   }, [user, authLoading, router]);
 
@@ -834,9 +868,21 @@ export default function DashboardPage() {
 
   // Manejo explícito de carga y redirecciones
   if (authLoading || (user && user.role !== 'patient')) {
-    if (user && (user.role === 'clinic' || user.role === 'secretary')) {
+    if (user && (user.role === 'clinic' || (user.role === 'secretary' && !user.laboratoryId))) {
       if (typeof window !== 'undefined') {
         setTimeout(() => window.location.href = '/clinic/dashboard', 100);
+      }
+      return (
+        <div className="flex flex-col min-h-screen bg-background items-center justify-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground">Redireccionando...</p>
+        </div>
+      );
+    }
+
+    if (user && (user.role === 'laboratory' || (user.role === 'secretary' && user.laboratoryId))) {
+      if (typeof window !== 'undefined') {
+        setTimeout(() => window.location.href = '/laboratory/dashboard', 100);
       }
       return (
         <div className="flex flex-col min-h-screen bg-background items-center justify-center space-y-4">
@@ -1239,6 +1285,21 @@ export default function DashboardPage() {
                                 onClick={() => handleOpenPrescription(record)}
                               >
                                 <Printer className="h-3.5 w-3.5 mr-1.5" /> Ver Récipe Oficial
+                              </Button>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs w-full sm:w-auto font-medium"
+                                onClick={() => {
+                                  setSelectedPrescriptionRecord(record);
+                                  const doc = allDoctors.find(d => d.id === record.doctor_id) || record.doctors || null;
+                                  setSelectedPrescriptionDoctor(doc);
+                                  setIsSendToPharmacyOpen(true);
+                                }}
+                              >
+                                <Store className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Enviar a Farmacia
                               </Button>
                             </div>
                           </div>
@@ -1800,6 +1861,20 @@ export default function DashboardPage() {
           onClose={() => setShowWelcomeModal(false)}
         />
       )}
+
+      {/* Modal para Enviar Récipe a Farmacia Aliada */}
+      <SendToPharmacyModal
+        isOpen={isSendToPharmacyOpen}
+        onClose={() => setIsSendToPharmacyOpen(false)}
+        recipeCode={(selectedPrescriptionRecord as any)?.recipe_code || `SUMA-REC-${(selectedPrescriptionRecord?.id || '00000000').slice(0, 8).toUpperCase()}`}
+        patientName={selectedPrescriptionAppointment?.patientName || user?.name}
+        patientCedula={(user as any)?.cedula}
+        doctorName={selectedPrescriptionDoctor?.name}
+        doctorSpecialty={selectedPrescriptionDoctor?.specialty}
+        prescriptionText={selectedPrescriptionRecord?.prescription || selectedPrescriptionRecord?.treatment_plan || ''}
+        recipeUrl={typeof window !== 'undefined' && selectedPrescriptionRecord?.id ? `${window.location.origin}/ver-recipe/${selectedPrescriptionRecord.id}` : ''}
+        defaultCity={(user as any)?.city || undefined}
+      />
 
     </div>
   );

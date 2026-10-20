@@ -4,15 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DoctorCard } from "@/components/doctor-card";
 import { ClinicCard } from "@/components/clinic/clinic-card";
-import { Search, Stethoscope, Heart, Activity, Sparkles } from "lucide-react";
-import { getDoctors, getClinics, getSettings } from "@/lib/supabaseService";
-import { Doctor, Clinic } from "@/lib/types";
+import { PharmacyCard } from "@/components/pharmacy/pharmacy-card";
+import { Search, Stethoscope, Heart, Activity, Sparkles, Pill } from "lucide-react";
+import { getDoctors, getClinics, getPharmacies, getSettings } from "@/lib/supabaseService";
+import { Doctor, Clinic, Pharmacy } from "@/lib/types";
 
 import { SearchFilters } from "@/components/search-filters";
 import { SpecialtyPills } from "@/components/specialty-pills";
 import { HealthBackground } from "@/components/HealthBackground";
 import { MapViewToggle } from "@/components/map-view-toggle";
-import { getCitiesByState } from "@/lib/geo-data";
+import { getCitiesByState, normalizeCountryCode, isSameCountry } from "@/lib/geo-data";
+import { findProfessionBySpecialty, DEFAULT_PROFESSIONS_CATALOG } from "@/lib/professions-catalog";
 
 // Force dynamic rendering to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -20,46 +22,63 @@ export const dynamic = 'force-dynamic';
 export default async function FindDoctorPage({
   searchParams,
 }: {
-  searchParams: { q?: string; specialty?: string; state?: string; city?: string; minPrice?: string; maxPrice?: string; minRating?: string; verified?: string; view?: string }
+  searchParams: Promise<{ q?: string; profession?: string; specialty?: string; country?: string; state?: string; city?: string; minPrice?: string; maxPrice?: string; minRating?: string; verified?: string; view?: string }>
 }) {
   const params = await searchParams;
   const query = params?.q || "";
+  const professionFilter = params?.profession || "all";
   const specialtyFilter = params?.specialty || "all";
+  const activeCountry = normalizeCountryCode(params?.country || "VE");
   const stateFilter = params?.state || "all";
   const cityFilter = params?.city || "all";
   const minPrice = Number(params?.minPrice) || 0;
   const maxPrice = Number(params?.maxPrice) || 50000;
   const minRating = Number(params?.minRating) || 0;
   const verifiedOnly = params?.verified === "true";
-  const viewMode = params?.view || "all"; // "all" | "doctors" | "clinics"
+  const viewMode = params?.view || "all"; // "all" | "doctors" | "clinics" | "pharmacies"
 
-  // Fetch data including settings for beauty specialties
-  const [doctors, clinics, settings] = await Promise.all([
+  // Fetch data including settings and pharmacies
+  const [allDoctors, allClinics, allPharmacies, settings] = await Promise.all([
     getDoctors().catch(err => { console.error("Error fetching doctors:", err); return []; }),
     getClinics().catch(err => { console.error("Error fetching clinics:", err); return []; }),
+    getPharmacies().catch(err => { console.error("Error fetching pharmacies:", err); return []; }),
     getSettings().catch(err => { console.error("Error fetching settings:", err); return null; })
   ]);
 
+  // AISLAMIENTO ESTRICTO POR PAÍS: Solo entidades del país activo (VE, AR, CO, etc.)
+  const doctors = allDoctors.filter(d => isSameCountry(d.country, activeCountry));
+  const clinics = allClinics.filter(c => isSameCountry(c.country, activeCountry));
+  const pharmacies = allPharmacies.filter(p => isSameCountry(p.country, activeCountry));
+
   // Get beauty/wellness specialties from admin settings
   const beautySpecialties = settings?.beautySpecialties || [];
+  const professionsCatalog = settings?.professionsCatalog?.length ? settings.professionsCatalog : DEFAULT_PROFESSIONS_CATALOG;
 
-  // Extract unique filter options
-  const specialtiesList = Array.from(new Set(doctors.map(d => d.specialty).filter(Boolean))).sort();
+  // Extract unique filter options within the active country + catalog
+  const catalogSpecialties = professionsCatalog.flatMap(p => p.specialties.map(s => s.name));
+  const specialtiesList = Array.from(new Set([
+    ...doctors.map(d => d.specialty).filter(Boolean),
+    ...catalogSpecialties
+  ])).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
-  // Calculate specialty counts (for pills display) - count ALL doctors
+  // Calculate specialty counts (for pills display) - count doctors in active country
   const specialtiesWithCount = specialtiesList.map(specialty => ({
     name: specialty,
     count: doctors.filter(d => d.specialty === specialty).length
   })).filter(s => s.count > 0);
 
-  // Lista completa de ciudades venezolanas oficiales + ciudades configuradas en settings + registradas
-  const venezuelanCities = getCitiesByState('VE').map(c => c.name);
-  const configCities = (settings?.cities || []).map((c: any) => typeof c === 'string' ? c : c.name).filter(Boolean);
+  // Lista completa de ciudades del país activo + ciudades registradas en ese país
+  const countryOfficialCities = getCitiesByState(activeCountry).map(c => c.name);
+  const configCities = (settings?.cities || [])
+    .filter((c: any) => typeof c === 'string' ? activeCountry === 'VE' : isSameCountry(c.country, activeCountry))
+    .map((c: any) => typeof c === 'string' ? c : c.name)
+    .filter(Boolean);
   const cities = Array.from(new Set([
-    ...venezuelanCities,
+    ...countryOfficialCities,
     ...configCities,
     ...doctors.map(d => d.city).filter(Boolean),
-    ...clinics.map(c => c.city).filter((c): c is string => !!c)
+    ...clinics.map(c => c.city).filter((c): c is string => !!c),
+    ...pharmacies.map(p => p.city).filter(Boolean)
   ])).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
   // Helper function for search matching
@@ -71,15 +90,15 @@ export default async function FindDoctorPage({
     );
   };
 
-  // Helper para verificar si una ciudad pertenece a un estado
+  // Helper para verificar si una ciudad pertenece a un estado/provincia del país activo
   const getCitiesForState = (stName: string): string[] => {
     if (stName === "all") return [];
-    return getCitiesByState('VE', stName).map(c => c.name.toLowerCase());
+    return getCitiesByState(activeCountry, stName).map(c => c.name.toLowerCase());
   };
 
   const selectedStateCities = stateFilter !== "all" ? getCitiesForState(stateFilter) : [];
 
-  // Filter Logic - Doctores
+  // Filter Logic - Doctores (ya aislados por país)
   const filteredDoctors = doctors.filter(doctor => {
     // Exclude doctors that belong to a clinic
     const isClinicDoctor = doctor.clinicId || doctor.isClinicEmployee;
@@ -90,10 +109,13 @@ export default async function FindDoctorPage({
     const servicesString = doctor.services?.map(s => s.name).join(' ') || '';
     const addressesString = doctor.addresses?.map(a => `${a.name} ${a.address} ${a.city}`).join(' ') || '';
 
+    const resolvedProf = doctor.profession || findProfessionBySpecialty(doctor.specialty, professionsCatalog)?.name || 'Médico';
+
     const matchesQuery = matchesSearch(
       query,
       doctor.name,           // Nombre completo
-      doctor.specialty,      // Especialidad
+      resolvedProf,          // Profesión (Nivel 1)
+      doctor.specialty,      // Especialidad (Nivel 2)
       doctor.city,           // Ciudad
       doctor.state,          // Estado
       doctor.address,        // Dirección
@@ -104,6 +126,7 @@ export default async function FindDoctorPage({
       addressesString        // Consultorios
     );
 
+    const matchesProfession = professionFilter === "all" || resolvedProf.toLowerCase() === professionFilter.toLowerCase();
     const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
 
     // Filtro por Estado y Ciudad
@@ -126,10 +149,10 @@ export default async function FindDoctorPage({
 
     const matchesVerified = !verifiedOnly || doctor.verificationStatus === 'verified';
 
-    return matchesQuery && matchesSpecialty && matchesLocation && matchesPrice && matchesRating && matchesVerified;
+    return matchesQuery && matchesProfession && matchesSpecialty && matchesLocation && matchesPrice && matchesRating && matchesVerified;
   });
 
-  // Filter Logic - Clínicas
+  // Filter Logic - Clínicas (ya aisladas por país)
   const filteredClinics = clinics.filter(clinic => {
     const matchesStatus = clinic.verificationStatus === 'verified' && clinic.status === 'active';
 
@@ -148,8 +171,9 @@ export default async function FindDoctorPage({
     // Clinics filter logic by state and city
     let matchesLocation = true;
     if (stateFilter !== "all") {
+      const clinicStateMatches = clinic.state?.toLowerCase() === stateFilter.toLowerCase();
       const clinicCityInState = clinic.city && selectedStateCities.includes(clinic.city.toLowerCase());
-      matchesLocation = Boolean(clinicCityInState);
+      matchesLocation = Boolean(clinicStateMatches || clinicCityInState);
     }
     if (matchesLocation && cityFilter !== "all") {
       matchesLocation = clinic.city?.toLowerCase() === cityFilter.toLowerCase();
@@ -170,7 +194,7 @@ export default async function FindDoctorPage({
     doctor => beautySpecialties.includes(doctor.specialty)
   );
 
-  // Doctores y Clínicas para el Mapa (Conservan filtros de especialidad/búsqueda pero NO se limitan a una sola ciudad para permitir explorar todo el mapa)
+  // Doctores y Clínicas para el Mapa (Dentro del país activo)
   const mapDoctors = doctors.filter(doctor => {
     const isClinicDoctor = doctor.clinicId || doctor.isClinicEmployee;
     if (isClinicDoctor) return false;
@@ -193,6 +217,8 @@ export default async function FindDoctorPage({
       addressesString
     );
 
+    const resolvedProf = doctor.profession || findProfessionBySpecialty(doctor.specialty, professionsCatalog)?.name || 'Médico';
+    const matchesProfession = professionFilter === "all" || resolvedProf.toLowerCase() === professionFilter.toLowerCase();
     const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
     const fee = doctor.consultationFee || 0;
     const matchesPrice = fee >= minPrice && fee <= maxPrice;
@@ -200,7 +226,7 @@ export default async function FindDoctorPage({
     const matchesRating = rating >= minRating;
     const matchesVerified = !verifiedOnly || doctor.verificationStatus === 'verified';
 
-    return matchesQuery && matchesSpecialty && matchesPrice && matchesRating && matchesVerified;
+    return matchesQuery && matchesProfession && matchesSpecialty && matchesPrice && matchesRating && matchesVerified;
   });
 
   const mapClinics = clinics.filter(clinic => {
@@ -220,6 +246,50 @@ export default async function FindDoctorPage({
     const matchesRating = rating >= minRating;
 
     return matchesStatus && matchesQuery && matchesRating;
+  });
+
+  // Filter Logic - Farmacias Aliadas (ya aisladas por país)
+  const activePharmacies = pharmacies.filter(p => p.status === 'active' || !p.status);
+
+  const filteredPharmacies = activePharmacies.filter(pharmacy => {
+    const matchesQuery = matchesSearch(
+      query,
+      pharmacy.name,
+      pharmacy.chainName,
+      pharmacy.chain_name,
+      pharmacy.branchName,
+      pharmacy.branch_name,
+      pharmacy.city,
+      pharmacy.state,
+      pharmacy.address
+    );
+
+    let matchesLocation = true;
+    if (stateFilter !== "all") {
+      const pharmacyCityInState = pharmacy.city && selectedStateCities.includes(pharmacy.city.toLowerCase());
+      const pharmacyStateMatches = pharmacy.state?.toLowerCase() === stateFilter.toLowerCase();
+      matchesLocation = Boolean(pharmacyCityInState || pharmacyStateMatches);
+    }
+    if (matchesLocation && cityFilter !== "all") {
+      matchesLocation = pharmacy.city?.toLowerCase() === cityFilter.toLowerCase();
+    }
+
+    return matchesQuery && matchesLocation;
+  });
+
+  // Farmacias para el mapa
+  const mapPharmacies = activePharmacies.filter(pharmacy => {
+    return matchesSearch(
+      query,
+      pharmacy.name,
+      pharmacy.chainName,
+      pharmacy.chain_name,
+      pharmacy.branchName,
+      pharmacy.branch_name,
+      pharmacy.city,
+      pharmacy.state,
+      pharmacy.address
+    );
   });
 
   return (
@@ -266,12 +336,14 @@ export default async function FindDoctorPage({
           <MapViewToggle
             doctors={filteredDoctors}
             clinics={filteredClinics}
+            pharmacies={filteredPharmacies}
             mapDoctors={mapDoctors}
             mapClinics={mapClinics}
+            mapPharmacies={mapPharmacies}
             centerCity={cityFilter !== "all" ? cityFilter : (stateFilter !== "all" ? stateFilter : undefined)}
           >
             {/* 1. MÉDICOS PARTICULARES */}
-            {regularDoctors.length > 0 && viewMode !== 'clinics' && (
+            {regularDoctors.length > 0 && viewMode !== 'clinics' && viewMode !== 'pharmacies' && (
               <div className="space-y-3 md:space-y-6">
                 {/* Header compacto en móvil */}
                 <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
@@ -298,7 +370,7 @@ export default async function FindDoctorPage({
             )}
 
             {/* 2. ESPECIALISTAS DE BIENESTAR */}
-            {wellnessDoctors.length > 0 && viewMode !== 'clinics' && (
+            {wellnessDoctors.length > 0 && viewMode !== 'clinics' && viewMode !== 'pharmacies' && (
               <div className="space-y-3 md:space-y-6">
                 <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
                   <div className="flex items-center gap-2 md:gap-3">
@@ -323,19 +395,8 @@ export default async function FindDoctorPage({
               </div>
             )}
 
-            {/* Mensaje cuando no hay resultados */}
-            {regularDoctors.length === 0 && wellnessDoctors.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-8 md:py-16 bg-white rounded-2xl md:rounded-3xl border border-dashed border-slate-200">
-                <div className="bg-slate-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
-                  <Search className="h-6 w-6 md:h-8 md:w-8 text-slate-400" />
-                </div>
-                <h3 className="text-sm md:text-lg font-semibold text-slate-900 mb-1">No encontramos resultados</h3>
-                <p className="text-xs md:text-base text-slate-500 max-w-sm text-center px-4">Prueba con otra especialidad</p>
-              </div>
-            )}
-
             {/* 3. CLÍNICAS */}
-            {filteredClinics.length > 0 && viewMode !== 'doctors' && (
+            {filteredClinics.length > 0 && viewMode !== 'doctors' && viewMode !== 'pharmacies' && (
               <div className="space-y-3 md:space-y-6">
                 <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
                   <div className="flex items-center gap-2 md:gap-3">
@@ -357,6 +418,45 @@ export default async function FindDoctorPage({
                     <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* 4. FARMACIAS ALIADAS */}
+            {filteredPharmacies.length > 0 && viewMode !== 'doctors' && viewMode !== 'clinics' && (
+              <div className="space-y-3 md:space-y-6">
+                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="p-1.5 md:p-2 bg-emerald-500/10 rounded-lg">
+                      <Pill className="h-4 w-4 md:h-6 md:w-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Farmacias Aliadas</h2>
+                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">
+                        Dispensación y validación oficial de récipes médicos SUMA
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] md:text-sm font-semibold bg-emerald-50 text-emerald-700 px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-emerald-100">
+                    {filteredPharmacies.length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                  {filteredPharmacies.map((pharmacy, index) => (
+                    <PharmacyCard key={pharmacy.id} pharmacy={pharmacy} priority={index < 3} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Mensaje cuando no hay resultados en ninguna categoría */}
+            {regularDoctors.length === 0 && wellnessDoctors.length === 0 && filteredClinics.length === 0 && filteredPharmacies.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-8 md:py-16 bg-white rounded-2xl md:rounded-3xl border border-dashed border-slate-200">
+                <div className="bg-slate-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
+                  <Search className="h-6 w-6 md:h-8 md:w-8 text-slate-400" />
+                </div>
+                <h3 className="text-sm md:text-lg font-semibold text-slate-900 mb-1">No encontramos resultados</h3>
+                <p className="text-xs md:text-base text-slate-500 max-w-sm text-center px-4">Prueba buscando por otra ciudad o término</p>
               </div>
             )}
           </MapViewToggle>

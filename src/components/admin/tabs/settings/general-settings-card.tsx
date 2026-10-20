@@ -27,6 +27,8 @@ interface GeneralSettingsCardProps {
   allSpecialties?: string[];
   billingCycleStartDay?: number;
   billingCycleEndDay?: number;
+  bcvRate?: number;
+  bcvLastUpdated?: string;
   onSave: (key: keyof AppSettings, value: unknown) => Promise<void>;
   onAddBeautySpecialty?: (specialty: string) => Promise<void>;
   onRemoveBeautySpecialty?: (specialty: string) => Promise<void>;
@@ -60,6 +62,8 @@ export function GeneralSettingsCard({
   allSpecialties = [],
   billingCycleStartDay = 1,
   billingCycleEndDay = 31,
+  bcvRate = 65.50,
+  bcvLastUpdated,
   onSave,
   onAddBeautySpecialty,
   onRemoveBeautySpecialty
@@ -287,7 +291,10 @@ export function GeneralSettingsCard({
     try {
       const formData = new FormData(e.currentTarget);
 
-      const updates = {
+      const rawBcv = formData.get('bcvRate');
+      const bcvVal = rawBcv ? Number(rawBcv) : undefined;
+
+      const updates: Record<string, unknown> = {
         logoUrl: logoUrlInput,
         heroImageUrl: heroUrlInput,
         currency: formData.get('currency') as string,
@@ -295,6 +302,12 @@ export function GeneralSettingsCard({
         billingCycleStartDay: Number(formData.get('billingCycleStartDay')),
         billingCycleEndDay: Number(formData.get('billingCycleEndDay')),
       };
+
+      if (bcvVal && bcvVal > 0) {
+        updates.bcvRate = bcvVal;
+        updates.bcvLastUpdated = new Date().toISOString();
+        updates.exchangeRates = { VES: bcvVal, USD: 1.0 };
+      }
 
       for (const [key, value] of Object.entries(updates)) {
         if (value !== undefined && value !== null) {
@@ -536,6 +549,32 @@ export function GeneralSettingsCard({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-3 p-4 bg-teal-50/50 border border-teal-200 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="bcvRate" className="text-base font-semibold text-teal-950 flex items-center gap-2">
+                    🇻🇪 Tasa Oficial de Cambio (Bs. por $1 USD)
+                  </Label>
+                  {bcvLastUpdated && (
+                    <span className="text-[11px] text-teal-700">
+                      Última actualización: {new Date(bcvLastUpdated).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <Input
+                  id="bcvRate"
+                  name="bcvRate"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  defaultValue={bcvRate}
+                  className="h-12 text-lg font-mono font-bold bg-white"
+                  required
+                />
+                <p className="text-xs text-teal-800">
+                  Esta tasa se utiliza para calcular automáticamente el monto en Bolívares (Bs.) que pagarán los pacientes cuando elijan métodos de pago locales (Pago Móvil o Transferencia). <strong>Las citas ya pagadas no se modificarán al cambiar esta tasa</strong> (histórico contable y financiero protegido).
+                </p>
               </div>
             </div>
           </div>

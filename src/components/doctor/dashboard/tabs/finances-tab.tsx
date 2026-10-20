@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useState } from "react";
@@ -7,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -22,39 +22,35 @@ import {
   PieChart,
   Building2,
   Filter,
-  Video
+  Video,
+  Lock,
+  Sparkles,
+  RefreshCw,
+  Coins
 } from 'lucide-react';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FinancialCharts } from '../financial-charts';
-
-const timeRangeLabels: Record<string, string> = {
-  today: 'Hoy',
-  week: 'Esta Semana',
-  month: 'Este Mes',
-  year: 'Este Año',
-  all: 'Global',
-};
+import { useBcvRate } from '@/hooks/use-bcv-rate';
+import { resolveAppointmentFinancials, resolveExpenseFinancials, formatCurrency } from '@/lib/currency-utils';
+import { DualCurrencyDisplay } from '@/components/ui/dual-currency-display';
 
 interface FinancesTabProps {
   doctorData: Doctor;
   appointments: Appointment[];
   onOpenExpenseDialog: (expense: Expense | null) => void;
   onDeleteItem: (type: 'expense', id: string) => void;
-}
-
-interface IncomeData {
-  date: string;
-  amount: number;
-  appointments: number;
-  patients: string[];
+  currentBcvRate?: number;
 }
 
 interface OfficeStats {
   office: string;
   totalRevenue: number;
+  totalRevenueVES: number;
   totalExpenses: number;
+  totalExpensesVES: number;
   netProfit: number;
+  netProfitVES: number;
   appointments: number;
   paidAppointments: number;
   refundedAppointments: number;
@@ -63,21 +59,20 @@ interface OfficeStats {
   uniquePatients: number;
 }
 
-export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onDeleteItem }: FinancesTabProps) {
+export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onDeleteItem, currentBcvRate }: FinancesTabProps) {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedOffice, setSelectedOffice] = useState<string>('all');
 
-  // Obtener lista de consultorios registrados del médico (desde módulo Addresses)
-  const offices = useMemo(() => {
-    // Usar los consultorios registrados en el módulo de direcciones
-    const officeNames = (doctorData.addresses || []).map(addr => addr.name);
+  const bcvInfo = useBcvRate();
+  const effectiveBcvRate = currentBcvRate && currentBcvRate > 0 ? currentBcvRate : bcvInfo.rate;
 
-    // Agregar "Consultas Online" si está habilitado
+  // Obtener lista de consultorios registrados del médico
+  const offices = useMemo(() => {
+    const officeNames = (doctorData.addresses || []).map(addr => addr.name);
     if (doctorData.onlineConsultation?.enabled) {
       officeNames.push('Consultas Online');
     }
-
     return officeNames.sort();
   }, [doctorData.addresses, doctorData.onlineConsultation]);
 
@@ -88,7 +83,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     return map;
   }, [doctorData.addresses]);
 
-  // Calcular estadísticas financieras por consultorio
+  // Calcular estadísticas financieras por consultorio (con dualidad USD y Bs.)
   const officeStats = useMemo((): OfficeStats[] => {
     let filteredAppointments = appointments;
     let filteredExpenses = doctorData.expenses || [];
@@ -98,41 +93,27 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       const now = new Date();
       let startDate: Date, endDate: Date;
       switch (timeRange) {
-        case 'today':
-          startDate = startOfDay(now);
-          endDate = endOfDay(now);
-          break;
-        case 'week':
-          startDate = startOfWeek(now, { locale: es });
-          endDate = endOfWeek(now, { locale: es });
-          break;
-        case 'year':
-          startDate = startOfYear(now);
-          endDate = endOfYear(now);
-          break;
-        case 'month':
-        default:
-          startDate = startOfMonth(now);
-          endDate = endOfMonth(now);
-          break;
+        case 'today': startDate = startOfDay(now); endDate = endOfDay(now); break;
+        case 'week': startDate = startOfWeek(now, { locale: es }); endDate = endOfWeek(now, { locale: es }); break;
+        case 'year': startDate = startOfYear(now); endDate = endOfYear(now); break;
+        case 'month': default: startDate = startOfMonth(now); endDate = endOfMonth(now); break;
       }
 
-      filteredAppointments = appointments.filter(a => {
+      filteredAppointments = filteredAppointments.filter(a => {
         const apptDate = parseISO(a.date);
         return apptDate >= startDate && apptDate <= endDate;
       });
-      filteredExpenses = (doctorData.expenses || []).filter(e => {
+
+      filteredExpenses = filteredExpenses.filter(e => {
         const expenseDate = parseISO(e.date);
         return expenseDate >= startDate && expenseDate <= endDate;
       });
     }
 
-    // Agrupar por consultorio
     const statsMap = new Map<string, OfficeStats>();
 
     // Procesar citas
     filteredAppointments.forEach(apt => {
-      // Determinar el consultorio por nombre
       let office = 'Sin consultorio';
 
       if (apt.consultationType === 'online') {
@@ -140,15 +121,17 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       } else if (apt.doctorAddress && addressToNameMap.has(apt.doctorAddress)) {
         office = addressToNameMap.get(apt.doctorAddress)!;
       } else if (apt.office) {
-        // Fallback legacy
         office = apt.office;
       }
 
       const existing = statsMap.get(office) || {
         office,
         totalRevenue: 0,
+        totalRevenueVES: 0,
         totalExpenses: 0,
+        totalExpensesVES: 0,
         netProfit: 0,
+        netProfitVES: 0,
         appointments: 0,
         paidAppointments: 0,
         refundedAppointments: 0,
@@ -159,10 +142,13 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
       existing.appointments++;
       if (apt.paymentStatus === 'Pagado') {
-        existing.totalRevenue += apt.totalPrice;
+        // Resuelve respetando la tasa histórica congelada o tasa actual
+        const fin = resolveAppointmentFinancials(apt, effectiveBcvRate);
+        existing.totalRevenue += fin.amountUSD;
+        existing.totalRevenueVES += fin.amountLocal;
         existing.paidAppointments++;
         if (apt.noShowResolution === 'retained') {
-          existing.totalRetained += apt.totalPrice;
+          existing.totalRetained += fin.amountUSD;
         }
       } else if (apt.paymentStatus === 'Reembolsado' || apt.noShowResolution === 'refunded') {
         existing.refundedAppointments++;
@@ -174,14 +160,15 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
     // Procesar gastos
     filteredExpenses.forEach(exp => {
-      // Los gastos ya deberían tener el nombre del consultorio en 'office' si se guardan correctamente
-      // O 'Consultas Online'
       const office = exp.office || 'Sin consultorio';
       const existing = statsMap.get(office) || {
         office,
         totalRevenue: 0,
+        totalRevenueVES: 0,
         totalExpenses: 0,
+        totalExpensesVES: 0,
         netProfit: 0,
+        netProfitVES: 0,
         appointments: 0,
         paidAppointments: 0,
         refundedAppointments: 0,
@@ -190,7 +177,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
         uniquePatients: 0,
       };
 
-      existing.totalExpenses += exp.amount;
+      const expFin = resolveExpenseFinancials(exp, effectiveBcvRate);
+      existing.totalExpenses += expFin.amountUSD;
+      existing.totalExpensesVES += expFin.amountLocal;
       statsMap.set(office, existing);
     });
 
@@ -204,35 +193,40 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
       });
       stats.uniquePatients = new Set(officeAppointments.map(a => a.patientId)).size;
       stats.netProfit = stats.totalRevenue - stats.totalExpenses;
+      stats.netProfitVES = stats.totalRevenueVES - stats.totalExpensesVES;
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [doctorData, appointments, timeRange, addressToNameMap]);
+  }, [doctorData, appointments, timeRange, addressToNameMap, effectiveBcvRate]);
 
   // Estadísticas totales (todos los consultorios)
   const totalStats = useMemo(() => {
     return officeStats.reduce((acc, stats) => ({
       totalRevenue: acc.totalRevenue + stats.totalRevenue,
+      totalRevenueVES: acc.totalRevenueVES + stats.totalRevenueVES,
       totalExpenses: acc.totalExpenses + stats.totalExpenses,
+      totalExpensesVES: acc.totalExpensesVES + stats.totalExpensesVES,
       netProfit: acc.netProfit + stats.netProfit,
+      netProfitVES: acc.netProfitVES + stats.netProfitVES,
       appointments: acc.appointments + stats.appointments,
       paidAppointments: acc.paidAppointments + stats.paidAppointments,
       refundedAppointments: acc.refundedAppointments + stats.refundedAppointments,
       totalRefunded: acc.totalRefunded + stats.totalRefunded,
       totalRetained: acc.totalRetained + stats.totalRetained,
       uniquePatients: acc.uniquePatients + stats.uniquePatients,
-      pendingPayments: 0, // Se calculará después
     }), {
       totalRevenue: 0,
+      totalRevenueVES: 0,
       totalExpenses: 0,
+      totalExpensesVES: 0,
       netProfit: 0,
+      netProfitVES: 0,
       appointments: 0,
       paidAppointments: 0,
       refundedAppointments: 0,
       totalRefunded: 0,
       totalRetained: 0,
       uniquePatients: 0,
-      pendingPayments: 0,
     });
   }, [officeStats]);
 
@@ -243,8 +237,11 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     }
     return officeStats.find(s => s.office === selectedOffice) || {
       totalRevenue: 0,
+      totalRevenueVES: 0,
       totalExpenses: 0,
+      totalExpensesVES: 0,
       netProfit: 0,
+      netProfitVES: 0,
       appointments: 0,
       paidAppointments: 0,
       refundedAppointments: 0,
@@ -254,16 +251,14 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     };
   }, [selectedOffice, officeStats, totalStats]);
 
-  // Filtrar gastos por consultorio seleccionado
+  // Filtrar gastos por consultorio seleccionado y tiempo
   const filteredExpenses = useMemo(() => {
     let expenses = doctorData.expenses || [];
 
-    // Filtrar por consultorio
     if (selectedOffice !== 'all') {
       expenses = expenses.filter(e => (e.office || 'Sin consultorio') === selectedOffice);
     }
 
-    // Filtrar por tiempo
     if (timeRange !== 'all') {
       const now = new Date();
       let startDate: Date, endDate: Date;
@@ -281,9 +276,9 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
     }
 
     return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [doctorData.expenses, timeRange, selectedOffice]);
+  }, [doctorData.expenses, selectedOffice, timeRange]);
 
-  // Citas para la tabla de ingresos y movimientos
+  // Citas pagadas para la tabla de ingresos
   const filteredIncomeAppointments = useMemo(() => {
     let apps = appointments.filter(a => a.paymentStatus === 'Pagado' || a.paymentStatus === 'Reembolsado' || a.noShowResolution === 'retained');
 
@@ -296,6 +291,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
         case 'year': startDate = startOfYear(now); endDate = endOfYear(now); break;
         case 'month': default: startDate = startOfMonth(now); endDate = endOfMonth(now); break;
       }
+
       apps = apps.filter(a => {
         const apptDate = parseISO(a.date);
         return apptDate >= startDate && apptDate <= endDate;
@@ -315,23 +311,60 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
 
   return (
     <div className="space-y-6">
+      {/* Banner de Tasa Oficial BCV e Integridad Histórica */}
+      <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 dark:from-emerald-950/20 dark:via-teal-950/20 dark:to-blue-950/20 shadow-sm">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-md">
+                <Coins className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
+                    Tasa Oficial BCV:
+                  </h3>
+                  <span className="font-mono font-extrabold text-emerald-800 dark:text-emerald-300 text-lg bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700">
+                    1 USD = Bs. {effectiveBcvRate.toFixed(2)}
+                  </span>
+                  <Badge variant="outline" className="bg-white/80 dark:bg-zinc-800/80 text-emerald-700 dark:text-emerald-400 border-emerald-300 text-[11px] font-semibold gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    Vigente
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Conversión dual oficial en Bolívares y Dólares para todas las operaciones y cobros en consultorio.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs bg-white/70 dark:bg-zinc-800/70 p-2.5 rounded-lg border border-emerald-200 dark:border-zinc-700">
+              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                <Lock className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                <span><strong>Historial protegido:</strong> Citas cobradas mantienen su tasa original congelada.</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Filtros de tiempo y consultorio */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="flex items-center gap-2 text-base md:text-xl">
-                <BarChart3 className="h-5 w-5" />
-                Panel Financiero
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Panel Financiero y Contable
               </CardTitle>
               <CardDescription>
-                Análisis detallado de ingresos, gastos y rentabilidad por consultorio
+                Control de ingresos, gastos y rentabilidad en USD y Bolívares por consultorio
               </CardDescription>
             </div>
 
             <Button
               onClick={() => onOpenExpenseDialog(null)}
-              className="bg-red-600 hover:bg-red-700 shadow-md font-semibold text-white animate-pulse-slow"
+              className="bg-red-600 hover:bg-red-700 shadow-md font-semibold text-white"
               size="default"
             >
               <PlusCircle className="mr-2 h-5 w-5" />
@@ -384,12 +417,12 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             </Button>
           </div>
 
-          {/* Filtro de consultorio - Siempre visible */}
+          {/* Filtro de consultorio */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={selectedOffice} onValueChange={setSelectedOffice}>
-                <SelectTrigger className="w-full md:w-[300px]">
+                <SelectTrigger className="w-full md:w-[320px]">
                   <SelectValue placeholder="Seleccionar consultorio" />
                 </SelectTrigger>
                 <SelectContent>
@@ -411,7 +444,6 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                       </div>
                     </SelectItem>
                   ))}
-
                 </SelectContent>
               </Select>
             </div>
@@ -420,7 +452,6 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                 <span className="text-blue-600">ℹ️</span>
                 <span>
                   Para separar finanzas por consultorio, agrega el campo "Consultorio" al crear gastos.
-                  Ejemplo: "Consultorio Centro", "Consultorio Norte", etc.
                 </span>
               </p>
             )}
@@ -434,10 +465,10 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-blue-800">
               <Building2 className="h-5 w-5" />
-              Resumen por Consultorio
+              Rendimiento por Consultorio (USD / Bs.)
             </CardTitle>
             <CardDescription className="text-blue-700">
-              Comparativa de rendimiento entre tus diferentes ubicaciones
+              Comparativa de ingresos y gastos convertidos a la tasa de cambio de cada movimiento
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -466,19 +497,28 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                           </p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="grid grid-cols-3 gap-4 text-right">
                         <div>
                           <p className="text-xs text-muted-foreground">Ingresos</p>
-                          <p className="font-bold text-green-600">${stats.totalRevenue.toFixed(2)}</p>
+                          <p className="font-bold text-green-600 text-sm">${stats.totalRevenue.toFixed(2)}</p>
+                          <p className="text-[11px] text-emerald-700 font-mono">
+                            {formatCurrency(stats.totalRevenueVES, 'VES')}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Gastos</p>
-                          <p className="font-bold text-red-600">${stats.totalExpenses.toFixed(2)}</p>
+                          <p className="font-bold text-red-600 text-sm">${stats.totalExpenses.toFixed(2)}</p>
+                          <p className="text-[11px] text-red-700 font-mono">
+                            {formatCurrency(stats.totalExpensesVES, 'VES')}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Beneficio</p>
-                          <p className={`font-bold ${stats.netProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                          <p className={`font-bold text-sm ${stats.netProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
                             ${stats.netProfit.toFixed(2)}
+                          </p>
+                          <p className={`text-[11px] font-mono ${stats.netProfitVES >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                            {formatCurrency(stats.netProfitVES, 'VES')}
                           </p>
                         </div>
                       </div>
@@ -491,65 +531,92 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
         </Card>
       )}
 
-      {/* Estadísticas principales */}
+      {/* Estadísticas principales en DUAL CURRENCY */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        {/* Ingresos Totales */}
+        <Card className="border-l-4 border-l-green-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              ${selectedStats.totalRevenue.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {selectedStats.paidAppointments} citas pagadas
+            <DualCurrencyDisplay
+              amountUSD={selectedStats.totalRevenue}
+              amountVES={selectedStats.totalRevenueVES}
+              rate={effectiveBcvRate}
+              layout="card-kpi"
+              size="lg"
+              usdClassName="text-green-600"
+              vesClassName="text-emerald-700 font-semibold"
+              showRate={true}
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              {selectedStats.paidAppointments} citas cobradas
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Gastos Totales */}
+        <Card className="border-l-4 border-l-red-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Gastos</CardTitle>
+            <CardTitle className="text-sm font-medium">Gastos Registrados</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              ${selectedStats.totalExpenses.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {filteredExpenses.length} gastos registrados
+            <DualCurrencyDisplay
+              amountUSD={selectedStats.totalExpenses}
+              amountVES={selectedStats.totalExpensesVES}
+              rate={effectiveBcvRate}
+              layout="card-kpi"
+              size="lg"
+              usdClassName="text-red-600"
+              vesClassName="text-red-700 font-semibold"
+              showRate={true}
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              {filteredExpenses.length} egresos operativos
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Beneficio Neto */}
+        <Card className={cn("border-l-4 shadow-sm", selectedStats.netProfit >= 0 ? "border-l-primary" : "border-l-destructive")}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Beneficio Neto</CardTitle>
-            <Wallet className="h-4 w-4 text-primary" />
+            <Wallet className={cn("h-4 w-4", selectedStats.netProfit >= 0 ? "text-primary" : "text-destructive")} />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${selectedStats.netProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
-              ${selectedStats.netProfit.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {selectedStats.netProfit >= 0 ? 'Ganancia' : 'Pérdida'}
+            <DualCurrencyDisplay
+              amountUSD={selectedStats.netProfit}
+              amountVES={selectedStats.netProfitVES}
+              rate={effectiveBcvRate}
+              layout="card-kpi"
+              size="lg"
+              usdClassName={selectedStats.netProfit >= 0 ? 'text-primary' : 'text-destructive'}
+              vesClassName={selectedStats.netProfitVES >= 0 ? 'text-primary' : 'text-destructive'}
+              showRate={true}
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              {selectedStats.netProfit >= 0 ? 'Ganancia neta acumulada' : 'Saldo en déficit'}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Pacientes y Citas */}
+        <Card className="border-l-4 border-l-blue-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pacientes Únicos</CardTitle>
+            <CardTitle className="text-sm font-medium">Pacientes y Actividad</CardTitle>
             <Users className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
               {selectedStats.uniquePatients}
+              <span className="text-xs font-normal text-muted-foreground ml-2">pacientes únicos</span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {selectedStats.appointments} citas totales
-            </p>
+            <div className="mt-1 text-xs text-muted-foreground flex items-center justify-between">
+              <span>Citas totales: <strong>{selectedStats.appointments}</strong></span>
+              <span>Ticket prom: <strong>${selectedStats.paidAppointments > 0 ? (selectedStats.totalRevenue / selectedStats.paidAppointments).toFixed(1) : '0.00'}</strong></span>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -589,22 +656,40 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Resumen de Pagos
+                  <DollarSign className="h-5 w-5 text-emerald-600" />
+                  Balance Operativo (USD / Bs.)
                 </CardTitle>
+                <CardDescription>Resumen acumulado del periodo seleccionado</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Citas Pagadas:</span>
-                  <Badge variant="default" className="bg-green-100 text-green-800">
-                    {selectedStats.paidAppointments}
-                  </Badge>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-muted-foreground">Total Ingresos:</span>
+                  <div className="text-right">
+                    <span className="font-bold text-green-600">${selectedStats.totalRevenue.toFixed(2)} USD</span>
+                    <span className="text-xs text-emerald-700 font-mono block">
+                      {formatCurrency(selectedStats.totalRevenueVES, 'VES')}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Total Citas:</span>
-                  <Badge variant="outline">
-                    {selectedStats.appointments}
-                  </Badge>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-muted-foreground">Total Egresos:</span>
+                  <div className="text-right">
+                    <span className="font-bold text-red-600">${selectedStats.totalExpenses.toFixed(2)} USD</span>
+                    <span className="text-xs text-red-700 font-mono block">
+                      {formatCurrency(selectedStats.totalExpensesVES, 'VES')}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-sm font-semibold">Beneficio Limpio:</span>
+                  <div className="text-right">
+                    <span className={cn("font-bold", selectedStats.netProfit >= 0 ? "text-primary" : "text-destructive")}>
+                      ${selectedStats.netProfit.toFixed(2)} USD
+                    </span>
+                    <span className="text-xs font-mono font-medium block">
+                      {formatCurrency(selectedStats.netProfitVES, 'VES')}
+                    </span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -612,11 +697,12 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <PieChart className="h-5 w-5" />
-                  Distribución
+                  <PieChart className="h-5 w-5 text-blue-600" />
+                  Distribución de Flujo
                 </CardTitle>
+                <CardDescription>Comparativa porcentual de ingresos vs gastos</CardDescription>
               </CardHeader>
-              <div className="space-y-4">
+              <CardContent className="space-y-4">
                 {(() => {
                   const maxValue = Math.max(selectedStats.totalRevenue, selectedStats.totalExpenses) || 1;
                   const revenuePercentage = (selectedStats.totalRevenue / maxValue) * 100;
@@ -626,32 +712,32 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                     <>
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span>Ingresos</span>
-                          <span className="font-medium">${selectedStats.totalRevenue.toFixed(2)}</span>
+                          <span className="text-muted-foreground">Ingresos ({selectedStats.paidAppointments} citas)</span>
+                          <span className="font-semibold text-green-600">${selectedStats.totalRevenue.toFixed(2)}</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div className="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden">
                           <div
-                            className="bg-green-600 h-2 rounded-full transition-all duration-500"
+                            className="bg-green-600 h-2.5 rounded-full transition-all duration-500"
                             style={{ width: `${revenuePercentage}%` }}
-                          ></div>
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span>Gastos</span>
-                          <span className="font-medium">${selectedStats.totalExpenses.toFixed(2)}</span>
+                          <span className="text-muted-foreground">Gastos ({filteredExpenses.length} registros)</span>
+                          <span className="font-semibold text-red-600">${selectedStats.totalExpenses.toFixed(2)}</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div className="w-full bg-gray-200 dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden">
                           <div
-                            className="bg-red-600 h-2 rounded-full transition-all duration-500"
+                            className="bg-red-600 h-2.5 rounded-full transition-all duration-500"
                             style={{ width: `${expensesPercentage}%` }}
-                          ></div>
+                          />
                         </div>
                       </div>
                     </>
                   );
                 })()}
-              </div>
+              </CardContent>
             </Card>
           </div>
         </TabsContent>
@@ -663,6 +749,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             expenses={doctorData.expenses || []}
             timeRange={timeRange}
             selectedOffice={selectedOffice}
+            bcvRate={effectiveBcvRate}
           />
         </TabsContent>
 
@@ -672,11 +759,11 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             <CardHeader>
               <CardTitle className="text-green-800 flex items-center gap-2">
                 <TrendingUp className="h-6 w-6" />
-                Registro de Ingresos
+                Historial de Ingresos y Cobros
                 {selectedOffice !== 'all' && <Badge variant="outline" className="ml-2">{selectedOffice}</Badge>}
               </CardTitle>
               <CardDescription className="text-green-700">
-                Detalle de citas pagadas y otros ingresos.
+                Detalle de citas cobradas. Los montos en Bolívares respetan la tasa congelada en la fecha del pago.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -687,45 +774,56 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                     <TableHead>Paciente</TableHead>
                     <TableHead>Consultorio</TableHead>
                     <TableHead>Servicio / Estado</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-right">Monto (USD / Bs.)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredIncomeAppointments.length > 0 ? filteredIncomeAppointments.map(appt => (
-                    <TableRow key={appt.id}>
-                      <TableCell>{format(parseISO(appt.date), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                      <TableCell className="font-medium">{appt.patientName}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs">
-                          <Building2 className="h-3 w-3 mr-1" />
-                          {appt.consultationType === 'online' ? 'Consultas Online' : (addressToNameMap.get(appt.doctorAddress || '') || appt.office || 'Sin consultorio')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-xs">{appt.services?.[0]?.name || 'Consulta'}</span>
+                  {filteredIncomeAppointments.length > 0 ? filteredIncomeAppointments.map(appt => {
+                    const financials = resolveAppointmentFinancials(appt, effectiveBcvRate);
+                    return (
+                      <TableRow key={appt.id}>
+                        <TableCell>{format(parseISO(appt.date), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                        <TableCell className="font-medium">{appt.patientName}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">
+                            <Building2 className="h-3 w-3 mr-1" />
+                            {appt.consultationType === 'online' ? 'Consultas Online' : (addressToNameMap.get(appt.doctorAddress || '') || appt.office || 'Sin consultorio')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs">{appt.services?.[0]?.name || 'Consulta'}</span>
+                            {appt.paymentStatus === 'Reembolsado' ? (
+                              <Badge variant="outline" className="w-fit text-[10px] bg-amber-50 text-amber-800 border-amber-300">
+                                💸 Reembolsado
+                              </Badge>
+                            ) : appt.noShowResolution === 'retained' ? (
+                              <Badge variant="outline" className="w-fit text-[10px] bg-red-50 text-red-700 border-red-200">
+                                🔒 Retenido (Inasistencia)
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
                           {appt.paymentStatus === 'Reembolsado' ? (
-                            <Badge variant="outline" className="w-fit text-[10px] bg-amber-50 text-amber-800 border-amber-300">
-                              💸 Reembolsado
-                            </Badge>
-                          ) : appt.noShowResolution === 'retained' ? (
-                            <Badge variant="outline" className="w-fit text-[10px] bg-red-50 text-red-700 border-red-200">
-                              🔒 Retenido (Inasistencia)
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {appt.paymentStatus === 'Reembolsado' ? (
-                          <span className="font-bold text-slate-400 line-through">-${appt.totalPrice}</span>
-                        ) : appt.noShowResolution === 'retained' ? (
-                          <span className="font-bold text-slate-900">${appt.totalPrice}</span>
-                        ) : (
-                          <span className="font-bold text-green-600">${appt.totalPrice}</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )) : (
+                            <span className="font-bold text-slate-400 line-through">-${appt.totalPrice} USD</span>
+                          ) : (
+                            <div className="flex flex-col items-end">
+                              <span className={cn("font-bold", appt.noShowResolution === 'retained' ? "text-slate-900" : "text-green-600")}>
+                                ${financials.amountUSD.toFixed(2)} USD
+                              </span>
+                              <span className="text-[11px] text-emerald-700 font-mono font-medium flex items-center gap-1">
+                                {financials.formattedLocal}
+                                <span className="text-[10px] text-muted-foreground">
+                                  ({financials.isHistorical ? '🔒 histórico' : 'tasa'} @{financials.exchangeRate.toFixed(2)})
+                                </span>
+                              </span>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }) : (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         No hay ingresos registrados en este periodo.
@@ -745,7 +843,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
               <div>
                 <CardTitle className="flex items-center gap-2 text-red-800">
                   <TrendingDown className="h-6 w-6" />
-                  Registro de Gastos
+                  Registro de Gastos Operativos
                   {selectedOffice !== 'all' && (
                     <Badge variant="outline" className="ml-2">
                       {selectedOffice}
@@ -753,7 +851,7 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                   )}
                 </CardTitle>
                 <CardDescription className="text-red-700">
-                  Administra tus gastos operativos y de consultorio
+                  Administra tus gastos operativos calculados en dólares con equivalencia en Bolívares
                 </CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -766,54 +864,60 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
             <CardContent>
               {/* Vista móvil con cards */}
               <div className="block sm:hidden space-y-3">
-                {filteredExpenses.length > 0 ? filteredExpenses.map(expense => (
-                  <Card key={expense.id} className="border-l-4 border-l-red-500">
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-sm">{expense.description}</h4>
-                          <p className="text-xs text-muted-foreground">
-                            {format(parseISO(expense.date), 'dd/MM/yyyy', { locale: es })}
-                          </p>
-                          {expense.office && (
-                            <Badge variant="secondary" className="mt-1 text-xs">
-                              <Building2 className="h-3 w-3 mr-1" />
-                              {addressToNameMap.get(expense.office) || expense.office}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold text-red-600 text-lg">
-                            ${expense.amount.toFixed(2)}
+                {filteredExpenses.length > 0 ? filteredExpenses.map(expense => {
+                  const expFin = resolveExpenseFinancials(expense, effectiveBcvRate);
+                  return (
+                    <Card key={expense.id} className="border-l-4 border-l-red-500">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-sm">{expense.description}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              {format(parseISO(expense.date), 'dd/MM/yyyy', { locale: es })}
+                            </p>
+                            {expense.office && (
+                              <Badge variant="secondary" className="mt-1 text-xs">
+                                <Building2 className="h-3 w-3 mr-1" />
+                                {addressToNameMap.get(expense.office) || expense.office}
+                              </Badge>
+                            )}
                           </div>
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {expense.category || 'Sin categoría'}
-                          </Badge>
+                          <div className="text-right">
+                            <div className="font-bold text-red-600 text-base">
+                              ${expFin.amountUSD.toFixed(2)} USD
+                            </div>
+                            <div className="text-xs text-red-700 font-mono font-medium">
+                              {expFin.formattedLocal}
+                            </div>
+                            <Badge variant="outline" className="text-[10px] capitalize mt-1">
+                              {expense.category || 'Sin categoría'}
+                            </Badge>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2 mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onOpenExpenseDialog(expense)}
-                          className="flex-1"
-                        >
-                          <Pencil className="h-3 w-3 mr-1" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => onDeleteItem('expense', expense.id)}
-                          className="flex-1"
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Eliminar
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )) : (
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onOpenExpenseDialog(expense)}
+                            className="flex-1"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => onDeleteItem('expense', expense.id)}
+                            className="flex-1"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Eliminar
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }) : (
                   <div className="text-center py-8">
                     <TrendingDown className="h-12 w-12 mx-auto mb-4 text-red-400" />
                     <p className="text-muted-foreground mb-4">No hay gastos registrados.</p>
@@ -837,55 +941,68 @@ export function FinancesTab({ doctorData, appointments, onOpenExpenseDialog, onD
                       <TableHead>Descripción</TableHead>
                       <TableHead>Consultorio</TableHead>
                       <TableHead>Categoría</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="text-right">Monto (USD / Bs.)</TableHead>
                       <TableHead className="w-[120px] text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredExpenses.length > 0 ? filteredExpenses.map(expense => (
-                      <TableRow key={expense.id}>
-                        <TableCell>
-                          {format(parseISO(expense.date), 'dd/MM/yyyy', { locale: es })}
-                        </TableCell>
-                        <TableCell className="font-medium">{expense.description}</TableCell>
-                        <TableCell>
-                          {expense.office ? (
-                            <Badge variant="secondary" className="text-xs">
-                              <Building2 className="h-3 w-3 mr-1" />
-                              {addressToNameMap.get(expense.office) || expense.office}
+                    {filteredExpenses.length > 0 ? filteredExpenses.map(expense => {
+                      const expFin = resolveExpenseFinancials(expense, effectiveBcvRate);
+                      return (
+                        <TableRow key={expense.id}>
+                          <TableCell>
+                            {format(parseISO(expense.date), 'dd/MM/yyyy', { locale: es })}
+                          </TableCell>
+                          <TableCell className="font-medium">{expense.description}</TableCell>
+                          <TableCell>
+                            {expense.office ? (
+                              <Badge variant="secondary" className="text-xs">
+                                <Building2 className="h-3 w-3 mr-1" />
+                                {addressToNameMap.get(expense.office) || expense.office}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Sin asignar</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="capitalize">
+                              {expense.category || 'Sin categoría'}
                             </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Sin asignar</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {expense.category || 'Sin categoría'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-red-600 font-bold">
-                          ${expense.amount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => onOpenExpenseDialog(expense)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              onClick={() => onDeleteItem('expense', expense.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )) : (
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-col items-end">
+                              <span className="font-mono text-red-600 font-bold">
+                                ${expFin.amountUSD.toFixed(2)} USD
+                              </span>
+                              <span className="text-xs text-red-700 font-mono">
+                                {expFin.formattedLocal}
+                                {expense.exchangeRate ? (
+                                  <span className="text-[10px] text-muted-foreground ml-1">(@{expense.exchangeRate.toFixed(2)})</span>
+                                ) : null}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => onOpenExpenseDialog(expense)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                onClick={() => onDeleteItem('expense', expense.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }) : (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center h-24">
                           <div className="flex flex-col items-center gap-2">

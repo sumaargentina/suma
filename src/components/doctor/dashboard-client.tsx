@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { HeaderWrapper } from '@/components/header';
 import * as supabaseService from '@/lib/supabaseService';
 import { createWalkInAppointmentAction, sendMessageAction } from '@/app/actions';
-import { EXPENSE_CATEGORIES, DOCUMENT_TYPES, DocumentType } from '@/lib/types';
+import { EXPENSE_CATEGORIES, DOCUMENT_TYPES, DocumentType, Doctor, Appointment, AdminSupportTicket, DoctorPayment, Expense, Service, BankDetail, Coupon } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus } from 'lucide-react';
@@ -14,6 +14,7 @@ import { useSettings } from '@/lib/settings';
 import { useDoctorNotifications } from '@/lib/doctor-notifications';
 import { useChatNotifications } from '@/lib/chat-notifications';
 import { } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -44,15 +45,19 @@ import { AppointmentDetailDialog } from '@/components/doctor/appointment-detail-
 import { Skeleton } from '../ui/skeleton';
 import { PaymentIntegrationsTab } from './dashboard/tabs/payment-integrations-tab';
 import { InsurancesTab } from './dashboard/tabs/insurances-tab';
+import { DoctorPharmacyAlliancesTab } from './doctor-pharmacy-alliances-tab';
 import { WorkspaceSelectorModal } from '@/components/doctor/workspace-selector-modal';
 import { DoctorWelcomeModal } from '@/components/doctor/doctor-welcome-modal';
 import { format } from 'date-fns';
 
 const BankDetailFormSchema = z.object({
-    bank: z.string().min(3, "El nombre del banco es requerido."),
+    currency: z.enum(['USD', 'VES']).default('VES'),
+    accountType: z.string().optional(),
+    bank: z.string().min(2, "El nombre del banco o plataforma es requerido."),
     accountHolder: z.string().min(3, "El nombre del titular es requerido."),
-    idNumber: z.string().min(5, "El C.I./R.I.F. es requerido."),
-    accountNumber: z.string().min(20, "El número de cuenta debe tener 20 dígitos.").max(20, "El número de cuenta debe tener 20 dígitos."),
+    idNumber: z.string().min(4, "El C.I./R.I.F. o identificación es requerida."),
+    accountNumber: z.string().min(4, "El número de cuenta, teléfono o correo es requerido."),
+    phone: z.string().optional(),
     description: z.string().nullable().optional(),
 });
 
@@ -168,6 +173,13 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [editingService, setEditingService] = useState<Service | null>(null);
     const [editingBankDetail, setEditingBankDetail] = useState<BankDetail | null>(null);
+    const [selectedBankCurrency, setSelectedBankCurrency] = useState<'VES' | 'USD'>('VES');
+
+    const handleOpenBankDetailDialog = (bd: BankDetail | null) => {
+        setEditingBankDetail(bd);
+        setSelectedBankCurrency(bd?.currency === 'USD' ? 'USD' : 'VES');
+        setIsBankDetailDialogOpen(true);
+    };
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [selectedSupportTicket, setSelectedSupportTicket] = useState<AdminSupportTicket | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{ type: 'expense' | 'service' | 'bank' | 'coupon', id: string } | null>(null);
@@ -663,7 +675,7 @@ ID Transacción: ${transactionId}`;
                         )}
                         {currentTab === "finances" && (
                             !isClinicDoctor ? (
-                                <FinancesTab doctorData={doctorData} appointments={appointments} onOpenExpenseDialog={(exp) => { setEditingExpense(exp); setIsExpenseDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                <FinancesTab doctorData={doctorData} appointments={appointments} currentBcvRate={settings?.bcvRate || 65.50} onOpenExpenseDialog={(exp) => { setEditingExpense(exp); setIsExpenseDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
@@ -697,6 +709,9 @@ ID Transacción: ${transactionId}`;
                                 <div className="text-center py-10 text-muted-foreground">Las coberturas y convenios son administrados directamente por la clínica.</div>
                             )
                         )}
+                        {currentTab === "pharmacies" && doctorData && (
+                            <DoctorPharmacyAlliancesTab doctor={doctorData} onDoctorUpdated={fetchData} />
+                        )}
                         {currentTab === "bank-details" && (
                             !isClinicDoctor ? (
                                 <div className="space-y-6">
@@ -705,11 +720,11 @@ ID Transacción: ${transactionId}`;
                                             <PaymentIntegrationsTab doctorId={user.id} />
                                             <div className="border-t pt-6">
                                                 <h3 className="text-lg font-semibold mb-4">Cuentas Bancarias (Para transferencias manuales)</h3>
-                                                <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={(bd) => { setEditingBankDetail(bd); setIsBankDetailDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                                <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
                                             </div>
                                         </>
                                     ) : (
-                                        <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={(bd) => { setEditingBankDetail(bd); setIsBankDetailDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                        <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
                                     )}
                                 </div>
                             ) : (
@@ -976,14 +991,140 @@ ID Transacción: ${transactionId}`;
                 </DialogContent>
             </Dialog>
             <Dialog open={isBankDetailDialogOpen} onOpenChange={setIsBankDetailDialogOpen}>
-                <DialogContent><DialogHeader><DialogTitle>{editingBankDetail ? 'Editar Cuenta' : 'Nueva Cuenta'}</DialogTitle></DialogHeader>
-                    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const data = { bank: fd.get('bank') as string, accountHolder: fd.get('accountHolder') as string, idNumber: fd.get('idNumber') as string, accountNumber: fd.get('accountNumber') as string, description: fd.get('description') as string }; const result = BankDetailFormSchema.safeParse(data); if (result.success) handleSaveEntity('bank', result.data); else toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e => e.message).join(' ') }) }} className="space-y-4 py-4">
-                        <div><Label htmlFor="bank">Banco</Label><Input id="bank" name="bank" defaultValue={editingBankDetail?.bank || ''} required /></div>
-                        <div><Label htmlFor="accountHolder">Titular</Label><Input id="accountHolder" name="accountHolder" defaultValue={editingBankDetail?.accountHolder || ''} required /></div>
-                        <div><Label htmlFor="idNumber">CI/RIF del Titular</Label><Input id="idNumber" name="idNumber" defaultValue={editingBankDetail?.idNumber || ''} required /></div>
-                        <div><Label htmlFor="accountNumber">Número de Cuenta</Label><Input id="accountNumber" name="accountNumber" defaultValue={editingBankDetail?.accountNumber || ''} required /></div>
-                        <div><Label htmlFor="description">Descripción (Opcional)</Label><Input id="description" name="description" defaultValue={editingBankDetail?.description || ''} /></div>
-                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose><Button type="submit">Guardar</Button></DialogFooter>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{editingBankDetail ? 'Editar Cuenta de Cobro' : 'Nueva Cuenta de Cobro'}</DialogTitle>
+                        <DialogDescription>
+                            Configura tus cuentas en Bolívares (Pago Móvil / Transferencia) o Dólares (Zelle / Efectivo / Cuenta en $) para recibir el pago de tus consultas.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const fd = new FormData(e.currentTarget);
+                        const data = {
+                            currency: selectedBankCurrency,
+                            accountType: fd.get('accountType') as string,
+                            bank: fd.get('bank') as string,
+                            accountHolder: fd.get('accountHolder') as string,
+                            idNumber: fd.get('idNumber') as string,
+                            accountNumber: fd.get('accountNumber') as string,
+                            phone: (fd.get('phone') as string) || undefined,
+                            description: fd.get('description') as string
+                        };
+                        const result = BankDetailFormSchema.safeParse(data);
+                        if (result.success) {
+                            handleSaveEntity('bank', result.data);
+                        } else {
+                            toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(err => err.message).join(' ') });
+                        }
+                    }} className="space-y-4 py-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <Label htmlFor="currency">Moneda de Cobro</Label>
+                                <Select
+                                    name="currency"
+                                    value={selectedBankCurrency}
+                                    onValueChange={(val: 'VES' | 'USD') => setSelectedBankCurrency(val)}
+                                >
+                                    <SelectTrigger id="currency">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="VES">🇻🇪 Bolívares (Bs.)</SelectItem>
+                                        <SelectItem value="USD">💵 Dólares (USD)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label htmlFor="accountType">Tipo de Cuenta / Método</Label>
+                                <Select name="accountType" defaultValue={editingBankDetail?.accountType || (selectedBankCurrency === 'USD' ? 'zelle' : 'pago_movil')}>
+                                    <SelectTrigger id="accountType">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {selectedBankCurrency === 'VES' ? (
+                                            <>
+                                                <SelectItem value="pago_movil">Pago Móvil</SelectItem>
+                                                <SelectItem value="transferencia">Transferencia Bancaria</SelectItem>
+                                                <SelectItem value="efectivo_bs">Efectivo en Bolívares</SelectItem>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <SelectItem value="zelle">Zelle</SelectItem>
+                                                <SelectItem value="efectivo_dolares">Efectivo en Dólares ($)</SelectItem>
+                                                <SelectItem value="cuenta_nacional">Cuenta Internacional / Custodia</SelectItem>
+                                            </>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="bank">
+                                {selectedBankCurrency === 'USD' ? 'Plataforma o Banco (ej. Zelle, Banesco Panamá, Efectivo)' : 'Banco (ej. Banesco, Mercantil, BDV)'}
+                            </Label>
+                            <Input
+                                id="bank"
+                                name="bank"
+                                defaultValue={editingBankDetail?.bank || (selectedBankCurrency === 'USD' ? 'Zelle' : '')}
+                                placeholder={selectedBankCurrency === 'USD' ? 'Zelle' : 'Banco de Venezuela'}
+                                required
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <Label htmlFor="accountHolder">Nombre del Titular</Label>
+                                <Input id="accountHolder" name="accountHolder" defaultValue={editingBankDetail?.accountHolder || ''} required />
+                            </div>
+                            <div>
+                                <Label htmlFor="idNumber">CI / RIF / Identificación</Label>
+                                <Input id="idNumber" name="idNumber" defaultValue={editingBankDetail?.idNumber || ''} placeholder="V-12345678 o J-12345678" required />
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="accountNumber">
+                                {selectedBankCurrency === 'USD'
+                                    ? 'Correo Electrónico o Teléfono Zelle / Nro de Cuenta'
+                                    : 'Número de Cuenta (20 dígitos) o Teléfono'}
+                            </Label>
+                            <Input
+                                id="accountNumber"
+                                name="accountNumber"
+                                defaultValue={editingBankDetail?.accountNumber || ''}
+                                placeholder={selectedBankCurrency === 'USD' ? 'correo@ejemplo.com o +1...' : '01020000000000000000'}
+                                required
+                            />
+                        </div>
+
+                        {selectedBankCurrency === 'VES' && (
+                            <div>
+                                <Label htmlFor="phone">Teléfono para Pago Móvil (Opcional si es transferencia)</Label>
+                                <Input
+                                    id="phone"
+                                    name="phone"
+                                    defaultValue={editingBankDetail?.phone || ''}
+                                    placeholder="04141234567"
+                                />
+                            </div>
+                        )}
+
+                        <div>
+                            <Label htmlFor="description">Instrucciones o Descripción para el Paciente (Opcional)</Label>
+                            <Input
+                                id="description"
+                                name="description"
+                                defaultValue={editingBankDetail?.description || ''}
+                                placeholder="Ej: Enviar captura del pago al WhatsApp del consultorio"
+                            />
+                        </div>
+
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+                            <Button type="submit">Guardar Cuenta</Button>
+                        </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
@@ -1030,10 +1171,15 @@ ID Transacción: ${transactionId}`;
                             finalOffice = officeValue || undefined;
                         }
 
+                        const rate = settings?.bcvRate || 65.50;
+                        const usdAmount = parseFloat(fd.get('amount') as string);
                         const data = {
                             date: fd.get('date') as string,
                             description: fd.get('description') as string,
-                            amount: parseFloat(fd.get('amount') as string),
+                            amount: usdAmount,
+                            amountInLocalCurrency: Math.round(usdAmount * rate * 100) / 100,
+                            exchangeRate: rate,
+                            currency: 'USD' as const,
                             category: categoryValue === 'none' ? undefined : categoryValue || undefined,
                             office: finalOffice,
                         };

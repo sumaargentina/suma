@@ -79,7 +79,7 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
             await register(name, email, password);
             setSuccessMessage('¡Cuenta creada exitosamente! Redirigiendo...');
             setTimeout(() => {
-                router.push('/dashboard');
+                // register() en auth.tsx ya redirige al médico o a /dashboard
             }, 1500);
         } catch (err: any) {
             setError(err.message || 'Error al crear la cuenta');
@@ -109,7 +109,7 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
                 <p className="text-sm text-gray-500">
                     {view === 'login'
                         ? 'Ingresa tus credenciales para acceder a tu panel.'
-                        : 'Únete a la red de salud más avanzada de Argentina.'}
+                        : 'Únete a la red de salud más avanzada de Venezuela.'}
                 </p>
             </div>
 

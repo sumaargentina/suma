@@ -64,6 +64,47 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Asegurar que recipe_code y recipe_status estén definidos para la conexión con farmacia
+        if (data && !data.recipe_code) {
+            const generatedRecipeCode = `SUMA-REC-${data.id.slice(0, 8).toUpperCase()}`;
+            const { data: updatedRecord } = await supabaseAdmin
+                .from('medical_records')
+                .update({
+                    recipe_code: generatedRecipeCode,
+                    recipe_status: data.recipe_status || 'active'
+                })
+                .eq('id', data.id)
+                .select()
+                .single();
+            if (updatedRecord) {
+                Object.assign(data, updatedRecord);
+            }
+        }
+
+        // 🔬 Si el médico solicitó exámenes de laboratorio, crear automáticamente la orden en laboratory_orders
+        if (body.requested_studies && typeof body.requested_studies === 'string' && body.requested_studies.trim()) {
+            try {
+                const orderNumber = `SUMA-LAB-${data.id.slice(0, 8).toUpperCase()}`;
+                await supabaseAdmin.from('laboratory_orders').insert([{
+                    doctor_id: body.doctor_id,
+                    patient_id: body.patient_id,
+                    appointment_id: body.appointment_id || null,
+                    order_number: orderNumber,
+                    studies: [{ name: body.requested_studies.trim() }],
+                    diagnosis: body.diagnosis || '',
+                    clinical_indications: body.requested_studies.trim(),
+                    doctor_notes: body.treatment_plan || null,
+                    status: 'pending',
+                    results_available: false,
+                    valid_from: new Date().toISOString(),
+                    valid_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
+                }]);
+                console.log('🔬 Orden de laboratorio creada exitosamente:', orderNumber);
+            } catch (labErr) {
+                console.warn('⚠️ Nota: error no bloqueante creando laboratory_order:', labErr);
+            }
+        }
+
         return NextResponse.json(data);
 
     } catch (error: unknown) {

@@ -20,6 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { useSettings } from '@/lib/settings';
 import Image from 'next/image';
 import { validateEmail, validatePassword, validateName } from '@/lib/validation-utils';
+import { LocationSelector } from '@/components/ui/location-selector';
 
 
 const RegisterSchema = z.object({
@@ -43,6 +44,9 @@ export default function RegisterPage() {
   const { logoUrl } = useSettings();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [country, setCountry] = useState('VE');
+  const [state, setState] = useState('Monagas');
+  const [city, setCity] = useState('Maturín');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -97,7 +101,7 @@ export default function RegisterPage() {
         return;
       }
 
-      await register(nameSan.sanitized, emailSan.sanitized, password);
+      await register(nameSan.sanitized, emailSan.sanitized, password, { country, state, city });
     } catch (error) {
       console.error("Registration error:", error);
       toast({
@@ -112,7 +116,7 @@ export default function RegisterPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="mx-auto max-w-sm w-full">
+      <Card className="mx-auto max-w-md w-full">
         <CardHeader className="text-center">
           <div className="mx-auto mb-6 flex items-center justify-center">
             <Image
@@ -129,7 +133,7 @@ export default function RegisterPage() {
             Registro de Paciente
           </CardTitle>
           <CardDescription>
-            Ingresa tu información para crear una cuenta
+            Ingresa tu información y país de residencia para crear tu cuenta
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,7 +152,7 @@ export default function RegisterPage() {
                 <svg className="h-4 w-4" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.261.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                   />
                   <path
                     fill="#34A853"
@@ -197,6 +201,22 @@ export default function RegisterPage() {
                   disabled={isLoading}
                 />
               </div>
+
+              <div className="pt-1 pb-1">
+                <LocationSelector
+                  country={country}
+                  state={state}
+                  city={city}
+                  onLocationChange={(loc) => {
+                    setCountry(loc.country);
+                    setState(loc.state);
+                    setCity(loc.city);
+                  }}
+                  showAddressFields={false}
+                  disabled={isLoading}
+                />
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="password">Contraseña</Label>
                 <div className="relative">

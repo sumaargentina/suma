@@ -67,17 +67,33 @@ export async function POST(req: Request) {
             });
         }
 
-        // Obtener lista de doctores para el contexto (VERSIÓN LITE para optimizar egress)
-        const doctors = await supabaseService.getDoctorsLite();
+        // Obtener lista de doctores y farmacias para el contexto
+        const [doctors, rawPharmacies] = await Promise.all([
+            supabaseService.getDoctorsLite(),
+            supabaseService.getPharmacies().catch(() => [])
+        ]);
         const activeDoctors = doctors.filter(d => d.status === 'active') as import('@/lib/types').Doctor[];
+        const activePharmacies = (rawPharmacies || []).filter((p: any) => p.status === 'active' || !p.status);
 
         // Obtener especialidades únicas disponibles
         const specialties = [...new Set(activeDoctors.map(d => d.specialty))].join(', ');
 
         // Ciudades disponibles (Enfocado 100% en Venezuela)
         const venezuelanReferenceCities = "Caracas, Valencia, Maracaibo, Barquisimeto, Maracay, Ciudad Guayana, San Cristóbal, Mérida, Maturín, Puerto La Cruz, Lechería";
-        const dbCities = [...new Set(activeDoctors.map(d => d.city).filter(c => Boolean(c) && !c.toLowerCase().includes('buenos aires')))].join(', ');
+        const dbCities = [...new Set([...activeDoctors.map(d => d.city), ...activePharmacies.map((p: any) => p.city)].filter(c => Boolean(c) && !c.toLowerCase().includes('buenos aires')))].join(', ');
         const cities = dbCities || venezuelanReferenceCities;
+
+        // Crear resumen de farmacias aliadas SUMA
+        const pharmaciesSummary = activePharmacies.map((p: any) => {
+            const displayName = p.chainName || p.chain_name || p.name;
+            const branch = (p.isChain || p.chainName || p.chain_name) && (p.branchName || p.branch_name) 
+                ? ` (Sucursal ${p.branchName || p.branch_name})` 
+                : '';
+            const city = p.city || 'Venezuela';
+            const address = p.address ? `, ${p.address}` : '';
+            const phone = p.phone ? ` | Tel: ${p.phone}` : '';
+            return `- ${displayName}${branch} | ${city}${address}${phone}`;
+        }).join('\n');
 
         // Crear resumen de doctores CON precios para comparar
         const doctorsSummary = activeDoctors.slice(0, 25).map(d => {
@@ -163,7 +179,12 @@ PROTOCOLO DE ATENCIÓN Y TRIAJE DE SÍNTOMAS:
    - Si aún no sabes su ubicación, pregúntale: "¿En qué ciudad o estado de Venezuela te encuentras (por ejemplo, Caracas, Valencia, Maracaibo...) para recomendarte las mejores opciones médicas?"
    - Al conocer su ubicación, ofrece de 1 a 3 doctores disponibles en SUMA con su enlace markdown clickeable exacto: [Ver perfil del Dr. Nombre](/doctors/ID).
    - Si no hay doctor exacto en su localidad, recomiéndale los doctores disponibles en Venezuela o especialistas en Medicina General que pueden atenderle.
-5. PREOCUPACIÓN CONTINUA POR EL PACIENTE:
+5. RECOMENDACIÓN DE FARMACIAS ALIADAS SUMA:
+   - Cuando el paciente consulte sobre recetas, récipe médico, compra de medicamentos, dónde conseguir su tratamiento o farmacias en su ciudad:
+   - Recomiéndale con calidez las Farmacias Aliadas SUMA en su localidad.
+   - Explícale que en las farmacias afiliadas a SUMA puede surtir y validar de forma oficial sus récipes médicos digitales emitidos por la plataforma.
+   - Menciona el nombre de la farmacia, sucursal o dirección disponible, e incluye el enlace markdown: [Ver Farmacias en el Mapa de SUMA](/find-a-doctor).
+6. PREOCUPACIÓN CONTINUA POR EL PACIENTE:
    - Mantente siempre atento a cómo se sigue sintiendo: "¿Cómo te vas sintiendo en este momento?", "Recuerda mantenerte en reposo y bien hidratado/a".
    - Indícale que esté pendiente de la evolución de su malestar.
 
@@ -171,7 +192,7 @@ REGLAS DE ORO DE CONVERSACIÓN:
 - Respuestas CONCISAS: Máximo 2 a 3 oraciones cortas por mensaje.
 - UNA SOLA PREGUNTA por mensaje. Jamás hagas dos o más preguntas juntas.
 - NO uses listas de viñetas extensas en tus respuestas normales; mantén un diálogo fluido y natural.
-- Emojis moderados y cálidos (1 o 2 por mensaje: 😊, 🩺, 🌿).
+- Emojis moderados y cálidos (1 o 2 por mensaje: 😊, 🩺, 🌿, 💊).
 - Recuerda lo que el paciente ya te dijo y no repitas preguntas innecesarias.
 
 EMERGENCIAS MÉDICAS (PRIORIDAD ABSOLUTA):
@@ -185,9 +206,12 @@ SEGURIDAD Y ÉTICA:
 
 DATOS DISPONIBLES EN SUMA:
 Especialidades disponibles: ${specialties}
-Ciudades con médicos registrados: ${cities}
+Ciudades con médicos y farmacias registradas: ${cities}
 ${patientAppointmentsInfo}
 ${availabilityInfo}
+
+FARMACIAS ALIADAS AFILIADAS A SUMA (Para surtido y validación de récipes):
+${pharmaciesSummary || 'Disponibles en el directorio de farmacias de SUMA'}
 
 DIRECTORIO DE DOCTORES:
 ${doctorsSummary}
@@ -196,6 +220,7 @@ OPCIONES ACCESIBLES:
 ${cheapestDoctors || 'Consulta los perfiles para información de costos'}
 
 Para sugerir un médico, usa siempre el formato exacto: [Ver perfil del Dr. Nombre](/doctors/ID)
+Para sugerir farmacias o el mapa, usa: [Ver Farmacias en el Mapa](/find-a-doctor)
 `;
 
         // Construir historial de mensajes para la API

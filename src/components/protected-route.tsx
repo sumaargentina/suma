@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Loader2 } from 'lucide-react';
 
-type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
+type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory';
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
@@ -14,7 +14,7 @@ interface ProtectedRouteProps {
 }
 
 // Función para obtener el dashboard según el rol
-function getDashboardByRole(role: string): string {
+function getDashboardByRole(role: string, user?: any): string {
     switch (role) {
         case 'admin':
             return '/admin/dashboard';
@@ -25,7 +25,11 @@ function getDashboardByRole(role: string): string {
         case 'clinic':
             return '/clinic/dashboard';
         case 'secretary':
-            return '/clinic/dashboard';
+            return user?.laboratoryId ? '/laboratory/dashboard' : '/clinic/dashboard';
+        case 'pharmacy':
+            return '/pharmacy/dashboard';
+        case 'laboratory':
+            return '/laboratory/dashboard';
         case 'patient':
             return '/dashboard';
         default:
@@ -48,7 +52,7 @@ export function ProtectedRoute({ children, allowedRoles, redirectTo }: Protected
             // Si el usuario no tiene el rol permitido, redirigir a su dashboard
             if (!allowedRoles.includes(user.role as UserRole)) {
                 console.log(`🔒 Acceso denegado: rol ${user.role} no permitido en esta página`);
-                router.push(getDashboardByRole(user.role));
+                router.push(getDashboardByRole(user.role, user));
             }
         }
     }, [user, loading, allowedRoles, router, redirectTo]);

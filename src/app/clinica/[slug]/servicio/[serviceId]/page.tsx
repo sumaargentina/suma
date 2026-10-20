@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, MapPin, Phone, Clock, Building2, ArrowLeft, CheckCircle, CalendarDays, CreditCard, Banknote, Wallet, Copy } from "lucide-react";
+import { Loader2, MapPin, Phone, Clock, Building2, ArrowLeft, CheckCircle, CalendarDays, CreditCard, Banknote, Wallet, Copy, Smartphone, DollarSign } from "lucide-react";
 
 // Time slot generation
 const generateTimeSlots = (start: string, end: string, durationMinutes: number): string[] => {
@@ -52,7 +52,7 @@ export default function ServiceBookingPage() {
     // Booking state
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
-    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'mercadopago' | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'pagomovil' | 'zelle' | 'mercadopago' | null>(null);
 
     // New state for item selection
     const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([]);
@@ -553,6 +553,64 @@ export default function ServiceBookingPage() {
                                             </div>
                                         )}
 
+                                        {/* Pago Móvil */}
+                                        {paymentSettings.pagoMovil?.enabled && (
+                                            <div
+                                                className={`border p-4 rounded-lg cursor-pointer flex items-start gap-3 transition-colors hover:bg-muted/50 ${paymentMethod === 'pagomovil' ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500' : ''}`}
+                                                onClick={() => setPaymentMethod('pagomovil')}
+                                            >
+                                                <div className="bg-emerald-100 p-2 rounded-full text-emerald-700">
+                                                    <Smartphone className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="font-semibold">Pago Móvil</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Te mostraremos los datos para pago móvil.</p>
+
+                                                    {paymentMethod === 'pagomovil' && (
+                                                        <div className="mt-3 bg-white border rounded-md p-3 text-sm text-foreground space-y-1 animate-in fade-in slide-in-from-top-2 cursor-default" onClick={(e) => e.stopPropagation()}>
+                                                            {paymentSettings.pagoMovil.bank && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Banco:</span>
+                                                                    <span className="font-medium">{paymentSettings.pagoMovil.bank}</span>
+                                                                </div>
+                                                            )}
+                                                            {paymentSettings.pagoMovil.phone && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Teléfono:</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono font-medium select-all">{paymentSettings.pagoMovil.phone}</span>
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); copyToClipboard(paymentSettings.pagoMovil!.phone!); }}>
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {paymentSettings.pagoMovil.idDocument && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Cédula / RIF:</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono font-medium select-all">{paymentSettings.pagoMovil.idDocument}</span>
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); copyToClipboard(paymentSettings.pagoMovil!.idDocument!); }}>
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {paymentSettings.pagoMovil.holder && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Titular:</span>
+                                                                    <span>{paymentSettings.pagoMovil.holder}</span>
+                                                                </div>
+                                                            )}
+                                                            <p className="text-xs text-amber-600 mt-2 pt-2 border-t border-amber-100">
+                                                                * Envía el comprobante con la referencia por WhatsApp tras confirmar.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Transferencia */}
                                         {paymentSettings.transfer?.enabled && (
                                             <div
@@ -569,29 +627,82 @@ export default function ServiceBookingPage() {
                                                     {/* Bank Details Dropdown */}
                                                     {paymentMethod === 'transferencia' && (
                                                         <div className="mt-3 bg-white border rounded-md p-3 text-sm text-foreground space-y-1 animate-in fade-in slide-in-from-top-2 cursor-default" onClick={(e) => e.stopPropagation()}>
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-muted-foreground">CBU:</span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-mono select-all">{paymentSettings.transfer.cbu}</span>
-                                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); copyToClipboard(paymentSettings.transfer!.cbu!); }}>
-                                                                        <Copy className="h-3 w-3" />
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                            {paymentSettings.transfer.alias && (
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-muted-foreground">Alias:</span>
-                                                                    <span className="font-mono font-medium select-all">{paymentSettings.transfer.alias}</span>
-                                                                </div>
-                                                            )}
                                                             {paymentSettings.transfer.bank && (
                                                                 <div className="flex justify-between items-center">
                                                                     <span className="text-muted-foreground">Banco:</span>
                                                                     <span>{paymentSettings.transfer.bank}</span>
                                                                 </div>
                                                             )}
+                                                            {(paymentSettings.transfer.accountNumber || paymentSettings.transfer.cbu) && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Cuenta:</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono select-all text-xs">
+                                                                            {paymentSettings.transfer.accountNumber || paymentSettings.transfer.cbu}
+                                                                        </span>
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); copyToClipboard((paymentSettings.transfer.accountNumber || paymentSettings.transfer.cbu)!); }}>
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {(paymentSettings.transfer.idDocument || paymentSettings.transfer.cuit) && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Cédula / RIF:</span>
+                                                                    <span className="font-mono font-medium select-all">
+                                                                        {paymentSettings.transfer.idDocument || paymentSettings.transfer.cuit}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {paymentSettings.transfer.holder && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Titular:</span>
+                                                                    <span>{paymentSettings.transfer.holder}</span>
+                                                                </div>
+                                                            )}
                                                             <p className="text-xs text-amber-600 mt-2 pt-2 border-t border-amber-100">
                                                                 * Envía el comprobante por WhatsApp tras confirmar.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Zelle */}
+                                        {paymentSettings.zelle?.enabled && (
+                                            <div
+                                                className={`border p-4 rounded-lg cursor-pointer flex items-start gap-3 transition-colors hover:bg-muted/50 ${paymentMethod === 'zelle' ? 'border-purple-500 bg-purple-50/50 ring-1 ring-purple-500' : ''}`}
+                                                onClick={() => setPaymentMethod('zelle')}
+                                            >
+                                                <div className="bg-purple-100 p-2 rounded-full text-purple-700">
+                                                    <DollarSign className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="font-semibold">Zelle (USD)</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Paga en dólares de forma directa.</p>
+
+                                                    {paymentMethod === 'zelle' && (
+                                                        <div className="mt-3 bg-white border rounded-md p-3 text-sm text-foreground space-y-1 animate-in fade-in slide-in-from-top-2 cursor-default" onClick={(e) => e.stopPropagation()}>
+                                                            {paymentSettings.zelle.email && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Correo Zelle:</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono font-medium select-all">{paymentSettings.zelle.email}</span>
+                                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); copyToClipboard(paymentSettings.zelle!.email!); }}>
+                                                                            <Copy className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {paymentSettings.zelle.holder && (
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-muted-foreground">Titular:</span>
+                                                                    <span>{paymentSettings.zelle.holder}</span>
+                                                                </div>
+                                                            )}
+                                                            <p className="text-xs text-amber-600 mt-2 pt-2 border-t border-amber-100">
+                                                                * Envía la captura de pantalla del pago por WhatsApp.
                                                             </p>
                                                         </div>
                                                     )}

@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Save, Sparkles, Wand2, Mic, MicOff, FileText, BedDouble, Calendar, ShieldCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
+import { useSettings } from '@/lib/settings';
+import { resolveDoctorCapabilities } from '@/lib/professions-catalog';
 import { format, addDays, parseISO } from 'date-fns';
 
 interface NewRecordFormProps {
@@ -22,6 +24,8 @@ interface NewRecordFormProps {
 export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoctorId, onSuccess }: NewRecordFormProps) {
     const { toast } = useToast();
     const { user } = useAuth();
+    const { professionsCatalog } = useSettings();
+    const capabilities = resolveDoctorCapabilities(user, professionsCatalog);
     const [loading, setLoading] = useState(false);
 
     // AI States
@@ -190,6 +194,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         evaluation: '',
         requested_studies: '',
         prescription: '',
+        prescription_expires_at: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
         treatment_plan: '',
         evolution: '',
         medical_report: '',
@@ -291,11 +296,48 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
             console.log('🚀 Enviando a API Backend:', payload);
 
-            const response = await fetch('/api/medical-records', {
+            // Asegurar que el token de sesión HTTP esté vigente
+            if (user) {
+                await fetch('/api/auth/set-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: validDoctorId,
+                        email: user.email,
+                        role: user.role,
+                        name: user.name,
+                        clinicId: user.activeWorkspace?.clinicId || user.clinicId
+                    })
+                }).catch(() => {});
+            }
+
+            let response = await fetch('/api/medical-records', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
+            // Si expiró o falló la sesión, reintentar una vez
+            if (response.status === 401 && user) {
+                console.warn('⚠️ Reintentando sincronización de sesión...');
+                await fetch('/api/auth/set-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: validDoctorId,
+                        email: user.email,
+                        role: user.role,
+                        name: user.name,
+                        clinicId: user.activeWorkspace?.clinicId || user.clinicId
+                    })
+                }).catch(() => {});
+
+                response = await fetch('/api/medical-records', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -457,7 +499,8 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 ${capabilities.hasPrescription ? 'md:grid-cols-2' : ''} gap-4`}>
+                    {capabilities.hasPrescription && (
                     <div className="space-y-2">
                         <Label className="text-teal-900 font-semibold flex items-center gap-1.5">
                             💊 Récipe Médico (Prescripción para Farmacia)
@@ -471,7 +514,62 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                         <p className="text-[11px] text-muted-foreground">
                             Este récipe se estampará con tu firma y podrá ser presentado o impreso por el paciente.
                         </p>
+
+                        {/* Control de Vigencia / Expiración del Récipe */}
+                        <div className="mt-2.5 p-3 rounded-lg border border-teal-200/80 bg-teal-50/40 space-y-2">
+                            <div className="flex items-center justify-between text-xs font-medium text-teal-900">
+                                <span className="flex items-center gap-1.5 font-semibold">
+                                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                                    Vigencia del Récipe:
+                                </span>
+                                <span className="text-teal-700 bg-teal-100/70 px-2 py-0.5 rounded font-medium">
+                                    Vence el {formData.prescription_expires_at ? format(parseISO(formData.prescription_expires_at), 'dd/MM/yyyy') : 'N/A'}
+                                </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {[
+                                    { label: '7 días', days: 7 },
+                                    { label: '15 días', days: 15 },
+                                    { label: '30 días', days: 30 },
+                                    { label: '60 días', days: 60 },
+                                    { label: '90 días', days: 90 },
+                                ].map((preset) => {
+                                    const presetDate = format(addDays(new Date(), preset.days), 'yyyy-MM-dd');
+                                    const isSelected = formData.prescription_expires_at === presetDate;
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={preset.days}
+                                            onClick={() => setFormData({ ...formData, prescription_expires_at: presetDate })}
+                                            className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium border ${
+                                                isSelected
+                                                    ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                                    : 'bg-white text-teal-800 border-teal-200 hover:bg-teal-100/50'
+                                            }`}
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    );
+                                })}
+
+                                <div className="flex items-center gap-1 ml-auto">
+                                    <span className="text-[11px] text-teal-700">Manual:</span>
+                                    <Input
+                                        type="date"
+                                        min={format(new Date(), 'yyyy-MM-dd')}
+                                        value={formData.prescription_expires_at || ''}
+                                        onChange={(e) => setFormData({ ...formData, prescription_expires_at: e.target.value })}
+                                        className="h-7 w-[125px] text-[11px] px-1.5 py-0 bg-white border-teal-200 text-teal-900"
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-teal-600/90 leading-tight">
+                                Las farmacias aliadas solo podrán despachar este récipe mientras esté dentro de su vigencia.
+                            </p>
+                        </div>
                     </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label className="text-green-900 font-semibold flex items-center gap-1.5">

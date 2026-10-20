@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from "next/link";
 import { useAuth } from '@/lib/auth';
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,9 @@ import Image from 'next/image';
 import { validateEmail, validatePassword, validateName, validateSpecialty, validateCity, validateAddress } from '@/lib/validation-utils';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
+import { ProfessionSpecialtySelector } from '@/components/ui/profession-specialty-selector';
+import { getSellers } from '@/lib/supabaseService';
+import { normalizeCountryCode } from '@/lib/geo-data';
 
 const DoctorRegistrationSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
@@ -58,13 +61,18 @@ export default function RegisterDoctorPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [referredBySellerId, setReferredBySellerId] = useState<string | null>(null);
+  const [referredBySellerName, setReferredBySellerName] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
+    profession: 'Médico',
     specialty: '',
+    hasMedicalRecord: true as boolean | undefined,
+    hasPrescription: true as boolean | undefined,
     country: 'VE',
     state: 'Monagas',
     city: 'Maturín',
@@ -76,6 +84,30 @@ export default function RegisterDoctorPage() {
     countryCode: '+58',
     phone: '',
   });
+
+  // Si viene con enlace de vendedora (?ref=CODIGO), vincular sellerId y preconfigurar País/Estado/Ciudad de la vendedora
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (!refCode) return;
+
+    getSellers().then(sellers => {
+      const matchedSeller = sellers.find(s => s.referralCode?.toLowerCase() === refCode.trim().toLowerCase());
+      if (matchedSeller) {
+        setReferredBySellerId(matchedSeller.id);
+        setReferredBySellerName(matchedSeller.name);
+        const sCountry = normalizeCountryCode(matchedSeller.country || 'VE');
+        setFormData(prev => ({
+          ...prev,
+          country: sCountry,
+          state: matchedSeller.state || prev.state,
+          city: matchedSeller.city || prev.city,
+          countryCode: sCountry === 'AR' ? '+54' : sCountry === 'CO' ? '+57' : '+58',
+        }));
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -192,7 +224,13 @@ export default function RegisterDoctorPage() {
         return;
       }
 
-      await registerDoctor(result.data);
+      await registerDoctor({
+        ...result.data,
+        profession: formData.profession,
+        hasMedicalRecord: formData.hasMedicalRecord,
+        hasPrescription: formData.hasPrescription,
+        sellerId: referredBySellerId,
+      });
     } catch (error) {
       console.error('Error al registrar médico:', error);
       const errorMessage = error instanceof Error ? error.message : "Ocurrió un error inesperado durante el registro.";
@@ -345,24 +383,21 @@ export default function RegisterDoctorPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="specialty">Especialidad</Label>
-                <Select name="specialty" value={formData.specialty} onValueChange={(v) => handleSelectChange('specialty', v)} disabled={dynamicLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={dynamicLoading ? "Cargando..." : "Selecciona una especialidad"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {specialties.length > 0 ? (
-                      specialties.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
-                    ) : (
-                      <SelectItem value="no-specialties" disabled>
-                        {dynamicLoading ? "Cargando especialidades..." : "No hay especialidades disponibles"}
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="border-t pt-4">
+              <ProfessionSpecialtySelector
+                profession={formData.profession}
+                specialty={formData.specialty}
+                disabled={isLoading || dynamicLoading}
+                onChange={({ profession, specialty, hasMedicalRecord, hasPrescription }) =>
+                  setFormData(prev => ({
+                    ...prev,
+                    profession,
+                    specialty,
+                    hasMedicalRecord,
+                    hasPrescription,
+                  }))
+                }
+              />
             </div>
 
             <div className="border-t pt-4">

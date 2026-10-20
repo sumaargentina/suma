@@ -143,12 +143,12 @@ export function FamilyTab() {
         setFormData({
             firstName: '',
             lastName: '',
-            documentType: 'DNI',
+            documentType: 'Cédula',
             cedula: '',
             birthDate: '',
             gender: '',
             email: '',
-            phoneCode: '+54',
+            phoneCode: '+58',
             phoneNum: '',
             relationship: '',
             relationshipDetail: '',
@@ -166,13 +166,13 @@ export function FamilyTab() {
         if (member) {
             setEditingMember(member);
             const phoneMatch = member.phone ? COUNTRY_CODES.find(c => member.phone?.startsWith(c.code)) : null;
-            const code = phoneMatch ? phoneMatch.code : '+54';
+            const code = phoneMatch ? phoneMatch.code : '+58';
             const num = member.phone ? member.phone.replace(code, '').trim() : '';
 
             setFormData({
                 firstName: member.firstName,
                 lastName: member.lastName,
-                documentType: member.documentType || 'DNI',
+                documentType: member.documentType || 'Cédula',
                 cedula: member.cedula || '',
                 birthDate: member.birthDate,
                 gender: member.gender || '',
@@ -421,7 +421,7 @@ export function FamilyTab() {
                                 </div>
                                 {member.cedula && (
                                     <div className="flex justify-between text-muted-foreground">
-                                        <span>{member.documentType || 'DNI'}:</span>
+                                        <span>{member.documentType || 'Cédula'}:</span>
                                         <span className="font-medium text-foreground">{member.cedula}</span>
                                     </div>
                                 )}
@@ -743,7 +743,7 @@ export function FamilyTab() {
                                         id="city"
                                         value={formData.city}
                                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                                        placeholder="Ej: Buenos Aires"
+                                        placeholder="Ej: Caracas"
                                     />
                                 </div>
                             </div>

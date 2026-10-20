@@ -131,16 +131,31 @@ class WhatsAppService {
 
     /**
      * Format phone number to E.164 format
-     * Input: 1112345678 or 5491112345678
-     * Output: +5491112345678
+     * Input: 04141234567, 4141234567 or 584141234567
+     * Output: +584141234567
      */
     private formatPhoneNumber(phone: string): string {
         // Remove all non-numeric characters
         let cleaned = phone.replace(/\D/g, '');
 
-        // If doesn't start with country code, assume Argentina (+54)
-        if (!cleaned.startsWith('54')) {
-            cleaned = '54' + cleaned;
+        // If phone starts with local 0 (e.g. 0414...), strip leading 0
+        if (cleaned.startsWith('0')) {
+            cleaned = cleaned.substring(1);
+        }
+
+        // Si es número móvil de Venezuela (10 dígitos: 414, 424, 412, 416, 426) o número corto local, anteponer 58
+        if (!cleaned.startsWith('58') && (
+            cleaned.startsWith('414') || 
+            cleaned.startsWith('424') || 
+            cleaned.startsWith('412') || 
+            cleaned.startsWith('416') || 
+            cleaned.startsWith('426') || 
+            cleaned.length === 10
+        )) {
+            cleaned = '58' + cleaned;
+        } else if (cleaned.length < 11 && !cleaned.startsWith('58') && !cleaned.startsWith('54') && !cleaned.startsWith('1')) {
+            // Fallback por defecto a Venezuela (+58)
+            cleaned = '58' + cleaned;
         }
 
         // Add + prefix
@@ -152,13 +167,11 @@ class WhatsAppService {
     }
 
     /**
-     * Validate phone number format
+     * Validate phone number format (E.164: 7 to 15 digits)
      */
     validatePhoneNumber(phone: string): boolean {
         const cleaned = phone.replace(/\D/g, '');
-        // Argentina phone numbers: 54 + area code (2-4 digits) + number (6-8 digits)
-        // Total: 10-13 digits
-        return cleaned.length >= 10 && cleaned.length <= 13;
+        return cleaned.length >= 7 && cleaned.length <= 15;
     }
 
     /**

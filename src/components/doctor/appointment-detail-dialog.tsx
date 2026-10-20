@@ -27,6 +27,9 @@ import Image from 'next/image';
 import { DoctorPatientChat } from "@/components/chat/DoctorPatientChat";
 import { NoShowResolutionModal } from "@/components/medical/no-show-resolution-modal";
 import { useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings";
+import { resolveAppointmentFinancials, getExchangeRate } from "@/lib/currency-utils";
+import { resolveDoctorCapabilities } from "@/lib/professions-catalog";
 
 interface AppointmentDetailDialogProps {
     isOpen: boolean;
@@ -63,6 +66,29 @@ export function AppointmentDetailDialog({
     const chatPatientId = appointment?.bookedByPatientId || appointment?.patientId;
     const effectiveDoctorId = propDoctorId || appointment?.doctorId || user?.id;
     const effectiveDoctorName = propDoctorName || user?.name || 'Doctor';
+
+    const { settings, professionsCatalog } = useSettings();
+    const capabilities = resolveDoctorCapabilities(user, professionsCatalog);
+    const currentRate = getExchangeRate(settings, 'VES');
+    const financials = appointment ? resolveAppointmentFinancials(appointment, currentRate) : null;
+
+    const handleConfirmPayment = () => {
+        if (!appointment) return;
+        const updatePayload: Partial<Appointment> = {
+            paymentStatus: 'Pagado',
+            paidAt: new Date().toISOString(),
+        };
+        // Si era en efectivo y no tenía tasa congelada o estaba pendiente:
+        if (!appointment.exchangeRate || appointment.paymentMethod === 'efectivo') {
+            const rateToFreeze = currentRate;
+            const usdAmount = appointment.totalPrice || 0;
+            const localAmountToFreeze = Math.round(usdAmount * rateToFreeze * 100) / 100;
+            updatePayload.exchangeRate = rateToFreeze;
+            updatePayload.amountInUSD = usdAmount;
+            updatePayload.amountInLocalCurrency = localAmountToFreeze;
+        }
+        onUpdateAppointment(appointment.id, updatePayload);
+    };
 
     const editableTotalPrice =
         (appointment?.consultationFee || 0) +
@@ -256,9 +282,9 @@ export function AppointmentDetailDialog({
                                         </p>
                                     )}
                                     <p>
-                                        <strong>Total:</strong>
+                                        <strong>Total Base:</strong>
                                         <span className="font-mono font-semibold">
-                                            {`$${(appointment.totalPrice || 0).toFixed(2)}`}
+                                            {`$${(appointment.totalPrice || 0).toFixed(2)} USD`}
                                             {Number(appointment.discountAmount) > 0 && (
                                                 <span className="ml-2 text-green-600 text-xs font-normal">
                                                     (con descuento)
@@ -266,10 +292,62 @@ export function AppointmentDetailDialog({
                                             )}
                                         </span>
                                     </p>
+
+                                    {financials && (
+                                        <div className="space-y-1.5 bg-slate-50 border p-2.5 rounded-lg text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-600 font-medium">Monto en Bolívares:</span>
+                                                <span className="font-mono font-bold text-blue-700 text-sm">
+                                                    {financials.formattedLocal}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                                                <span>Tasa oficial:</span>
+                                                <span className="font-mono">
+                                                    Bs. {financials.exchangeRate.toLocaleString('es-VE', { minimumFractionDigits: 2 })} / $1 USD
+                                                </span>
+                                            </div>
+                                            <div className="text-[11px] pt-1 border-t flex justify-between items-center">
+                                                <span className="text-muted-foreground">Auditoría contable:</span>
+                                                {financials.isHistorical ? (
+                                                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                                        🔒 Tasa congelada al pagar
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-amber-700 font-medium flex items-center gap-1">
+                                                        ⏳ Tasa del día (pendiente de pago)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2">
+                                        <strong>Moneda de pago:</strong>
+                                        {appointment.paymentCurrency === 'USD' ? (
+                                            <Badge variant="outline" className="border-emerald-500 bg-emerald-50 text-emerald-800 text-xs font-semibold">
+                                                💵 Dólares ($USD)
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="border-blue-500 bg-blue-50 text-blue-800 text-xs font-semibold">
+                                                🇻🇪 Bolívares (Bs.)
+                                            </Badge>
+                                        )}
+                                    </div>
+
                                     <p>
                                         <strong>Método:</strong>
-                                        <span className="capitalize">{appointment.paymentMethod}</span>
+                                        <span className="capitalize ml-1">{appointment.paymentMethod}</span>
                                     </p>
+
+                                    {appointment.paymentAccountDetails && (
+                                        <div className="text-xs bg-muted/40 p-2 rounded border space-y-0.5">
+                                            <div className="font-medium text-slate-700">Cuenta de destino:</div>
+                                            <div>{appointment.paymentAccountDetails.bank} - {appointment.paymentAccountDetails.accountNumber}</div>
+                                            <div className="text-muted-foreground">Titular: {appointment.paymentAccountDetails.accountHolder}</div>
+                                        </div>
+                                    )}
+
                                     <div className="flex items-center gap-2">
                                         <strong>Estado:</strong>
                                         <Badge variant={appointment.paymentStatus === 'Pagado' ? 'default' : 'secondary'} className={cn({ 'bg-green-600 text-white': appointment.paymentStatus === 'Pagado' })}>
@@ -293,9 +371,9 @@ export function AppointmentDetailDialog({
                                     )}
 
                                     {appointment.paymentStatus === 'Pendiente' && (
-                                        <Button size="sm" className="w-full mt-2" onClick={() => onUpdateAppointment(appointment.id, { paymentStatus: 'Pagado' })}>
+                                        <Button size="sm" className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white" onClick={handleConfirmPayment}>
                                             <CheckCircle className="mr-2 h-4 w-4" />
-                                            {appointment.paymentMethod === 'efectivo' ? 'Confirmar Pago en Efectivo' : 'Aprobar Pago'}
+                                            {appointment.paymentMethod === 'efectivo' ? 'Confirmar Pago en Efectivo (Tasa de Hoy)' : 'Aprobar Pago'}
                                         </Button>
                                     )}
                                 </CardContent>
@@ -472,6 +550,7 @@ export function AppointmentDetailDialog({
                                 </CardContent>
                             </Card>
 
+                            {capabilities.hasMedicalRecord && (
                             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
                                 <CardHeader>
                                     <CardTitle className="text-base text-blue-900">Historia Clínica del Paciente</CardTitle>
@@ -495,6 +574,7 @@ export function AppointmentDetailDialog({
                                     </p>
                                 </CardContent>
                             </Card>
+                            )}
                         </div>
 
                     </div>

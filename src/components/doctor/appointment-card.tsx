@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { format, parseISO, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Link from 'next/link';
+import { useSettings } from '@/lib/settings';
+import { resolveAppointmentFinancials, getExchangeRate } from '@/lib/currency-utils';
 
 function capitalizeWords(str: string | null | undefined) {
     if (!str) return 'Paciente';
@@ -17,6 +19,10 @@ function capitalizeWords(str: string | null | undefined) {
 }
 
 export function DoctorAppointmentCard({ appointment, onOpenDialog, isPast = false, officeName }: { appointment: Appointment, onOpenDialog: (type: 'appointment' | 'chat', appointment: Appointment) => void, isPast?: boolean, officeName?: string }) {
+    const { settings } = useSettings();
+    const currentRate = getExchangeRate(settings, 'VES');
+    const financials = appointment ? resolveAppointmentFinancials(appointment, currentRate) : null;
+
     // Función para obtener el texto del estado de pago
     const getPaymentStatusText = (status: string) => {
         switch (status) {
@@ -79,8 +85,16 @@ export function DoctorAppointmentCard({ appointment, onOpenDialog, isPast = fals
                         </div>
                     )}
                 </div>
-                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between gap-2">
-                    <p className="font-bold text-lg">${(appointment.totalPrice || 0).toFixed(2)}</p>
+                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between gap-1">
+                    <div className="flex flex-col items-start sm:items-end">
+                        <p className="font-bold text-lg leading-none">${(appointment.totalPrice || 0).toFixed(2)} USD</p>
+                        {financials && financials.paymentCurrency === 'VES' && (
+                            <span className="text-xs text-muted-foreground font-mono mt-0.5">
+                                {financials.formattedLocal}
+                                {financials.isHistorical ? ' 🔒' : ' (tasa hoy)'}
+                            </span>
+                        )}
+                    </div>
                     <div className="flex flex-col gap-2 items-end">
                         {isPast ? (
                             <Badge variant={appointment.attendance === 'Atendido' ? 'default' : 'destructive'} className={cn({ 'bg-green-600 text-white': appointment.attendance === 'Atendido' })}>

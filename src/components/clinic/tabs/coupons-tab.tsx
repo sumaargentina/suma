@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { getClinic, updateClinic } from '@/lib/supabaseService';
+import { getClinic, updateClinic, getLaboratory, updateLaboratory } from '@/lib/supabaseService';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import type { Coupon, Clinic } from '@/lib/types';
+import type { Coupon, Clinic, Laboratory } from '@/lib/types';
 import { z } from 'zod';
 
 const CouponFormSchema = z.object({
@@ -24,25 +24,29 @@ const CouponFormSchema = z.object({
 export function CouponsTab() {
     const { user } = useAuth();
     const { toast } = useToast();
-    const [clinic, setClinic] = useState<Clinic | null>(null);
+    const [clinic, setClinic] = useState<Clinic | Laboratory | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const isLab = user?.role === 'laboratory' || (user?.role === 'secretary' && !!(user as any).laboratoryId);
+    const entityId = user?.role === 'secretary' ? ((user as any).laboratoryId || user.clinicId) : user?.id;
+
     useEffect(() => {
-        if (user) {
+        if (entityId) {
             loadClinic();
         }
-    }, [user]);
+    }, [entityId, isLab]);
 
     const loadClinic = async () => {
         try {
-            const data = await getClinic(user!.id);
+            if (!entityId) return;
+            const data = isLab ? await getLaboratory(entityId) : await getClinic(entityId);
             setClinic(data);
         } catch (error) {
             console.error('Error loading clinic:', error);
-            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo cargar la información de la clínica.' });
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo cargar la información.' });
         } finally {
             setIsLoading(false);
         }
@@ -68,6 +72,7 @@ export function CouponsTab() {
         }
 
         try {
+            if (!entityId) return;
             const list = clinic?.coupons || [];
             let newList;
 
@@ -93,12 +98,16 @@ export function CouponsTab() {
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                     scopeType: 'all',
-                    clinicId: user!.id
+                    clinicId: entityId
                 };
                 newList = [...list, newCoupon];
             }
 
-            await updateClinic(user!.id, { coupons: newList });
+            if (isLab) {
+                await updateLaboratory(entityId, { coupons: newList });
+            } else {
+                await updateClinic(entityId, { coupons: newList });
+            }
             setClinic(prev => prev ? { ...prev, coupons: newList } : null);
             toast({ title: editingCoupon ? 'Cupón actualizado' : 'Cupón creado' });
             setIsDialogOpen(false);
@@ -114,9 +123,14 @@ export function CouponsTab() {
         if (!confirm('¿Estás seguro de que quieres eliminar este cupón?')) return;
 
         try {
+            if (!entityId) return;
             const list = clinic?.coupons || [];
             const newList = list.filter(c => c.id !== id);
-            await updateClinic(user!.id, { coupons: newList });
+            if (isLab) {
+                await updateLaboratory(entityId, { coupons: newList });
+            } else {
+                await updateClinic(entityId, { coupons: newList });
+            }
             setClinic(prev => prev ? { ...prev, coupons: newList } : null);
             toast({ title: 'Cupón eliminado' });
         } catch (error) {

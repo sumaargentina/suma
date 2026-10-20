@@ -702,7 +702,7 @@ export function ClinicsTab() {
                                 <Input
                                     value={newClinicData.phone}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, phone: e.target.value }))}
-                                    placeholder="+54 11 1234-5678"
+                                    placeholder="+58 414 123-4567"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -710,7 +710,7 @@ export function ClinicsTab() {
                                 <Input
                                     value={newClinicData.city}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, city: e.target.value }))}
-                                    placeholder="Buenos Aires"
+                                    placeholder="Caracas"
                                 />
                             </div>
                         </div>

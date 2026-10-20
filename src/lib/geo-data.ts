@@ -457,6 +457,56 @@ export const GEO_DATA: GeoCountry[] = [
         ]
       }
     ]
+  },
+  {
+    code: 'CO',
+    name: 'Colombia',
+    flag: '🇨🇴',
+    phoneCode: '+57',
+    lat: 4.7110,
+    lng: -74.0721,
+    states: [
+      {
+        name: 'Bogotá D.C.',
+        code: 'DC',
+        lat: 4.7110,
+        lng: -74.0721,
+        cities: [
+          { name: 'Bogotá', lat: 4.7110, lng: -74.0721 },
+        ]
+      },
+      {
+        name: 'Antioquia',
+        code: 'ANT',
+        lat: 6.2442,
+        lng: -75.5812,
+        cities: [
+          { name: 'Medellín', lat: 6.2442, lng: -75.5812 },
+          { name: 'Envigado', lat: 6.1759, lng: -75.5917 },
+          { name: 'Bello', lat: 6.3373, lng: -75.5579 },
+          { name: 'Rionegro', lat: 6.1552, lng: -75.3737 },
+        ]
+      },
+      {
+        name: 'Valle del Cauca',
+        code: 'VAC',
+        lat: 3.4516,
+        lng: -76.5320,
+        cities: [
+          { name: 'Cali', lat: 3.4516, lng: -76.5320 },
+          { name: 'Palmira', lat: 3.5394, lng: -76.3036 },
+        ]
+      },
+      {
+        name: 'Atlántico',
+        code: 'ATL',
+        lat: 10.9685,
+        lng: -74.7813,
+        cities: [
+          { name: 'Barranquilla', lat: 10.9685, lng: -74.7813 },
+        ]
+      }
+    ]
   }
 ];
 
@@ -466,19 +516,76 @@ export function normalizeGeoText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
+/**
+ * Normalizes any country string ('VE', 'Venezuela', 'AR', 'Argentina', 'CO', 'Colombia', null/undefined)
+ * into a canonical ISO-2 uppercase country code (defaults to 'VE' for legacy records).
+ */
+export function normalizeCountryCode(countryInput?: string | null): string {
+  if (!countryInput) return 'VE';
+  const q = normalizeGeoText(countryInput);
+  if (!q || q === 've' || q === 'venezuela' || q === 'ven') return 'VE';
+  if (q === 'ar' || q === 'argentina' || q === 'arg') return 'AR';
+  if (q === 'co' || q === 'colombia' || q === 'col') return 'CO';
+  if (q === 'cl' || q === 'chile') return 'CL';
+  if (q === 'mx' || q === 'mexico') return 'MX';
+  if (q === 'pe' || q === 'peru') return 'PE';
+  if (q === 'ec' || q === 'ecuador') return 'EC';
+  if (q === 'pa' || q === 'panama') return 'PA';
+  if (q === 'es' || q === 'espana') return 'ES';
+  if (q === 'us' || q === 'usa' || q === 'estados unidos') return 'US';
+
+  const found = GEO_DATA.find(
+    c => normalizeGeoText(c.code) === q || normalizeGeoText(c.name) === q
+  );
+  if (found) return found.code;
+
+  return countryInput.trim().toUpperCase().slice(0, 2) || 'VE';
+}
+
+/**
+ * Strict country comparison helper for Multi-Country isolation.
+ * Ensures an Argentine user ('AR' / 'Argentina') only matches Argentine entities,
+ * and a Venezuelan user ('VE' / 'Venezuela' / legacy null) only matches Venezuelan entities.
+ */
+export function isSameCountry(countryA?: string | null, countryB?: string | null): boolean {
+  return normalizeCountryCode(countryA) === normalizeCountryCode(countryB);
+}
+
+export function getCountryDisplay(countryInput?: string | null): {
+  code: string;
+  name: string;
+  flag: string;
+  phoneCode: string;
+  nationalLabel: string;
+} {
+  const code = normalizeCountryCode(countryInput);
+  const found = GEO_DATA.find(c => c.code === code);
+  if (found) {
+    return {
+      code: found.code,
+      name: found.name,
+      flag: found.flag,
+      phoneCode: found.phoneCode,
+      nationalLabel: `Todo ${found.name} ${found.flag}`,
+    };
+  }
+  return {
+    code,
+    name: code,
+    flag: '🌎',
+    phoneCode: '+',
+    nationalLabel: `Todo el país (${code})`,
+  };
+}
+
 // Helper functions for easy querying
 export function getSupportedCountries(): GeoCountry[] {
   return GEO_DATA;
 }
 
 export function getCountryByCode(countryCode?: string): GeoCountry | undefined {
-  if (!countryCode) return GEO_DATA[0];
-  const query = normalizeGeoText(countryCode);
-  return (
-    GEO_DATA.find(c => normalizeGeoText(c.code) === query || normalizeGeoText(c.name) === query) ||
-    (query === 'venezuela' || query === 've' ? GEO_DATA[0] : undefined) ||
-    GEO_DATA[0]
-  );
+  const code = normalizeCountryCode(countryCode);
+  return GEO_DATA.find(c => c.code === code) || GEO_DATA[0];
 }
 
 export function getStatesByCountry(countryCode?: string): GeoState[] {

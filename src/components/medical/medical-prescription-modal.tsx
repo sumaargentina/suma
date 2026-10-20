@@ -17,12 +17,15 @@ import {
   Copy, 
   Check, 
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  Store
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Doctor, MedicalRecord } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { SendToPharmacyModal } from '@/components/pharmacy/send-to-pharmacy-modal';
+import { RecipeRecommendedPharmaciesSection } from '@/components/pharmacy/recipe-recommended-pharmacies-section';
 
 interface MedicalPrescriptionModalProps {
   isOpen: boolean;
@@ -48,6 +51,7 @@ export function MedicalPrescriptionModal({
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isSendToPharmacyOpen, setIsSendToPharmacyOpen] = useState(false);
 
   // Generate Unique Code
   const recipeCode = record?.recipe_code || `SUMA-REC-${(record?.id || '00000000').slice(0, 8).toUpperCase()}`;
@@ -88,6 +92,7 @@ export function MedicalPrescriptionModal({
 
   // Resolve Doctor data with fallbacks
   const doc = doctor || record.doctors || {};
+  const docId = doc.id || record.doctor_id || record.doctorId || null;
   const docName = doc.name || 'Médico Tratante';
   const docSpecialty = doc.specialty || 'Medicina General';
   const docLicense = doc.medical_license || doc.medicalLicense || '';
@@ -313,14 +318,24 @@ export function MedicalPrescriptionModal({
                   {copied ? 'Copiado' : 'Link'}
                 </Button>
 
+                {/* Botón Enviar a Farmacia */}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsSendToPharmacyOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 h-8 text-xs font-bold shadow-xs flex items-center gap-1.5"
+                >
+                  <Store className="h-3.5 w-3.5" /> Enviar a Farmacia
+                </Button>
+
                 {/* Botón WhatsApp */}
                 <Button
                   type="button"
                   size="sm"
                   onClick={handleShareWhatsApp}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 h-8 text-xs font-medium"
+                  className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 h-8 text-xs font-medium"
                 >
-                  <Share2 className="h-3.5 w-3.5 mr-1.5" /> WhatsApp
+                  <Share2 className="h-3.5 w-3.5 mr-1" /> WhatsApp
                 </Button>
 
                 {/* Botón Imprimir */}
@@ -333,6 +348,31 @@ export function MedicalPrescriptionModal({
                   <Printer className="h-3.5 w-3.5 mr-1.5" /> Imprimir / PDF
                 </Button>
               </div>
+            </div>
+
+            {/* Banner Consultar Disponibilidad en Farmacias Aliadas */}
+            <div className="print:hidden bg-gradient-to-r from-emerald-50 via-teal-50 to-slate-50 border-b border-teal-100 px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Store className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">
+                    ¿Deseas cotizar o surtir estos medicamentos?
+                  </span>
+                  <span className="text-[11px] text-slate-600">
+                    Envía este récipe oficial por WhatsApp a las farmacias aliadas SUMA para verificar stock y precios.
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setIsSendToPharmacyOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 rounded-xl shadow-xs shrink-0 w-full sm:w-auto"
+              >
+                <Store className="h-3.5 w-3.5 mr-1" /> Elegir Farmacia Aliada
+              </Button>
             </div>
 
             {/* Printable Sheet (Dual Horizontal Layout) */}
@@ -360,6 +400,23 @@ export function MedicalPrescriptionModal({
                       <span className="text-[9px] uppercase tracking-wider font-semibold bg-teal-800/80 px-1.5 py-0.5 rounded text-teal-100">
                         Despacho Farmacia
                       </span>
+                    </div>
+
+                    {/* Vigencia y Estado de Suministro */}
+                    <div className="flex items-center justify-between text-[9px] mb-2 px-1">
+                      {record.prescription_expires_at || record.prescriptionExpiresAt ? (
+                        <span className="text-teal-700 font-medium">
+                          Válido hasta: <strong>{format(parseISO(record.prescription_expires_at || record.prescriptionExpiresAt), 'dd/MM/yyyy')}</strong>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Vigencia médica estándar</span>
+                      )}
+
+                      {(record.dispensed_at || record.dispensedAt || record.recipe_status === 'dispensed') && (
+                        <span className="text-amber-800 font-bold bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                          ✓ Suministrado
+                        </span>
+                      )}
                     </div>
 
                     {/* Diagnóstico (si existe) */}
@@ -416,6 +473,15 @@ export function MedicalPrescriptionModal({
 
               </div>
             </div>
+
+            {/* Sección de Farmacias Recomendadas por el Médico y Farmacias de la Ciudad */}
+            <RecipeRecommendedPharmaciesSection
+              doctorId={docId}
+              doctorName={docName}
+              defaultCity={docCity || undefined}
+              prescriptionText={prescriptionText}
+              recipeCode={recipeCode}
+            />
 
             {/* Footer Close Button (Hidden on Print) */}
             <div className="print:hidden p-3.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
@@ -527,6 +593,20 @@ export function MedicalPrescriptionModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para Enviar Récipe a Farmacia Aliada */}
+      <SendToPharmacyModal
+        isOpen={isSendToPharmacyOpen}
+        onClose={() => setIsSendToPharmacyOpen(false)}
+        recipeCode={recipeCode}
+        patientName={patientName}
+        patientCedula={patientCedula}
+        doctorName={docName}
+        doctorSpecialty={docSpecialty}
+        prescriptionText={prescriptionText}
+        recipeUrl={verificationUrl}
+        defaultCity={docCity || undefined}
+      />
     </>
   );
 }

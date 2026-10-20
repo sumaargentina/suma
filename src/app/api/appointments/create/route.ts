@@ -27,7 +27,7 @@ const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 export async function POST(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Verificar que el usuario está autenticado
-        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'secretary', 'admin']);
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'laboratory', 'secretary', 'admin']);
 
         // Si authResult es un NextResponse, significa que la autenticación falló
         if (authResult instanceof NextResponse) {
@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
             doctorId: appointmentData.doctorId,
             doctorName: appointmentData.doctorName,
             clinicServiceId: appointmentData.clinicServiceId,
+            laboratoryServiceId: appointmentData.laboratoryServiceId,
             date: appointmentData.date,
             time: appointmentData.time,
             patientName: appointmentData.patientName,
         });
 
-        // Validate required fields - need either doctorId OR clinicServiceId
-        const hasDoctorOrService = appointmentData.doctorId || appointmentData.clinicServiceId;
+        // Validate required fields - need either doctorId, clinicServiceId, OR laboratoryServiceId
+        const hasDoctorOrService = appointmentData.doctorId || appointmentData.clinicServiceId || appointmentData.laboratoryServiceId;
         if (!hasDoctorOrService || !appointmentData.date || !appointmentData.time) {
             return NextResponse.json(
                 { error: 'Se requiere Doctor ID o Service ID, fecha y hora' },
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Check for duplicate appointments - use either doctorId or clinicServiceId
+        // Check for duplicate appointments - use doctorId, clinicServiceId, or laboratoryServiceId
         let duplicateQuery = supabaseAdmin
             .from('appointments')
             .select('*')
@@ -77,6 +78,8 @@ export async function POST(request: NextRequest) {
             duplicateQuery = duplicateQuery.eq('doctor_id', appointmentData.doctorId);
         } else if (appointmentData.clinicServiceId) {
             duplicateQuery = duplicateQuery.eq('clinic_service_id', appointmentData.clinicServiceId);
+        } else if (appointmentData.laboratoryServiceId) {
+            duplicateQuery = duplicateQuery.eq('laboratory_service_id', appointmentData.laboratoryServiceId);
         }
 
         const { data: existingAppointments, error: checkError } = await duplicateQuery;
@@ -99,22 +102,49 @@ export async function POST(request: NextRequest) {
         }
 
         // Prepare data for insertion
-        const dataWithFlags = {
-            ...toSnakeCase(appointmentData as Record<string, unknown>),
+        const snakeData = toSnakeCase(appointmentData as Record<string, unknown>);
+        const dataWithFlags: Record<string, unknown> = {
+            ...snakeData,
             total_price: roundPrice(appointmentData.totalPrice || 0),
             consultation_fee: roundPrice(appointmentData.consultationFee || 0),
+            currency: appointmentData.currency || 'USD',
+            payment_currency: appointmentData.paymentCurrency || 'USD',
+            exchange_rate: appointmentData.exchangeRate || 1,
+            amount_in_usd: appointmentData.amountInUSD !== undefined ? roundPrice(appointmentData.amountInUSD) : roundPrice(appointmentData.totalPrice || 0),
+            amount_in_local_currency: appointmentData.amountInLocalCurrency !== undefined ? appointmentData.amountInLocalCurrency : null,
+            payment_account_details: appointmentData.paymentAccountDetails || null,
+            paid_at: appointmentData.paymentStatus === 'Pagado' ? new Date().toISOString() : null,
             read_by_doctor: false,
             read_by_patient: true,
         };
 
-        console.log('✅ API: Adding appointment to database');
+        console.log('✅ API: Adding appointment to database with financial snapshot');
 
-        // Insert appointment
-        const { data, error } = await supabaseAdmin
+        // Insert appointment with defensive fallback if new columns are not yet migrated in Supabase
+        let { data, error } = await supabaseAdmin
             .from('appointments')
             .insert([dataWithFlags])
             .select()
             .single();
+
+        if (error && error.code === '42703') {
+            console.warn('⚠️ Some currency columns do not exist yet in appointments table. Retrying with base columns...');
+            const newCols = [
+                'currency', 'payment_currency', 'exchange_rate',
+                'amount_in_usd', 'amount_in_local_currency', 'paid_at', 'payment_account_details'
+            ];
+            const fallbackData = { ...dataWithFlags };
+            newCols.forEach(col => delete fallbackData[col]);
+
+            const retryResult = await supabaseAdmin
+                .from('appointments')
+                .insert([fallbackData])
+                .select()
+                .single();
+
+            data = retryResult.data;
+            error = retryResult.error;
+        }
 
         if (error) {
             console.error('Error creating appointment:', error);

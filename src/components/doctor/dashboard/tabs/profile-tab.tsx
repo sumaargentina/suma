@@ -13,13 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
 import type { Doctor } from '@/lib/types';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Copy, Check, Share2, ExternalLink, Link2 } from 'lucide-react';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { uploadPublicImage } from '@/lib/supabaseService';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
+import { ProfessionSpecialtySelector } from '@/components/ui/profession-specialty-selector';
 import { resolveLocation } from '@/lib/geo-data';
 import { useAuth } from '@/lib/auth';
+import { useSettings } from '@/lib/settings';
+import { resolveDoctorCapabilities } from '@/lib/professions-catalog';
 import { Badge } from '@/components/ui/badge';
 import { DigitalSignaturePad } from '@/components/doctor/digital-signature-pad';
 import { ImageCropModal } from '@/components/ui/image-crop-modal';
@@ -46,6 +49,17 @@ interface ProfileTabProps {
 export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }: ProfileTabProps) {
   const { toast } = useToast();
   const { loginWithGoogle } = useAuth();
+  const { professionsCatalog } = useSettings();
+  const [selectedProfession, setSelectedProfession] = useState(doctorData.profession || 'Médico');
+  const [selectedSpecialty, setSelectedSpecialty] = useState(doctorData.specialty || '');
+  const capabilities = resolveDoctorCapabilities(
+    {
+      ...doctorData,
+      profession: selectedProfession,
+      specialty: selectedSpecialty,
+    },
+    professionsCatalog
+  );
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [bannerImageFile, setBannerImageFile] = useState<File | null>(null);
   const [cropModal, setCropModal] = useState<{
@@ -171,6 +185,8 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
 
       await supabaseService.updateDoctor(doctorData.id, {
         name: result.data.name,
+        profession: selectedProfession,
+        specialty: selectedSpecialty || doctorData.specialty,
         // Cédula y DocumentType preservados por seguridad
         cedula: doctorData.cedula || result.data.cedula,
         documentType: doctorData.documentType || result.data.documentType,
@@ -222,8 +238,109 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
     }
   };
 
+  const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
+
+  const directBookingUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/doctors/${doctorData.id}`
+    : `/doctors/${doctorData.id}`;
+
+  const handleCopyDirectUrl = async () => {
+    try {
+      const fullUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/doctors/${doctorData.id}`
+        : directBookingUrl;
+      await navigator.clipboard.writeText(fullUrl);
+      setCopiedDirectUrl(true);
+      toast({
+        title: '¡Enlace copiado!',
+        description: 'Ya puedes pegarlo en tu biografía de Instagram, WhatsApp, TikTok o Facebook.',
+      });
+      setTimeout(() => setCopiedDirectUrl(false), 2500);
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No se pudo copiar el enlace automáticamente.',
+      });
+    }
+  };
+
+  const handleShareWhatsAppUrl = () => {
+    const fullUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/doctors/${doctorData.id}`
+      : directBookingUrl;
+    const text = `🩺 Hola, puedes agendar tu cita médica directamente conmigo (${doctorData.name} - ${doctorData.specialty}) en SUMA a través de mi enlace oficial:\n${fullUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
+      {/* Tarjeta de Enlace Directo para Redes Sociales */}
+      <Card className="border-teal-500/30 bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/50 shadow-xs">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-base md:text-lg flex items-center gap-2 text-teal-950">
+                <Link2 className="h-5 w-5 text-teal-600" />
+                Tu Enlace Directo de Citas para Redes Sociales
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-600 mt-0.5">
+                Comparte este link en tu biografía de Instagram, estados de WhatsApp, TikTok o Facebook. Tus pacientes irán directo a agendar contigo (incluso si inician sesión o se registran en el momento).
+              </CardDescription>
+            </div>
+            <Badge className="bg-teal-600 text-white text-[10px]">
+              Link Público Activo
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="flex-1 flex items-center bg-white border border-teal-200 rounded-xl px-3 py-2 text-xs md:text-sm font-mono text-slate-800 select-all overflow-x-auto">
+              {directBookingUrl}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={handleCopyDirectUrl}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs h-10 px-4 rounded-xl flex-1 sm:flex-initial"
+              >
+                {copiedDirectUrl ? (
+                  <>
+                    <Check className="h-4 w-4 mr-1.5" />
+                    ¡URL Copiada!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 mr-1.5" />
+                    Copiar URL
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleShareWhatsAppUrl}
+                className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold text-xs h-10 px-3.5 rounded-xl"
+              >
+                <Share2 className="h-4 w-4 mr-1.5 text-emerald-600" />
+                Enviar por WhatsApp
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                asChild
+                className="text-xs h-10 px-3 rounded-xl text-slate-600 hover:text-teal-700"
+              >
+                <a href={`/doctors/${doctorData.id}`} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Ver Perfil
+                </a>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base md:text-2xl">Perfil Profesional</CardTitle>
@@ -261,8 +378,21 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                 )}
               </div>
             </div>
+            <div className="border-t pt-4">
+              <ProfessionSpecialtySelector
+                profession={selectedProfession}
+                specialty={selectedSpecialty}
+                disabled={isClinicEmployee}
+                showCapabilitiesBadge={true}
+                onChange={({ profession, specialty }) => {
+                  setSelectedProfession(profession);
+                  setSelectedSpecialty(specialty);
+                }}
+              />
+            </div>
+
             <div className="space-y-1 md:space-y-2">
-              <Label htmlFor="medicalLicense" className="text-xs md:text-sm">Número de Matrícula / Colegio Médico</Label>
+              <Label htmlFor="medicalLicense" className="text-xs md:text-sm">Número de Matrícula / Colegio Profesional</Label>
               <Input
                 id="medicalLicense"
                 name="medicalLicense"
@@ -309,30 +439,32 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
               />
             </div>
 
-            {/* Firma Digital para Récipes */}
-            <div className="border-t pt-4">
-              <h4 className="text-xs md:text-sm font-semibold mb-1">Firma Digital y Sello Oficial</h4>
-              <p className="text-xs text-muted-foreground mb-3">
-                Tu firma se estampará de forma automática en los récipes médicos e informes de consulta que emitas a tus pacientes.
-              </p>
-              <DigitalSignaturePad
-                initialSignature={doctorData.signature_url}
-                onSaveSignature={async (sigUrl) => {
-                  await supabaseService.updateDoctor(doctorData.id, {
-                    signature_url: sigUrl
-                  });
-                  doctorData.signature_url = sigUrl;
-                  onProfileUpdate();
-                }}
-                onDeleteSignature={async () => {
-                  await supabaseService.updateDoctor(doctorData.id, {
-                    signature_url: undefined
-                  });
-                  doctorData.signature_url = undefined;
-                  onProfileUpdate();
-                }}
-              />
-            </div>
+            {/* Firma Digital para Récipes e Historias Clínicas */}
+            {(capabilities.hasMedicalRecord || capabilities.hasPrescription) && (
+              <div className="border-t pt-4">
+                <h4 className="text-xs md:text-sm font-semibold mb-1">Firma Digital y Sello Oficial</h4>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tu firma se estampará de forma automática en {capabilities.hasPrescription ? 'los récipes médicos e informes de consulta' : 'los informes y evoluciones clínicas'} que emitas a tus pacientes.
+                </p>
+                <DigitalSignaturePad
+                  initialSignature={doctorData.signature_url}
+                  onSaveSignature={async (sigUrl) => {
+                    await supabaseService.updateDoctor(doctorData.id, {
+                      signature_url: sigUrl
+                    });
+                    doctorData.signature_url = sigUrl;
+                    onProfileUpdate();
+                  }}
+                  onDeleteSignature={async () => {
+                    await supabaseService.updateDoctor(doctorData.id, {
+                      signature_url: undefined
+                    });
+                    doctorData.signature_url = undefined;
+                    onProfileUpdate();
+                  }}
+                />
+              </div>
+            )}
 
             <div className="space-y-1 md:space-y-2"><Label htmlFor="description" className="text-xs md:text-sm">Descripción Profesional</Label><Textarea id="description" name="description" defaultValue={doctorData.description} rows={4} className="text-xs md:text-sm" /></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">

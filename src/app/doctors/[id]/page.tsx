@@ -35,8 +35,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from "@/lib/supabaseService";
-// import { notificationService } from '@/lib/notifications/notification-service';
 import { Doctor, Appointment, Service, BankDetail, Clinic, PaymentSettings, FamilyMember, FamilyRelationship } from "@/lib/types";
+import { getExchangeRate } from "@/lib/currency-utils";
 import { useAuth } from "@/lib/auth";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -114,6 +114,8 @@ export default function DoctorProfile() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [consultationType, setConsultationType] = useState<'presencial' | 'online'>('presencial');
   const [clinic, setClinic] = useState<Clinic | null>(null); // Clínica asociada al médico (si aplica)
+  const [exchangeRate, setExchangeRate] = useState<number>(65.50);
+  const [cashCurrency, setCashCurrency] = useState<'USD' | 'VES'>('USD');
 
   // Núcleo Familiar - Estado para selección de paciente
   const [bookingFor, setBookingFor] = useState<'myself' | 'family'>('myself');
@@ -164,6 +166,10 @@ export default function DoctorProfile() {
             // Cargar cupones: Plataforma + Clínica (si aplica)
             try {
               const settings = await supabaseService.getSettings();
+              if (settings) {
+                const rate = getExchangeRate(settings, 'VES');
+                if (rate > 0) setExchangeRate(rate);
+              }
               let allCoupons = settings?.coupons || [];
 
               // Agregar cupones propios del médico (asignando scope explícito para pasar validación)
@@ -239,7 +245,9 @@ export default function DoctorProfile() {
   useEffect(() => {
     if (user && user.role === 'patient' && doctor) {
       const urlParams = new URLSearchParams(window.location.search);
-      const shouldRestore = urlParams.get('restoreAppointment') === 'true';
+      sessionStorage.removeItem('returnToDoctorUrl');
+      localStorage.removeItem('returnToDoctorUrl');
+      const shouldRestore = urlParams.get('restoreAppointment') === 'true' || Boolean(sessionStorage.getItem('pendingAppointment'));
 
       if (shouldRestore) {
         const pendingAppointmentStr = sessionStorage.getItem('pendingAppointment');
@@ -285,6 +293,10 @@ export default function DoctorProfile() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (!user && id) {
+      sessionStorage.setItem('returnToDoctorUrl', `/doctors/${id}`);
+      localStorage.setItem('returnToDoctorUrl', `/doctors/${id}`);
+    }
     if ((!user || user.role !== 'patient') && (step === 'selectServices' || step === 'selectPayment')) {
       if (selectedDate && selectedTime) {
         try {
@@ -637,6 +649,16 @@ export default function DoctorProfile() {
 
       setUploadProgress('Creando cita...');
 
+      // Determinar la moneda y montos congelados para auditoría
+      let chosenPaymentCurrency: 'USD' | 'VES' = 'USD';
+      if (paymentMethod === 'transferencia') {
+        chosenPaymentCurrency = selectedBankDetail?.currency === 'USD' ? 'USD' : 'VES';
+      } else if (paymentMethod === 'efectivo') {
+        chosenPaymentCurrency = cashCurrency;
+      }
+
+      const localAmount = Math.round(finalPrice * exchangeRate * 100) / 100;
+
       const appointmentData = {
         patientId: user.id,
         // Si es para un familiar, usar su nombre; si no, usar el del usuario
@@ -664,6 +686,21 @@ export default function DoctorProfile() {
         // Núcleo Familiar
         familyMemberId: selectedFamilyMember?.id || undefined,
         bookedByPatientId: user.id, // Siempre es quien está haciendo la reserva
+        // Auditoría contable y multi-moneda congelada
+        currency: 'USD',
+        paymentCurrency: chosenPaymentCurrency,
+        exchangeRate: exchangeRate,
+        amountInUSD: finalPrice,
+        amountInLocalCurrency: localAmount,
+        paymentAccountDetails: selectedBankDetail ? {
+          bank: selectedBankDetail.bank,
+          accountNumber: selectedBankDetail.accountNumber,
+          accountHolder: selectedBankDetail.accountHolder,
+          idNumber: selectedBankDetail.idNumber,
+          phone: selectedBankDetail.phone,
+          currency: selectedBankDetail.currency || chosenPaymentCurrency,
+          accountType: selectedBankDetail.accountType,
+        } : undefined,
       };
 
       if (appointmentData.appliedCoupon === undefined) {
@@ -933,7 +970,7 @@ export default function DoctorProfile() {
             <CardFooter className="flex justify-end">
               <Button
                 onClick={() => setStep('selectDateTime')}
-                disabled={!user || (bookingFor === 'family' && !selectedFamilyMember)}
+                disabled={bookingFor === 'family' && !selectedFamilyMember}
               >
                 Continuar
                 <ChevronRight className="ml-2 h-4 w-4" />
@@ -1263,7 +1300,7 @@ export default function DoctorProfile() {
                   const showMercadoPago = ps.mercadopago?.enabled === true;
                   // Para transferencia: si es médico de clínica, usar datos de la clínica; si es independiente, del médico
                   const hasBankDetails = isClinicDoctor
-                    ? (ps.transfer?.cbu || ps.transfer?.alias)
+                    ? Boolean(ps.transfer?.accountNumber || ps.transfer?.cbu || ps.transfer?.alias || ps.pagoMovil?.phone)
                     : (doctor.bankDetails && doctor.bankDetails.length > 0);
                   // Para doctores de clínica, respetar la configuración explícita.
                   // Para independientes, como no tienen UI para configurar 'enabled', asumimos true si tienen cuentas.
@@ -1279,76 +1316,125 @@ export default function DoctorProfile() {
                   }
 
                   return (
-                    <RadioGroup value={paymentMethod || ""} onValueChange={(value) => setPaymentMethod(value as any)}>
-                      {/* Efectivo */}
-                      {showCash && (
-                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                          <RadioGroupItem value="efectivo" id="efectivo" />
-                          <Label htmlFor="efectivo" className="flex items-center gap-2 cursor-pointer flex-1">
-                            <Banknote className="h-5 w-5 text-green-600" />
-                            <div>
-                              <span className="font-medium block">Pago en Efectivo / Consultorio</span>
-                              <span className="text-xs text-muted-foreground">Pagas directamente al médico el día de la cita.</span>
-                            </div>
-                          </Label>
+                    <div className="space-y-4">
+                      {/* Banner de tasa oficial */}
+                      <div className="flex items-center justify-between p-3 bg-teal-50/70 border border-teal-200 rounded-lg text-sm text-teal-900">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">Tasa oficial de cambio:</span>
                         </div>
-                      )}
+                        <Badge variant="outline" className="border-teal-400 bg-white font-mono font-bold text-teal-800">
+                          Bs. {exchangeRate.toLocaleString('es-VE', { minimumFractionDigits: 2 })} / $1 USD
+                        </Badge>
+                      </div>
 
-                      {/* MercadoPago */}
-                      {showMercadoPago && (
-                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors bg-blue-50/50 border-blue-200">
-                          <RadioGroupItem value="mercadopago" id="mercadopago" />
-                          <Label htmlFor="mercadopago" className="flex items-center gap-2 cursor-pointer flex-1">
-                            <CreditCard className="h-5 w-5 text-blue-500" />
-                            <div>
-                              <span className="font-medium block">MercadoPago (Tarjetas / Débito)</span>
-                              <span className="text-xs text-muted-foreground">Pago online seguro e instantáneo.</span>
+                      <RadioGroup value={paymentMethod || ""} onValueChange={(value) => setPaymentMethod(value as any)}>
+                        {/* Efectivo */}
+                        {showCash && (
+                          <div className="space-y-2 border p-4 rounded-lg hover:bg-muted/30 transition-colors">
+                            <div className="flex items-center space-x-2 cursor-pointer">
+                              <RadioGroupItem value="efectivo" id="efectivo" />
+                              <Label htmlFor="efectivo" className="flex items-center gap-2 cursor-pointer flex-1">
+                                <Banknote className="h-5 w-5 text-green-600" />
+                                <div>
+                                  <span className="font-medium block">Pago en Efectivo / En Consultorio</span>
+                                  <span className="text-xs text-muted-foreground">Pagas directamente en el consultorio el día de tu consulta.</span>
+                                </div>
+                              </Label>
                             </div>
-                          </Label>
-                        </div>
-                      )}
 
-                      {/* Transferencia */}
-                      {showTransfer && (
-                        <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                          <RadioGroupItem value="transferencia" id="transferencia" />
-                          <Label htmlFor="transferencia" className="flex items-center gap-2 cursor-pointer flex-1">
-                            <Landmark className="h-5 w-5 text-blue-600" />
-                            <div>
-                              <span className="font-medium block">Transferencia Bancaria</span>
-                              <span className="text-xs text-muted-foreground">Debes subir el comprobante ahora.</span>
-                            </div>
-                          </Label>
-                        </div>
-                      )}
-                    </RadioGroup>
+                            {paymentMethod === 'efectivo' && (
+                              <div className="pt-3 mt-2 border-t border-dashed space-y-2 pl-6 animate-in fade-in slide-in-from-top-1">
+                                <span className="text-xs font-medium text-slate-700 block">¿En qué moneda pagarás en el consultorio?</span>
+                                <RadioGroup value={cashCurrency} onValueChange={(val: 'USD' | 'VES') => setCashCurrency(val)} className="flex flex-col sm:flex-row gap-2">
+                                  <div className="flex items-center space-x-2 border p-2.5 rounded-md flex-1 bg-white cursor-pointer hover:border-green-400">
+                                    <RadioGroupItem value="USD" id="cash-usd" />
+                                    <Label htmlFor="cash-usd" className="cursor-pointer text-xs font-semibold text-slate-900">
+                                      💵 Dólares ($USD)
+                                      <span className="block text-[11px] font-normal text-muted-foreground">Total: ${finalPrice} USD</span>
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2 border p-2.5 rounded-md flex-1 bg-white cursor-pointer hover:border-blue-400">
+                                    <RadioGroupItem value="VES" id="cash-ves" />
+                                    <Label htmlFor="cash-ves" className="cursor-pointer text-xs font-semibold text-slate-900">
+                                      🇻🇪 Bolívares (Bs.)
+                                      <span className="block text-[11px] font-normal text-muted-foreground">
+                                        Aprox: Bs. {(finalPrice * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </Label>
+                                  </div>
+                                </RadioGroup>
+                                {cashCurrency === 'VES' && (
+                                  <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded border border-amber-200">
+                                    ℹ️ <strong>Regla de pago:</strong> El monto en Bolívares se calculará exactamente a la tasa oficial del día en que acudas a pagar tu consulta.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* MercadoPago */}
+                        {showMercadoPago && (
+                          <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors bg-blue-50/50 border-blue-200">
+                            <RadioGroupItem value="mercadopago" id="mercadopago" />
+                            <Label htmlFor="mercadopago" className="flex items-center gap-2 cursor-pointer flex-1">
+                              <CreditCard className="h-5 w-5 text-blue-500" />
+                              <div>
+                                <span className="font-medium block">MercadoPago (Tarjetas / Débito)</span>
+                                <span className="text-xs text-muted-foreground">Pago online seguro e instantáneo.</span>
+                              </div>
+                            </Label>
+                          </div>
+                        )}
+
+                        {/* Transferencia */}
+                        {showTransfer && (
+                          <div className="flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                            <RadioGroupItem value="transferencia" id="transferencia" />
+                            <Label htmlFor="transferencia" className="flex items-center gap-2 cursor-pointer flex-1">
+                              <Landmark className="h-5 w-5 text-blue-600" />
+                              <div>
+                                <span className="font-medium block">Pago Móvil / Transferencia Bancaria / Zelle</span>
+                                <span className="text-xs text-muted-foreground">Paga en Bolívares o Dólares y sube el comprobante.</span>
+                              </div>
+                            </Label>
+                          </div>
+                        )}
+                      </RadioGroup>
+                    </div>
                   );
                 })()}
 
                 {paymentMethod === 'transferencia' && (
                   <div className="space-y-4 border-l-2 border-blue-600 pl-4 ml-2 animate-in fade-in slide-in-from-top-2">
                     <div className="space-y-2">
-                      <Label>Datos para transferir:</Label>
+                      <Label>Selecciona la cuenta donde realizarás el pago:</Label>
                       {/* Si es médico de clínica, mostrar datos de la clínica */}
                       {doctor.clinicId && clinic?.paymentSettings?.transfer ? (
                         <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 text-sm space-y-2">
                           <div className="font-medium text-blue-700 mb-2">Cuenta de {clinic.name}</div>
-                          {clinic.paymentSettings.transfer.cbu && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">CBU:</span>
-                              <span className="font-mono">{clinic.paymentSettings.transfer.cbu}</span>
-                            </div>
-                          )}
-                          {clinic.paymentSettings.transfer.alias && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Alias:</span>
-                              <span className="font-mono font-semibold">{clinic.paymentSettings.transfer.alias}</span>
-                            </div>
-                          )}
                           {clinic.paymentSettings.transfer.bank && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Banco:</span>
                               <span>{clinic.paymentSettings.transfer.bank}</span>
+                            </div>
+                          )}
+                          {(clinic.paymentSettings.transfer.accountNumber || clinic.paymentSettings.transfer.cbu) && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Número de Cuenta:</span>
+                              <span className="font-mono">{clinic.paymentSettings.transfer.accountNumber || clinic.paymentSettings.transfer.cbu}</span>
+                            </div>
+                          )}
+                          {(clinic.paymentSettings.transfer.idDocument || clinic.paymentSettings.transfer.cuit) && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Cédula / RIF:</span>
+                              <span className="font-mono font-medium">{clinic.paymentSettings.transfer.idDocument || clinic.paymentSettings.transfer.cuit}</span>
+                            </div>
+                          )}
+                          {(clinic.paymentSettings.transfer.phone || clinic.paymentSettings.transfer.alias) && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Teléfono / Alias:</span>
+                              <span className="font-mono font-semibold">{clinic.paymentSettings.transfer.phone || clinic.paymentSettings.transfer.alias}</span>
                             </div>
                           )}
                           {clinic.paymentSettings.transfer.holder && (
@@ -1366,24 +1452,49 @@ export default function DoctorProfile() {
                             setSelectedBankDetail(bank || null);
                           }}
                         >
-                          {doctor.bankDetails.map((bank) => (
-                            <div key={bank.id} className="flex items-start space-x-2 mb-2">
-                              <RadioGroupItem value={bank.id} id={bank.id} className="mt-1" />
-                              <Label htmlFor={bank.id} className="text-sm cursor-pointer">
-                                <div className="font-medium">{bank.bank}</div>
-                                <div>CBU/CVU: {bank.accountNumber}</div>
-                                <div>Titular: {bank.accountHolder}</div>
-                                {bank.alias && <div>Alias: {bank.alias}</div>}
-                              </Label>
-                            </div>
-                          ))}
+                          {doctor.bankDetails.map((bank) => {
+                            const isUSD = bank.currency === 'USD' || bank.accountType === 'zelle';
+                            const transferAmount = isUSD
+                              ? `$${finalPrice} USD`
+                              : `Bs. ${(finalPrice * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}`;
+
+                            return (
+                              <div key={bank.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-slate-50 transition-colors mb-2">
+                                <RadioGroupItem value={bank.id} id={bank.id} className="mt-1" />
+                                <Label htmlFor={bank.id} className="text-sm cursor-pointer flex-1">
+                                  <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                                    <div className="font-semibold text-slate-900">{bank.bank}</div>
+                                    <Badge className={isUSD ? "bg-emerald-100 text-emerald-800 border-emerald-300 text-xs" : "bg-blue-100 text-blue-800 border-blue-300 text-xs"}>
+                                      {isUSD ? "💵 Pago en Dólares (USD)" : "🇻🇪 Pago en Bolívares (Bs.)"}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-xs text-slate-600 space-y-0.5">
+                                    {isUSD ? (
+                                      <div>Zelle / Cuenta: <span className="font-mono font-semibold text-slate-900">{bank.accountNumber}</span></div>
+                                    ) : (
+                                      <>
+                                        {bank.phone && <div>Teléfono Pago Móvil: <span className="font-mono font-semibold text-slate-900">{bank.phone}</span></div>}
+                                        <div>Cuenta: <span className="font-mono">{bank.accountNumber}</span></div>
+                                      </>
+                                    )}
+                                    <div>Titular: <span className="font-medium">{bank.accountHolder}</span></div>
+                                    <div>CI / RIF: {bank.idNumber}</div>
+                                    {bank.description && <div className="text-slate-500 italic mt-1">{bank.description}</div>}
+                                  </div>
+                                  <div className="mt-2 text-xs font-semibold text-teal-800 bg-teal-50 px-2 py-1 rounded inline-block border border-teal-200">
+                                    Monto a pagar: {transferAmount}
+                                  </div>
+                                </Label>
+                              </div>
+                            );
+                          })}
                         </RadioGroup>
                       ) : (
                         <p className="text-sm text-destructive">No hay cuentas bancarias configuradas.</p>
                       )}
                     </div>
 
-                    {/* Solo mostrar upload de comprobante si NO es médico de clínica (para clínicas se maneja diferente) */}
+                    {/* Solo mostrar upload de comprobante si NO es médico de clínica */}
                     {!doctor.clinicId && (
                       <div className="space-y-2">
                         <Label htmlFor="proof">Subir Comprobante de Pago</Label>
@@ -1400,9 +1511,23 @@ export default function DoctorProfile() {
                   </div>
                 )}
 
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-lg font-bold">Total a Pagar:</div>
-                  <div className="text-2xl font-bold text-primary">${finalPrice}</div>
+                <div className="flex flex-col gap-1 pt-4 border-t">
+                  <div className="flex justify-between items-center">
+                    <div className="text-lg font-bold">Total a Pagar:</div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-primary">${finalPrice} USD</div>
+                      {((paymentMethod === 'transferencia' && selectedBankDetail?.currency !== 'USD') || (paymentMethod === 'efectivo' && cashCurrency === 'VES')) && (
+                        <div className="text-sm font-semibold text-blue-700">
+                          = Bs. {(finalPrice * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {((paymentMethod === 'transferencia' && selectedBankDetail?.currency !== 'USD') || (paymentMethod === 'efectivo' && cashCurrency === 'VES')) && (
+                    <div className="text-xs text-muted-foreground text-right">
+                      (Tasa de cambio aplicada: Bs. {exchangeRate.toFixed(2)} por $1.00 USD)
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-4">

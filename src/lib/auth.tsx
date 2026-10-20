@@ -3,13 +3,14 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import * as supabaseService from './supabaseService';
-import { supabase } from './supabase';
+import { supabase, clearStaleSupabaseAuth } from './supabase';
 import type { Patient, Doctor, Seller, Clinic, DoctorWorkspace, ActiveWorkspace, DocumentType } from './types';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentDateInArgentina, getPaymentDateInArgentina } from './utils';
 import { hashPassword, verifyPassword, isPasswordHashed } from './password-utils';
 import { clearUserNotifications } from './clear-notifications';
 import { logAuditEvent, AuditActions } from './audit-service';
+import { normalizeCountryCode } from './geo-data';
 
 // Función para establecer el token de autenticación en cookie HTTP-only
 async function setAuthToken(userId: string, email: string, role: string, name: string, clinicId?: string): Promise<void> {
@@ -33,18 +34,24 @@ async function clearAuthToken(): Promise<void> {
   }
 }
 
-// The User type represents the logged-in user and must have all Patient properties for consistency across the app.
 export interface User extends Patient {
-  role: 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
+  role: 'patient' | 'doctor' | 'seller' | 'admin' | 'superadmin' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory';
   referralCode?: string;
   clinicId?: string; // For doctors/secretaries
+  laboratoryId?: string; // For secretaries belonging to laboratories
   permissions?: string[]; // For secretaries (e.g. ['agenda'])
   isClinicEmployee?: boolean;
   workspaces?: DoctorWorkspace[];
   activeWorkspace?: ActiveWorkspace | null;
+  profession?: string;
   specialty?: string;
+  hasMedicalRecord?: boolean | null;
+  hasPrescription?: boolean | null;
   medicalLicense?: string;
   onboardingCompleted?: boolean;
+  isChain?: boolean;
+  chainName?: string | null;
+  branchName?: string | null;
 }
 
 interface DoctorRegistrationData {
@@ -52,7 +59,10 @@ interface DoctorRegistrationData {
   email: string;
   password: string;
   confirmPassword?: string;
+  profession?: string;
   specialty: string;
+  hasMedicalRecord?: boolean | null;
+  hasPrescription?: boolean | null;
   country?: string;
   state?: string;
   city: string;
@@ -60,10 +70,11 @@ interface DoctorRegistrationData {
   documentType: DocumentType;
   medicalLicense: string;
   address: string;
-  sector: string;
+  sector?: string;
   phone: string;
   lat?: number;
   lng?: number;
+  sellerId?: string | null;
 }
 
 interface ClinicRegistrationData {
@@ -91,7 +102,7 @@ export interface AuthContextType {
   switchWorkspace: (workspaceId: string) => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, location?: { country?: string; state?: string; city?: string }) => Promise<void>;
   registerDoctor: (doctorData: DoctorRegistrationData) => Promise<void>;
   registerClinic: (clinicData: ClinicRegistrationData) => Promise<void>;
   logout: () => void;
@@ -104,7 +115,7 @@ export interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { role: 'doctor' | 'seller' | 'patient' | 'clinic' }): User => {
+const buildUserFromData = (userData: any): User => {
   const { role } = userData;
 
   if (role === 'patient') {
@@ -121,7 +132,7 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       phone: patientData.phone || null,
       cedula: patientData.cedula || null,
       documentType: patientData.documentType || 'Cédula',
-      country: patientData.country || 'VE',
+      country: normalizeCountryCode(patientData.country || 'VE'),
       state: patientData.state || null,
       city: patientData.city || null,
       sector: patientData.sector || null,
@@ -149,13 +160,16 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       cedula: doctorData.cedula || null,
       documentType: doctorData.documentType || 'Cédula',
       profileImage: doctorData.profileImage,
+      profession: doctorData.profession || 'Médico',
       specialty: doctorData.specialty || '',
+      hasMedicalRecord: doctorData.hasMedicalRecord ?? (doctorData as any).has_medical_record ?? null,
+      hasPrescription: doctorData.hasPrescription ?? (doctorData as any).has_prescription ?? null,
       medicalLicense: doctorData.medicalLicense || '',
-      country: doctorData.country || 'VE',
-      state: doctorData.state || null,
+      country: normalizeCountryCode(doctorData.country || 'VE'),
+      state: doctorData.state || undefined,
       city: doctorData.city || null,
-      sector: doctorData.sector || null,
-      address: doctorData.address || null,
+      sector: doctorData.sector || undefined,
+      address: doctorData.address || undefined,
       onboardingCompleted: doctorData.onboardingCompleted ?? (!!doctorData.specialty && doctorData.specialty !== 'Pendiente'),
       age: null,
       gender: null,
@@ -174,10 +188,12 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       password: sellerData.password,
       phone: sellerData.phone || null,
       profileImage: sellerData.profileImage,
+      country: normalizeCountryCode(sellerData.country || 'VE'),
+      state: sellerData.state || null,
+      city: sellerData.city || null,
       age: null,
       gender: null,
       cedula: null,
-      city: null,
       favoriteDoctorIds: [],
       role: 'seller',
       referralCode: sellerData.referralCode,
@@ -193,10 +209,12 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       password: clinicData.password || '',
       phone: clinicData.phone || null,
       profileImage: clinicData.logoUrl || 'https://placehold.co/400x400.png',
+      country: normalizeCountryCode(clinicData.country || 'VE'),
+      state: clinicData.state || null,
+      city: clinicData.city || null,
       age: null,
       gender: null,
       cedula: null,
-      city: null,
       favoriteDoctorIds: [],
       role: 'clinic',
     };
@@ -212,14 +230,65 @@ const buildUserFromData = (userData: (Doctor | Seller | Patient | Clinic) & { ro
       profileImage: 'https://placehold.co/400x400.png', // Default
       role: 'secretary',
       clinicId: secData.clinicId || secData.clinic_id,
+      laboratoryId: secData.laboratoryId || secData.laboratory_id,
       permissions: secData.permissions,
+      country: normalizeCountryCode(secData.country || 'VE'),
+      state: secData.state || null,
       // Patient required fields defaults
       phone: null,
       age: null,
       gender: null,
-      city: null,
+      city: secData.city || null,
       cedula: null,
       favoriteDoctorIds: []
+    };
+  }
+
+  if (role === 'pharmacy') {
+    const pharmData = userData as any;
+    const displayName = pharmData.name || (pharmData.chainName || pharmData.chain_name 
+      ? `${pharmData.chainName || pharmData.chain_name} - ${pharmData.branchName || pharmData.branch_name || 'Sucursal'}` 
+      : 'Farmacia');
+    return {
+      id: pharmData.id,
+      name: displayName,
+      email: pharmData.email,
+      password: pharmData.password,
+      phone: pharmData.phone || null,
+      profileImage: pharmData.logoUrl || pharmData.logo_url || 'https://placehold.co/400x400.png',
+      role: 'pharmacy',
+      country: normalizeCountryCode(pharmData.country || 'VE'),
+      city: pharmData.city || null,
+      state: pharmData.state || null,
+      address: pharmData.address || null,
+      chainName: pharmData.chainName || pharmData.chain_name || null,
+      branchName: pharmData.branchName || pharmData.branch_name || null,
+      isChain: pharmData.isChain || pharmData.is_chain || false,
+      age: null,
+      gender: null,
+      cedula: null,
+      favoriteDoctorIds: []
+    };
+  }
+
+  if (role === 'laboratory') {
+    const labData = userData as any;
+    return {
+      id: labData.id,
+      name: labData.name ?? 'Laboratorio',
+      email: labData.email ?? labData.admin_email ?? labData.adminEmail ?? '',
+      password: labData.password || '',
+      phone: labData.phone || labData.whatsapp || null,
+      profileImage: labData.logoUrl || labData.logo_url || 'https://placehold.co/400x400.png',
+      country: normalizeCountryCode(labData.country || 'VE'),
+      city: labData.city || null,
+      state: labData.state || null,
+      address: labData.address || null,
+      age: null,
+      gender: null,
+      cedula: null,
+      favoriteDoctorIds: [],
+      role: 'laboratory',
     };
   }
 
@@ -351,11 +420,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // Verificar si hay una sesión activa de Supabase OAuth
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user?.email) {
-            targetEmail = session.user.email;
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            if (
+              error.message?.includes('Refresh Token') ||
+              error.message?.includes('refresh_token') ||
+              error.name === 'AuthApiError'
+            ) {
+              console.warn('[Auth] Token de Supabase inválido, limpiando sesión local...');
+              await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+              clearStaleSupabaseAuth();
+            }
+          } else if (data?.session?.user?.email) {
+            targetEmail = data.session.user.email;
           }
-        } catch {}
+        } catch (err: any) {
+          if (err?.message?.includes('Refresh Token') || err?.name === 'AuthApiError') {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+            clearStaleSupabaseAuth();
+          }
+        }
       }
 
       if (targetEmail) {
@@ -369,8 +453,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           setUser(builtUser);
           localStorage.setItem('user', JSON.stringify(builtUser));
+
+          // 🔐 Sincronizar cookie auth-token para llamadas API seguras
+          setAuthToken(
+            builtUser.id,
+            builtUser.email,
+            builtUser.role,
+            builtUser.name,
+            builtUser.activeWorkspace?.clinicId || builtUser.clinicId
+          ).catch((err) => console.error('[Auth] Error sync auth token:', err));
         } else if (existingParsed?.role === 'admin') {
           setUser(existingParsed); // Mantener sesión admin
+          setAuthToken(existingParsed.id, existingParsed.email, existingParsed.role, existingParsed.name).catch(() => {});
         } else {
           setUser(null);
           localStorage.removeItem('user');
@@ -450,9 +544,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('La contraseña es incorrecta.');
     }
 
-    // Verificar contraseña (soporta tanto texto plano como encriptada para migración)
+    // Verificar contraseña (soporta tanto texto plano como encriptada para migración y MANAGED_BY_AUTH)
     let passwordValid = false;
-    if (isPasswordHashed(userToAuth.password)) {
+    if (userToAuth.password === 'MANAGED_BY_AUTH') {
+      const { data: authSignIn, error: authSignInError } = await supabase.auth.signInWithPassword({
+        email: lowerEmail,
+        password: inputPassword,
+      });
+      passwordValid = !authSignInError && !!authSignIn?.user;
+    } else if (isPasswordHashed(userToAuth.password)) {
       // Contraseña encriptada
       passwordValid = await verifyPassword(inputPassword, userToAuth.password);
     } else {
@@ -516,17 +616,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       message: `Login exitoso para ${loggedInUser.name}`
     });
 
+    const consumePatientReturnUrl = (): string | null => {
+      if (typeof window === 'undefined') return null;
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('redirect') || params.get('next');
+      const fromStorage = sessionStorage.getItem('returnToDoctorUrl') || localStorage.getItem('returnToDoctorUrl');
+
+      let candidate = fromQuery || fromStorage || null;
+      if (!candidate) {
+        const pendingStr = sessionStorage.getItem('pendingAppointment');
+        if (pendingStr) {
+          try {
+            const parsed = JSON.parse(pendingStr);
+            if (parsed?.doctorId) {
+              candidate = `/doctors/${parsed.doctorId}?restoreAppointment=true`;
+            }
+          } catch {}
+        }
+      }
+
+      sessionStorage.removeItem('returnToDoctorUrl');
+      localStorage.removeItem('returnToDoctorUrl');
+
+      if (candidate && candidate.startsWith('/doctors/')) {
+        if (sessionStorage.getItem('pendingAppointment') && !candidate.includes('restoreAppointment=true')) {
+          return `${candidate}${candidate.includes('?') ? '&' : '?'}restoreAppointment=true`;
+        }
+        return candidate;
+      }
+      return null;
+    };
+
     switch (loggedInUser.role) {
       case 'admin': router.push('/admin/dashboard'); break;
       case 'doctor': router.push('/doctor/dashboard'); break;
       case 'seller': router.push('/seller/dashboard?view=referrals'); break;
-      case 'patient': router.push('/dashboard'); break;
+      case 'patient': {
+        const returnToDoctor = consumePatientReturnUrl();
+        router.push(returnToDoctor || '/dashboard');
+        break;
+      }
       case 'clinic': router.push('/clinic/dashboard'); break;
-      case 'secretary': router.push('/clinic/dashboard'); break;
+      case 'secretary': 
+        if (loggedInUser.laboratoryId) {
+          router.push('/laboratory/dashboard');
+        } else {
+          router.push('/clinic/dashboard');
+        }
+        break;
+      case 'pharmacy': router.push('/pharmacy/dashboard'); break;
+      case 'laboratory': router.push('/laboratory/dashboard'); break;
     }
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    location?: { country?: string; state?: string; city?: string }
+  ) => {
     const lowerEmail = email.toLowerCase();
     const existingUser = await supabaseService.findUserByEmail(lowerEmail);
     if (existingUser) {
@@ -546,7 +694,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileImage: null,
       cedula: null,
       phone: null,
-      city: null,
+      country: normalizeCountryCode(location?.country || 'VE'),
+      state: location?.state || null,
+      city: location?.city || null,
       favoriteDoctorIds: [],
       profileCompleted: false // Siempre forzar a false
     };
@@ -569,6 +719,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(newUser);
       localStorage.setItem('user', JSON.stringify(newUser));
 
+      // 🔐 Establecer cookie de sesión para API routes
+      await setAuthToken(newUser.id, newUser.email, newUser.role, newUser.name);
+
       // Registrar registro exitoso
       logAuditEvent({
         userId: newUser.id,
@@ -579,7 +732,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message: `Nuevo paciente registrado: ${newUser.name}`
       });
 
-      router.push('/dashboard');
+      let returnToDoctor: string | null = null;
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = params.get('redirect') || params.get('next');
+        const fromStorage = sessionStorage.getItem('returnToDoctorUrl') || localStorage.getItem('returnToDoctorUrl');
+        const candidate = fromQuery || fromStorage || null;
+        sessionStorage.removeItem('returnToDoctorUrl');
+        localStorage.removeItem('returnToDoctorUrl');
+        if (candidate && candidate.startsWith('/doctors/')) {
+          returnToDoctor = sessionStorage.getItem('pendingAppointment') && !candidate.includes('restoreAppointment=true')
+            ? `${candidate}${candidate.includes('?') ? '&' : '?'}restoreAppointment=true`
+            : candidate;
+        }
+      }
+
+      router.push(returnToDoctor || '/dashboard');
     }
   };
 
@@ -601,11 +769,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const paymentDateArgentina = getPaymentDateInArgentina(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-      name, email: normalizedEmail, specialty,
-      country: doctorData.country || 'VE',
+      name, email: normalizedEmail,
+      profession: doctorData.profession || 'Médico',
+      specialty,
+      hasMedicalRecord: doctorData.hasMedicalRecord ?? null,
+      hasPrescription: doctorData.hasPrescription ?? null,
+      country: normalizeCountryCode(doctorData.country || 'VE'),
       state: doctorData.state || 'Monagas',
       city, address: address || '', password: hashedPassword,
-      sellerId: null, cedula: dni, documentType, sector: sector || '', rating: 0, reviewCount: 0,
+      sellerId: doctorData.sellerId || null, cedula: dni, documentType, sector: sector || '', rating: 0, reviewCount: 0,
       profileImage: 'https://placehold.co/400x400.png',
       bannerImage: 'https://placehold.co/1200x400.png',
       aiHint: 'doctor portrait', description: 'Especialista comprometido con la salud y el bienestar de mis pacientes.', services: [], bankDetails: [],
@@ -721,8 +893,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const redirectUrl = new URL('/auth/callback', window.location.origin);
-      if (nextPath) {
-        redirectUrl.searchParams.set('next', nextPath);
+      const effectiveNextPath = nextPath || (() => {
+        if (typeof window === 'undefined') return undefined;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('redirect') || params.get('next') || sessionStorage.getItem('returnToDoctorUrl') || localStorage.getItem('returnToDoctorUrl') || undefined;
+      })();
+      if (effectiveNextPath) {
+        redirectUrl.searchParams.set('next', effectiveNextPath);
       }
       if (role) {
         redirectUrl.searchParams.set('role', role);
@@ -772,8 +949,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearAuthToken();
 
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     } catch {}
+    clearStaleSupabaseAuth();
 
     setUser(null);
     setWorkspaces([]);

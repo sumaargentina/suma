@@ -20,7 +20,8 @@ import {
   QrCode, 
   AlertCircle,
   ArrowLeft,
-  Loader2
+  Loader2,
+  Store
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -28,6 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { SendToPharmacyModal } from '@/components/pharmacy/send-to-pharmacy-modal';
+import { RecipeRecommendedPharmaciesSection } from '@/components/pharmacy/recipe-recommended-pharmacies-section';
 
 interface VerificationData {
   success: boolean;
@@ -35,14 +38,22 @@ interface VerificationData {
   recipeCode: string;
   record: {
     id: string;
+    doctorId?: string;
     visitDate: string;
     diagnosis?: string;
     prescription?: string;
+    prescriptionExpiresAt?: string | null;
+    recipeStatus?: string | null;
+    dispensedByPharmacyId?: string | null;
+    dispensedByPharmacyName?: string | null;
+    dispensedAt?: string | null;
+    dispensationNotes?: string | null;
     treatmentPlan?: string;
     requestedStudies?: string;
     createdAt: string;
   };
   doctor: {
+    id?: string;
     name: string;
     specialty: string;
     medical_license?: string;
@@ -56,6 +67,7 @@ interface VerificationData {
     name: string;
     cedula: string;
     email?: string;
+    city?: string;
   };
 }
 
@@ -69,6 +81,7 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
   const [data, setData] = useState<VerificationData | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [isSendToPharmacyOpen, setIsSendToPharmacyOpen] = useState(false);
 
   useEffect(() => {
     async function fetchRecipe() {
@@ -226,6 +239,14 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
             <Button
               type="button"
+              size="sm"
+              onClick={() => setIsSendToPharmacyOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8.5 rounded-xl shadow-xs flex items-center gap-1.5"
+            >
+              <Store className="h-3.5 w-3.5" /> Enviar a Farmacia
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleCopyLink}
@@ -251,6 +272,128 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
               <Printer className="h-3.5 w-3.5 mr-1.5" /> Imprimir
             </Button>
           </div>
+        </div>
+
+        {/* Banner de Estado de Dispensación / Vigencia */}
+        {(() => {
+          const isDispensed = !!record.dispensedAt || record.recipeStatus === 'dispensed';
+          const isExpired = !isDispensed && !!record.prescriptionExpiresAt && new Date(record.prescriptionExpiresAt).getTime() < Date.now();
+          
+          if (isDispensed) {
+            let dispensedText = 'Fecha no registrada';
+            try {
+              if (record.dispensedAt) {
+                dispensedText = format(parseISO(record.dispensedAt), "dd/MM/yyyy 'a las' hh:mm a");
+              }
+            } catch {
+              dispensedText = record.dispensedAt || '';
+            }
+
+            return (
+              <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 flex items-start sm:items-center gap-3.5 text-amber-950 shadow-xs">
+                <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs font-bold text-lg">
+                  ⚠️
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm text-amber-900 uppercase tracking-wide">
+                      Récipe Ya Suministrado en Farmacia
+                    </span>
+                    <Badge className="bg-amber-600 hover:bg-amber-600 text-white text-[11px] font-semibold">
+                      Despachado
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Suministrado por: <strong>{record.dispensedByPharmacyName || 'Farmacia Aliada SUMA'}</strong> el <strong>{dispensedText}</strong>.
+                    <span className="block mt-0.5 font-medium text-amber-900">
+                      ⛔ Este récipe ya no puede volver a ser despachado por ninguna otra farmacia.
+                    </span>
+                  </p>
+                </div>
+              </div>
+            );
+          }
+
+          if (isExpired) {
+            let expiryText = 'Fecha límite vencida';
+            try {
+              if (record.prescriptionExpiresAt) {
+                expiryText = format(parseISO(record.prescriptionExpiresAt), "dd/MM/yyyy");
+              }
+            } catch {
+              expiryText = record.prescriptionExpiresAt || '';
+            }
+
+            return (
+              <div className="bg-rose-500/10 border-2 border-rose-500/40 rounded-2xl p-4 sm:p-5 flex items-start sm:items-center gap-3.5 text-rose-950 shadow-xs">
+                <div className="h-10 w-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs font-bold text-lg">
+                  🔴
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm text-rose-900 uppercase tracking-wide">
+                      Récipe Médico Expirado
+                    </span>
+                    <Badge className="bg-rose-600 hover:bg-rose-600 text-white text-[11px] font-semibold">
+                      Vencido
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-rose-800 leading-relaxed">
+                    La vigencia de este récipe venció el <strong>{expiryText}</strong>.
+                    <span className="block mt-0.5 font-medium text-rose-900">
+                      Las farmacias aliadas no pueden despachar medicamentos con récipes vencidos. Consulte con su médico tratante para renovarlo.
+                    </span>
+                  </p>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="bg-teal-500/10 border border-teal-500/30 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3 text-teal-950 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-lg bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs text-xs font-bold">
+                  🟢
+                </div>
+                <div className="text-xs">
+                  <span className="font-bold text-teal-900">Récipe Activo y Vigente para Despacho</span>
+                  {record.prescriptionExpiresAt && (
+                    <span className="text-teal-700 block">
+                      Válido hasta: <strong>{format(parseISO(record.prescriptionExpiresAt), "dd 'de' MMMM, yyyy", { locale: es })}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Badge className="bg-teal-600 hover:bg-teal-600 text-white text-[11px] font-semibold shrink-0">
+                Apto para Entrega
+              </Badge>
+            </div>
+          );
+        })()}
+
+        {/* CTA Consultar Disponibilidad en Farmacias Aliadas */}
+        <div className="print:hidden bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-600/30">
+          <div className="flex items-center gap-3.5">
+            <div className="h-11 w-11 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
+              <Store className="h-6 w-6 text-emerald-300" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm sm:text-base text-white">
+                ¿Necesitas cotizar o surtir estos medicamentos?
+              </h4>
+              <p className="text-xs text-emerald-100/90 mt-0.5">
+                Envía este récipe directamente por WhatsApp a las <strong>Farmacias Aliadas SUMA</strong> para verificar stock y precios.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={() => setIsSendToPharmacyOpen(true)}
+            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-md shrink-0 w-full sm:w-auto h-10 px-5 transition-all"
+          >
+            <Store className="h-4 w-4 mr-1.5" />
+            Enviar a Farmacia Aliada
+          </Button>
         </div>
 
         {/* ========================================================================= */}
@@ -452,9 +595,32 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
             <span>Código de Validación: <strong className="font-mono text-teal-300">{recipeCode}</strong></span>
           </div>
 
+          {/* Sección de Farmacias Recomendadas por el Médico y Farmacias de la Ciudad */}
+          <RecipeRecommendedPharmaciesSection
+            doctorId={doc?.id || record?.doctorId || null}
+            doctorName={doc?.name}
+            defaultCity={pat?.city || doc?.city || undefined}
+            prescriptionText={record?.prescription || ''}
+            recipeCode={recipeCode}
+          />
+
         </div>
 
       </div>
+
+      {/* Modal para Enviar a Farmacia Aliada */}
+      <SendToPharmacyModal
+        isOpen={isSendToPharmacyOpen}
+        onClose={() => setIsSendToPharmacyOpen(false)}
+        recipeCode={recipeCode}
+        patientName={pat?.name}
+        patientCedula={pat?.cedula}
+        doctorName={doc?.name}
+        doctorSpecialty={doc?.specialty}
+        prescriptionText={record?.prescription || ''}
+        recipeUrl={typeof window !== 'undefined' ? window.location.href : `https://sumasalud.com/ver-recipe/${recipeId}`}
+        defaultCity={(pat as any)?.city || undefined}
+      />
 
       {/* Print Stylesheet */}
       <style>{`

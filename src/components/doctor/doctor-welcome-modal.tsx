@@ -28,6 +28,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useDynamicData } from '@/hooks/use-dynamic-data';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
+import { ProfessionSpecialtySelector } from '@/components/ui/profession-specialty-selector';
 import { DOCUMENT_TYPES, DocumentType } from '@/lib/types';
 import {
   Select,
@@ -56,7 +57,10 @@ export function DoctorWelcomeModal({ isOpen, onClose }: DoctorWelcomeModalProps)
   const [isSaving, setIsSaving] = useState(false);
 
   // Form State
+  const [profession, setProfession] = useState('Médico');
   const [specialty, setSpecialty] = useState('');
+  const [hasMedicalRecord, setHasMedicalRecord] = useState<boolean | undefined>(true);
+  const [hasPrescription, setHasPrescription] = useState<boolean | undefined>(true);
   const [customSpecialty, setCustomSpecialty] = useState('');
   const [medicalLicense, setMedicalLicense] = useState('');
   const [documentType, setDocumentType] = useState<DocumentType>('Cédula');
@@ -76,6 +80,7 @@ export function DoctorWelcomeModal({ isOpen, onClose }: DoctorWelcomeModalProps)
   // Prepopulate if user has partial data
   useEffect(() => {
     if (user && user.role === 'doctor') {
+      if (user.profession) setProfession(user.profession);
       if (user.specialty && user.specialty !== 'Pendiente') setSpecialty(user.specialty);
       if (user.medicalLicense) setMedicalLicense(user.medicalLicense);
       if (user.cedula) setDni(user.cedula);
@@ -155,7 +160,7 @@ export function DoctorWelcomeModal({ isOpen, onClose }: DoctorWelcomeModalProps)
         });
         return;
       }
-      if (!locationData.address.trim()) {
+      if (!locationData.address?.trim()) {
         toast({
           variant: 'destructive',
           title: 'Dirección requerida',
@@ -177,7 +182,10 @@ export function DoctorWelcomeModal({ isOpen, onClose }: DoctorWelcomeModalProps)
       const fee = roundPrice(Number(consultationFee) || 0);
 
       const updatePayload = {
+        profession,
         specialty: activeSpecialty,
+        hasMedicalRecord,
+        hasPrescription,
         medicalLicense: medicalLicense.trim(),
         documentType,
         cedula: dni.trim(),
@@ -299,47 +307,20 @@ export function DoctorWelcomeModal({ isOpen, onClose }: DoctorWelcomeModalProps)
                 </div>
               </div>
 
-              {/* Especialidad */}
+              {/* Profesión y Especialidad en 2 Niveles + Buscador */}
               <div className="space-y-1.5">
-                <Label htmlFor="specialty" className="text-xs font-semibold text-slate-700">
-                  Especialidad Médica Principal <span className="text-red-500">*</span>
-                </Label>
-                <Select
-                  value={specialty}
-                  onValueChange={(val) => setSpecialty(val)}
+                <ProfessionSpecialtySelector
+                  profession={profession}
+                  specialty={specialty}
                   disabled={loadingSpecialties}
-                >
-                  <SelectTrigger className="h-10 border-slate-200">
-                    <SelectValue placeholder={loadingSpecialties ? "Cargando especialidades..." : "Selecciona tu especialidad"} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {specialties.map((specName, specIdx) => {
-                      const nameStr = typeof specName === 'string' ? specName : (specName as any)?.name || '';
-                      return (
-                        <SelectItem key={`${nameStr}-${specIdx}`} value={nameStr}>
-                          {nameStr}
-                        </SelectItem>
-                      );
-                    })}
-                    <SelectItem value="other">Otra especialidad (especificar)</SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={({ profession: prof, specialty: spec, hasMedicalRecord: hmr, hasPrescription: hp }) => {
+                    setProfession(prof);
+                    setSpecialty(spec);
+                    setHasMedicalRecord(hmr);
+                    setHasPrescription(hp);
+                  }}
+                />
               </div>
-
-              {specialty === 'other' && (
-                <div className="space-y-1.5 animate-in fade-in-50">
-                  <Label htmlFor="customSpecialty" className="text-xs font-semibold text-slate-700">
-                    Escribe tu especialidad médica <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="customSpecialty"
-                    placeholder="Ej. Medicina Interna, Neurología, etc."
-                    value={customSpecialty}
-                    onChange={(e) => setCustomSpecialty(e.target.value)}
-                    className="h-10"
-                  />
-                </div>
-              )}
 
               {/* Matrícula Médica */}
               <div className="space-y-1.5">

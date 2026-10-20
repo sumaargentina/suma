@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Falta el ID de la clínica' }, { status: 400 });
         }
 
-        // Fetch clinic details for custom_name
+        // Fetch clinic details for custom_name and location defaults
         const { data: clinic, error: clinicError } = await supabaseAdmin
             .from('clinics')
-            .select('id, name')
+            .select('id, name, city, state, country, address, sector, phone, whatsapp')
             .eq('id', clinicId)
             .single();
 
@@ -166,6 +166,15 @@ export async function POST(req: NextRequest) {
             email: normalizedEmail,
             cedula: cleanDni,
             specialty: sanitizeString(specialty),
+            city: clinic.city || 'Buenos Aires',
+            state: clinic.state || 'CABA',
+            country: clinic.country || 'AR',
+            address: clinic.address || '',
+            sector: clinic.sector || '',
+            phone: clinic.phone || '',
+            whatsapp: clinic.whatsapp || '',
+            consultation_fee: 0,
+            slot_duration: 30,
             password: hashedPassword,
             profile_image: profileImage || 'https://placehold.co/400x400.png',
             banner_image: bannerImage || 'https://placehold.co/1200x400.png',

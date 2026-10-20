@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { MapPin, List } from "lucide-react";
 import dynamic from "next/dynamic";
-import type { Doctor, Clinic } from "@/lib/types";
+import type { Doctor, Clinic, Pharmacy } from "@/lib/types";
 
 // Dynamic import — MapLibre needs browser APIs, can't run on server
 const DoctorMap = dynamic(() => import("@/components/doctor-map"), {
@@ -23,13 +23,15 @@ import { cn } from "@/lib/utils";
 interface MapViewToggleProps {
     doctors: Doctor[];
     clinics: Clinic[];
+    pharmacies?: Pharmacy[];
     mapDoctors?: Doctor[];
     mapClinics?: Clinic[];
+    mapPharmacies?: Pharmacy[];
     centerCity?: string;
     children: React.ReactNode; // The list view content
 }
 
-export function MapViewToggle({ doctors, clinics, mapDoctors, mapClinics, centerCity, children }: MapViewToggleProps) {
+export function MapViewToggle({ doctors, clinics, pharmacies = [], mapDoctors, mapClinics, mapPharmacies, centerCity, children }: MapViewToggleProps) {
     const [view, setView] = useState<"list" | "map">("list");
 
     return (
@@ -64,6 +66,7 @@ export function MapViewToggle({ doctors, clinics, mapDoctors, mapClinics, center
                     <DoctorMap
                         doctors={mapDoctors || doctors}
                         clinics={mapClinics || clinics}
+                        pharmacies={mapPharmacies || pharmacies}
                         centerCity={centerCity}
                     />
                 </div>

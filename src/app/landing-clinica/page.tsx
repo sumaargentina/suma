@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, Building2, Users, Calendar, BarChart3, ShieldCheck, Zap } from "lucide-react";
+import { Check, Building2, Users, Calendar, BarChart3, ShieldCheck, Zap, Globe } from "lucide-react";
 
 export default function ClinicLandingPage() {
     // 1, 3, 6, 12 months
     const [months, setMonths] = useState(1);
-    const baseMonthlyPrice = 29000;
+    const { countries, getCountryPricing } = useSettings();
+    const [selectedCountry, setSelectedCountry] = useState("VE");
+    const pricing = getCountryPricing(selectedCountry);
+    const baseMonthlyPrice = pricing.clinicMonthlyFee;
 
     // Calculate total and discount
     const calculateTotal = (m: number) => {
@@ -111,6 +115,30 @@ export default function ClinicLandingPage() {
                             Flexibilidad total. Elige cuántos meses quieres pagar por adelantado.
                         </p>
 
+                        {/* Selector de País */}
+                        {countries.length > 0 && (
+                            <div className="mb-6">
+                                <div className="inline-flex flex-wrap items-center justify-center gap-2 bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm">
+                                    <span className="text-xs font-semibold text-slate-500 flex items-center gap-1 px-2">
+                                        <Globe className="h-3.5 w-3.5 text-green-600" /> País:
+                                    </span>
+                                    {countries.filter((c) => c.isActive !== false).map((c) => (
+                                        <button
+                                            key={c.code}
+                                            type="button"
+                                            onClick={() => setSelectedCountry(c.code)}
+                                            className={`text-xs font-bold px-3 py-1 rounded-full transition-colors ${
+                                                selectedCountry === c.code
+                                                    ? "bg-green-600 text-white shadow-sm"
+                                                    : "text-slate-600 hover:bg-slate-100"
+                                            }`}
+                                        >
+                                            {c.flag || "🏳️"} {c.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         {/* Selector de Meses */}
                         <div className="flex flex-wrap justify-center gap-2 bg-slate-100 p-2 rounded-xl w-fit mx-auto">
                             {[1, 3, 6, 12].map((m) => (
@@ -160,16 +188,16 @@ export default function ClinicLandingPage() {
                                 <div className="text-center mb-8">
                                     <div className="flex items-center justify-center gap-1">
                                         <span className="text-5xl font-extrabold text-slate-900">
-                                            ${total.toLocaleString('es-AR')}
+                                            ${total.toLocaleString('en-US')}
                                         </span>
                                         <span className="text-lg text-muted-foreground self-end mb-2">
-                                            / {months === 1 ? 'mes' : `${months} meses`}
+                                            USD / {months === 1 ? 'mes' : `${months} meses`} ({pricing.flag} {pricing.currencySymbol} {(total * pricing.exchangeRate).toLocaleString("es-VE", { maximumFractionDigits: 2 })})
                                         </span>
                                     </div>
 
                                     {months > 1 && (
                                         <div className="mt-2 text-sm text-slate-500">
-                                            Equivale a <span className="font-semibold text-slate-900">${pricePerMonth.toLocaleString('es-AR')}/mes</span>
+                                            Equivale a <span className="font-semibold text-slate-900">${pricePerMonth.toLocaleString('en-US')}/mes</span>
                                             {discount > 0 && <span className="text-green-600 font-bold ml-1">(-{Math.round(discount * 100)}% OFF)</span>}
                                         </div>
                                     )}

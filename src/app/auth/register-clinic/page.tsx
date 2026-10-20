@@ -30,7 +30,7 @@ const LocationPicker = dynamic(
 
 function RegisterClinicContent() {
     const { registerClinic } = useAuth();
-    const { cities } = useSettings();
+    const { cities, getCountryPricing } = useSettings();
     const { toast } = useToast();
     const searchParams = useSearchParams();
     const initialMonths = parseInt(searchParams.get('months') || '12'); // Default to 12
@@ -54,7 +54,8 @@ function RegisterClinicContent() {
     const [billingMonths, setBillingMonths] = useState(initialMonths);
     const [isLoading, setIsLoading] = useState(false);
 
-    const basePrice = 29000;
+    const pricing = getCountryPricing(locationData.country);
+    const basePrice = pricing.clinicMonthlyFee;
 
     const calculateTotal = () => {
         let total = basePrice * billingMonths;
@@ -107,7 +108,7 @@ function RegisterClinicContent() {
 
             toast({
                 title: "¡Cuenta Creada!",
-                description: `Registro exitoso. Se ha generado una orden de pago por $${totalToPay.toLocaleString('es-AR')}.`,
+                description: `Registro exitoso. Se ha generado una orden de pago por $${totalToPay.toLocaleString('en-US')} USD.`,
             });
 
         } catch (error: any) {
@@ -142,7 +143,7 @@ function RegisterClinicContent() {
                         <div className="space-y-3 text-sm">
                             <div className="flex justify-between">
                                 <span>Plan Integral</span>
-                                <span className="font-mono">$29.000/mes</span>
+                                <span className="font-mono">${basePrice} USD/mes ({pricing.flag})</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>Duración</span>
@@ -157,7 +158,7 @@ function RegisterClinicContent() {
                             <Separator className="bg-slate-600 my-2" />
                             <div className="flex justify-between text-lg font-bold">
                                 <span>Total a Pagar</span>
-                                <span>${totalToPay.toLocaleString('es-AR')}</span>
+                                <span>${totalToPay.toLocaleString('en-US')} USD ({pricing.currencySymbol} {(totalToPay * pricing.exchangeRate).toLocaleString('es-VE', { maximumFractionDigits: 2 })} a {pricing.rateLabel})</span>
                             </div>
                         </div>
                     </div>
@@ -210,11 +211,11 @@ function RegisterClinicContent() {
                                 <Label htmlFor="phone">Teléfono de Contacto</Label>
                                 <div className="flex">
                                     <div className="flex items-center justify-center px-3 border border-r-0 rounded-l-md bg-slate-100 text-slate-600 text-sm font-medium">
-                                        🇦🇷 +54
+                                        🇻🇪 +58
                                     </div>
                                     <Input
                                         id="phone"
-                                        placeholder="11 1234-5678"
+                                        placeholder="414 123-4567"
                                         required
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
@@ -329,7 +330,7 @@ function RegisterClinicContent() {
 
                             <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg mt-6" disabled={isLoading}>
                                 {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-                                Pagar ${totalToPay.toLocaleString('es-AR')} y Crear Cuenta
+                                Pagar ${totalToPay.toLocaleString('en-US')} USD y Crear Cuenta
                             </Button>
                         </form>
                     </CardContent>

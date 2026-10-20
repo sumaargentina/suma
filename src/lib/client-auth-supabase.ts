@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from './supabase';
+import { supabase, clearStaleSupabaseAuth } from './supabase';
 
 export const auth = supabase.auth;
 
@@ -29,8 +29,10 @@ export const signUp = async (email: string, password: string, metadata?: Record<
 };
 
 export const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw new Error(error.message);
+    try {
+        await supabase.auth.signOut({ scope: 'local' });
+    } catch {}
+    clearStaleSupabaseAuth();
 };
 
 export const resetPassword = async (email: string) => {
@@ -50,13 +52,46 @@ export const updatePassword = async (newPassword: string) => {
 };
 
 export const getCurrentUser = async () => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw new Error(error.message);
-    return user;
+    try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) {
+            if (error.message?.includes('Refresh Token') || error.name === 'AuthApiError') {
+                await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                clearStaleSupabaseAuth();
+                return null;
+            }
+            throw new Error(error.message);
+        }
+        return user;
+    } catch (err: any) {
+        if (err?.message?.includes('Refresh Token') || err?.name === 'AuthApiError') {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+            clearStaleSupabaseAuth();
+            return null;
+        }
+        throw err;
+    }
 };
 
 export const getSession = async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw new Error(error.message);
-    return session;
+    try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+            if (error.message?.includes('Refresh Token') || error.name === 'AuthApiError') {
+                await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                clearStaleSupabaseAuth();
+                return null;
+            }
+            throw new Error(error.message);
+        }
+        return session;
+    } catch (err: any) {
+        if (err?.message?.includes('Refresh Token') || err?.name === 'AuthApiError') {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+            clearStaleSupabaseAuth();
+            return null;
+        }
+        throw err;
+    }
 };
+

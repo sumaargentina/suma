@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, DollarSign, TrendingUp, TrendingDown, PiggyBank, RefreshCw, CalendarDays, Plus, Trash2, Filter, ArrowUpRight, ArrowDownRight, Download, FileDown, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Loader2, DollarSign, TrendingUp, TrendingDown, PiggyBank, RefreshCw, CalendarDays, Plus, Trash2, Filter, ArrowUpRight, ArrowDownRight, Download, FileDown, ChevronLeft, ChevronRight, Eye, Coins, Lock, Sparkles } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, subMonths, startOfWeek, endOfWeek, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
@@ -19,10 +19,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useBcvRate } from '@/hooks/use-bcv-rate';
+import { resolveAppointmentFinancials, resolveExpenseFinancials, formatCurrency } from '@/lib/currency-utils';
+import { DualCurrencyDisplay } from '@/components/ui/dual-currency-display';
 
 export function FinancesTab() {
     const { user } = useAuth();
     const { toast } = useToast();
+    const bcvInfo = useBcvRate();
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
     const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -147,32 +151,57 @@ export function FinancesTab() {
         }
     };
 
-    // Calculations
+    // Calculations with dual currency (USD & Bs.)
     const stats = useMemo(() => {
-        // Only count as income if: Paid AND (Attended OR Pending attendance OR Retained penalty)
-        const totalIncome = appointments
-            .filter(app => app.paymentStatus === 'Pagado' && (app.attendance !== 'No Asistió' || app.noShowResolution === 'retained'))
-            .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
+        let totalIncomeUSD = 0;
+        let totalIncomeVES = 0;
+        let totalExpensesUSD = 0;
+        let totalExpensesVES = 0;
+        let pendingIncomeUSD = 0;
+        let pendingIncomeVES = 0;
+        let refundsPendingUSD = 0;
+        let retainedIncomeUSD = 0;
 
-        const totalExpenses = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
-        const netIncome = totalIncome - totalExpenses;
+        appointments.forEach(app => {
+            const fin = resolveAppointmentFinancials(app, bcvInfo.rate);
+            if (app.paymentStatus === 'Pagado' && (app.attendance !== 'No Asistió' || app.noShowResolution === 'retained')) {
+                totalIncomeUSD += fin.amountUSD;
+                totalIncomeVES += fin.amountLocal;
+            }
+            if (app.paymentStatus === 'Pendiente' && app.attendance !== 'No Asistió') {
+                pendingIncomeUSD += fin.amountUSD;
+                pendingIncomeVES += fin.amountLocal;
+            }
+            if ((app.paymentStatus === 'Pagado' && app.attendance === 'No Asistió' && app.noShowResolution !== 'retained') || app.paymentStatus === 'Reembolsado') {
+                refundsPendingUSD += (app.refundAmount || app.totalPrice || 0);
+            }
+            if (app.noShowResolution === 'retained') {
+                retainedIncomeUSD += fin.amountUSD;
+            }
+        });
 
-        // Pending = not paid yet (and not no-show)
-        const pendingIncome = appointments
-            .filter(app => app.paymentStatus === 'Pendiente' && app.attendance !== 'No Asistió')
-            .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
+        expenses.forEach(exp => {
+            const expFin = resolveExpenseFinancials(exp, bcvInfo.rate);
+            totalExpensesUSD += expFin.amountUSD;
+            totalExpensesVES += expFin.amountLocal;
+        });
 
-        // Refunds pending = Paid but no-show without retention
-        const refundsPending = appointments
-            .filter(app => (app.paymentStatus === 'Pagado' && app.attendance === 'No Asistió' && app.noShowResolution !== 'retained') || app.paymentStatus === 'Reembolsado')
-            .reduce((sum, app) => sum + (app.refundAmount || app.totalPrice || 0), 0);
+        const netIncomeUSD = totalIncomeUSD - totalExpensesUSD;
+        const netIncomeVES = totalIncomeVES - totalExpensesVES;
 
-        const retainedIncome = appointments
-            .filter(app => app.noShowResolution === 'retained')
-            .reduce((sum, app) => sum + (app.totalPrice || 0), 0);
-
-        return { totalIncome, totalExpenses, netIncome, pendingIncome, refundsPending, retainedIncome };
-    }, [appointments, expenses]);
+        return {
+            totalIncome: totalIncomeUSD,
+            totalIncomeVES,
+            totalExpenses: totalExpensesUSD,
+            totalExpensesVES,
+            netIncome: netIncomeUSD,
+            netIncomeVES,
+            pendingIncome: pendingIncomeUSD,
+            pendingIncomeVES,
+            refundsPending: refundsPendingUSD,
+            retainedIncome: retainedIncomeUSD,
+        };
+    }, [appointments, expenses, bcvInfo.rate]);
 
     // Chart Data
     const chartData = useMemo(() => {
@@ -205,13 +234,8 @@ export function FinancesTab() {
         return Object.values(dailyData);
     }, [appointments, expenses, startDate, endDate]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-AR', {
-            style: 'currency',
-            currency: 'ARS',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
+    const formatCurrencyLocal = (amount: number) => {
+        return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
     };
 
     if (loading && !stats.totalIncome) {
@@ -469,18 +493,60 @@ export function FinancesTab() {
                 </div>
             </div >
 
-            {/* Stats Cards */}
-            < div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" >
+            {/* Banner de Tasa Oficial BCV para la Clínica */}
+            <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 dark:from-emerald-950/20 dark:via-teal-950/20 dark:to-blue-950/20 shadow-sm">
+                <CardContent className="p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-md">
+                                <Coins className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                        Tasa Oficial BCV:
+                                    </span>
+                                    <span className="font-mono font-extrabold text-emerald-800 dark:text-emerald-300 text-base bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
+                                        1 USD = Bs. {bcvInfo.rate.toFixed(2)}
+                                    </span>
+                                    <Badge variant="outline" className="bg-white/80 dark:bg-zinc-800/80 text-emerald-700 dark:text-emerald-400 border-emerald-300 text-[10px] font-semibold">
+                                        <Sparkles className="h-2.5 w-2.5 mr-1" />
+                                        Vigente
+                                    </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Historial contable congelado a la tasa de cada cobro y pagos pendientes calculados en tiempo real.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-xs bg-white/70 dark:bg-zinc-800/70 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-zinc-700 flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                            <Lock className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                            <span>Inmutabilidad de cobros confirmados</span>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Stats Cards Dual Currency */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="border-l-4 border-l-green-500 shadow-sm">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos Totales</CardTitle>
                         <DollarSign className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{formatCurrency(stats.totalIncome)}</div>
+                        <DualCurrencyDisplay
+                            amountUSD={stats.totalIncome}
+                            amountVES={stats.totalIncomeVES}
+                            rate={bcvInfo.rate}
+                            layout="card-kpi"
+                            size="lg"
+                            usdClassName="text-green-600"
+                            vesClassName="text-emerald-700 font-semibold"
+                        />
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <ArrowUpRight className="h-3 w-3 text-green-500" />
-                            Facturado este mes
+                            Facturado en el periodo
                         </p>
                     </CardContent>
                 </Card>
@@ -493,24 +559,38 @@ export function FinancesTab() {
                         <TrendingDown className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{formatCurrency(stats.totalExpenses)}</div>
+                        <DualCurrencyDisplay
+                            amountUSD={stats.totalExpenses}
+                            amountVES={stats.totalExpensesVES}
+                            rate={bcvInfo.rate}
+                            layout="card-kpi"
+                            size="lg"
+                            usdClassName="text-red-600"
+                            vesClassName="text-red-700 font-semibold"
+                        />
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                             <ArrowDownRight className="h-3 w-3 text-red-500" />
                             Gastos operativos (Click para ver)
                         </p>
                     </CardContent>
                 </Card>
-                <Card className="border-l-4 border-l-blue-500 shadow-sm">
+                <Card className={cn("border-l-4 shadow-sm", stats.netIncome >= 0 ? "border-l-blue-500" : "border-l-red-500")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Ingreso Neto</CardTitle>
                         <PiggyBank className="h-4 w-4 text-blue-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className={cn("text-2xl font-bold", stats.netIncome >= 0 ? "text-blue-600" : "text-red-600")}>
-                            {formatCurrency(stats.netIncome)}
-                        </div>
+                        <DualCurrencyDisplay
+                            amountUSD={stats.netIncome}
+                            amountVES={stats.netIncomeVES}
+                            rate={bcvInfo.rate}
+                            layout="card-kpi"
+                            size="lg"
+                            usdClassName={stats.netIncome >= 0 ? "text-blue-600" : "text-red-600"}
+                            vesClassName={stats.netIncomeVES >= 0 ? "text-blue-700 font-semibold" : "text-red-700 font-semibold"}
+                        />
                         <p className="text-xs text-muted-foreground mt-1">
-                            Ganancia real
+                            Ganancia real acumulada
                         </p>
                     </CardContent>
                 </Card>
@@ -523,13 +603,21 @@ export function FinancesTab() {
                         <CalendarDays className="h-4 w-4 text-yellow-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{formatCurrency(stats.pendingIncome)}</div>
+                        <DualCurrencyDisplay
+                            amountUSD={stats.pendingIncome}
+                            amountVES={stats.pendingIncomeVES}
+                            rate={bcvInfo.rate}
+                            layout="card-kpi"
+                            size="lg"
+                            usdClassName="text-amber-600"
+                            vesClassName="text-amber-700 font-semibold"
+                        />
                         <p className="text-xs text-muted-foreground mt-1">
                             Citas sin pago confirmado (Click para ver)
                         </p>
                     </CardContent>
                 </Card>
-            </div >
+            </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
@@ -926,7 +1014,15 @@ export function FinancesTab() {
                                                                     </Badge>
                                                                 </TableCell>
                                                                 <TableCell className={cn("text-right font-medium", amountColor)}>
-                                                                    {isExpense ? '-' : (isNoShow ? '' : '+')}{formatCurrency(Number(isExpense ? item.amount : item.totalPrice))}
+                                                                    <div className="flex flex-col items-end">
+                                                                        <span>{isExpense ? '-' : (isNoShow ? '' : '+')}{formatCurrency(Number(isExpense ? item.amount : item.totalPrice))}</span>
+                                                                        {!isExpense && (item as any).amountInLocalCurrency && (
+                                                                            <span className="text-[11px] text-muted-foreground font-mono">
+                                                                                Bs. {Number((item as any).amountInLocalCurrency).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                                                                                {(item as any).exchangeRate ? ` (@${(item as any).exchangeRate})` : ''}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     {isPaidNoShow && <span className="block text-xs text-yellow-600">(Devolver)</span>}
                                                                     {isUnpaidNoShow && <span className="block text-xs text-red-500">(No cobrado)</span>}
                                                                 </TableCell>

@@ -2,12 +2,14 @@
 description: Load project context and memory for SUMA medical platform
 ---
 
-# SUMA Argentina - Project Context & Memory
+# SUMA - Project Context & Memory
 
 ## Project Overview
-SUMA is a medical appointment platform connecting patients with doctors in Argentina. Built with Next.js, Supabase, and TypeScript.
+SUMA es una plataforma médica integral que conecta pacientes con médicos y clínicas.
+- **Lanzamiento actual (2026):** Enfocado en **Venezuela** (Moneda USD/VES, Cédula MPPS, GMT-4 Caracas, Pago Móvil).
+- **Expansión Internacional (2027):** Arquitectura **Multi-Instance** (Opción 1): Cada país operará con su propia instancia y base de datos independiente (ej. Argentina, Colombia) para garantizar cero cruce de historiales médicos y cumplimiento legal estricto.
 
-## Recent Session Modifications (2026-02-04)
+## Recent Session Modifications
 
 ### 1. Financial Distribution Chart Fix
 **File:** `src/components/doctor/dashboard/tabs/finances-tab.tsx`

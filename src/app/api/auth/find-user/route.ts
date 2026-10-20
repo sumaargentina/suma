@@ -28,22 +28,24 @@ export async function POST(request: Request) {
             { name: 'patients', role: 'patient' },
             { name: 'clinics', role: 'clinic' },
             { name: 'secretaries', role: 'secretary' },
+            { name: 'pharmacies', role: 'pharmacy' },
+            { name: 'laboratories', role: 'laboratory' },
         ];
 
         for (const { name, role } of collections) {
-            // Clinics use 'admin_email', others use 'email'
-            const emailColumn = name === 'clinics' ? 'admin_email' : 'email';
+            let query = supabaseAdmin.from(name).select('*');
+            if (name === 'clinics' || name === 'laboratories') {
+                query = query.or(`admin_email.eq.${lowerEmail},email.eq.${lowerEmail}`);
+            } else {
+                query = query.eq('email', lowerEmail);
+            }
 
-            const { data } = await supabaseAdmin
-                .from(name)
-                .select('*')
-                .eq(emailColumn, lowerEmail)
-                .maybeSingle();
+            const { data } = await query.maybeSingle();
 
             if (data) {
                 const camelCaseData = toCamelCase(data as Record<string, unknown>);
-                // Normalize email field for clinics so login works consistently
-                if (role === 'clinic' && camelCaseData.adminEmail) {
+                // Normalize email field for clinics and laboratories so login works consistently
+                if ((role === 'clinic' || role === 'laboratory') && camelCaseData.adminEmail && !camelCaseData.email) {
                     camelCaseData.email = camelCaseData.adminEmail;
                 }
                 return NextResponse.json({

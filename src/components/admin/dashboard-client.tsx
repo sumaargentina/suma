@@ -14,8 +14,11 @@ import { MarketingTab } from './tabs/marketing-tab';
 import { SupportTab } from './tabs/support-tab';
 import { SettingsTab } from './tabs/settings-tab';
 import { ClinicsTab } from './tabs/clinics-tab';
+import { PharmaciesTab } from './tabs/pharmacies-tab';
+import { LaboratoriesTab } from './tabs/laboratories-tab';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
+import { BcvRateWidget } from './bcv-rate-widget';
 
 export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?: string }) {
   const { user, loading } = useAuth();
@@ -86,6 +89,10 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
         return <SettingsTab />;
       case 'clinics':
         return <ClinicsTab />;
+      case 'pharmacies':
+        return <PharmaciesTab />;
+      case 'laboratories':
+        return <LaboratoriesTab />;
       default:
         return <OverviewTab />;
     }
@@ -94,10 +101,17 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
   return (
     <div className="flex-1 container py-12">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Panel de Administración</h1>
-        <p className="text-muted-foreground">
-          Gestiona tu plataforma médica desde aquí.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Panel de Administración</h1>
+            <p className="text-muted-foreground">
+              Gestiona tu plataforma médica desde aquí.
+            </p>
+          </div>
+          <div className="shrink-0 flex items-center">
+            <BcvRateWidget />
+          </div>
+        </div>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button variant={currentTab === 'overview' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=overview')}>Resumen</Button>
           <Button variant={currentTab === 'doctors' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=doctors')}>Médicos</Button>
@@ -105,6 +119,8 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
           <Button variant={currentTab === 'patients' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=patients')}>Pacientes</Button>
           <Button variant={currentTab === 'finances' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=finances')}>Finanzas</Button>
           <Button variant={currentTab === 'clinics' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=clinics')}>Clínicas</Button>
+          <Button variant={currentTab === 'laboratories' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=laboratories')}>Laboratorios</Button>
+          <Button variant={currentTab === 'pharmacies' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=pharmacies')}>Farmacias</Button>
           <Button variant={currentTab === 'marketing' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=marketing')}>Marketing</Button>
           <Button variant={currentTab === 'support' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=support')}>Soporte</Button>
           <Button variant={currentTab === 'settings' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=settings')}>Configuración</Button>

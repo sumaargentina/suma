@@ -3,7 +3,25 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import * as supabaseService from './supabaseService';
-import type { AppSettings, Coupon, CompanyExpense, BankDetail, City, CountryConfig, StateConfig } from './types';
+import type { AppSettings, Coupon, CompanyExpense, BankDetail, City, CountryConfig, StateConfig, CommercialAlly, ProfessionCategory } from './types';
+import { DEFAULT_PROFESSIONS_CATALOG, DEFAULT_SPECIALTIES_LIST, DEFAULT_BEAUTY_SPECIALTIES_LIST } from './professions-catalog';
+import { normalizeCountryCode, getCountryDisplay } from './geo-data';
+
+export interface CountryPricingInfo {
+  code: string;
+  name: string;
+  flag: string;
+  phoneCode: string;
+  currency: string;
+  currencySymbol: string;
+  rateLabel: string;
+  exchangeRate: number;
+  doctorMonthlyFee: number;
+  clinicMonthlyFee: number;
+  pharmacyB2BMonthlyFee: number;
+  laboratoryMonthlyFee: number;
+  defaultSellerCommission: number;
+}
 import { useToast } from '@/hooks/use-toast';
 
 interface SettingsContextType {
@@ -12,6 +30,7 @@ interface SettingsContextType {
   states: StateConfig[];
   cities: City[];
   specialties: string[];
+  professionsCatalog: ProfessionCategory[];
   beautySpecialties: string[];
   timezone: string;
   logoUrl: string;
@@ -22,6 +41,9 @@ interface SettingsContextType {
   coupons: Coupon[];
   billingCycleStartDay: number;
   billingCycleEndDay: number;
+  bcvRate?: number;
+  commercialAllies: CommercialAlly[];
+  getCountryPricing: (countryInput?: string | null) => CountryPricingInfo;
 
   updateSetting: (key: keyof AppSettings, value: unknown) => Promise<void>;
 
@@ -36,7 +58,8 @@ const skeletonContextValue: SettingsContextType = {
   countries: [],
   states: [],
   cities: [],
-  specialties: [],
+  specialties: DEFAULT_SPECIALTIES_LIST,
+  professionsCatalog: DEFAULT_PROFESSIONS_CATALOG,
   beautySpecialties: [],
   timezone: '',
   logoUrl: '',
@@ -47,6 +70,27 @@ const skeletonContextValue: SettingsContextType = {
   coupons: [],
   billingCycleStartDay: 1,
   billingCycleEndDay: 6,
+  bcvRate: 65.50,
+  commercialAllies: [],
+  getCountryPricing: (countryInput?: string | null) => {
+    const code = normalizeCountryCode(countryInput);
+    const display = getCountryDisplay(code);
+    return {
+      code,
+      name: display.name,
+      flag: display.flag,
+      phoneCode: display.phoneCode,
+      currency: code === 'AR' ? 'ARS' : code === 'CO' ? 'COP' : 'VES',
+      currencySymbol: code === 'AR' ? '$ ARS' : code === 'CO' ? '$ COP' : 'Bs.',
+      rateLabel: code === 'AR' ? 'Dólar Oficial / MEP' : code === 'CO' ? 'TRM Oficial' : 'Tasa BCV',
+      exchangeRate: code === 'AR' ? 1150 : code === 'CO' ? 4200 : 65.50,
+      doctorMonthlyFee: 25,
+      clinicMonthlyFee: 200,
+      pharmacyB2BMonthlyFee: 200,
+      laboratoryMonthlyFee: 50,
+      defaultSellerCommission: 20,
+    };
+  },
   updateSetting: async () => { },
   addListItem: async () => { },
   updateListItem: async () => { },
@@ -73,7 +117,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         console.log('❌ No settings found, creating empty settings...');
         const emptySettings = {
           cities: [],
-          specialties: [],
+          specialties: DEFAULT_SPECIALTIES_LIST,
+  professionsCatalog: DEFAULT_PROFESSIONS_CATALOG,
           beautySpecialties: [],
           coupons: [],
           companyBankDetails: [],
@@ -312,7 +357,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     countries: settings?.countries || [],
     states: settings?.states || [],
     cities: settings?.cities || [],
-    specialties: settings?.specialties || [],
+    specialties: (settings?.specialties && settings.specialties.length > 0) ? settings.specialties : DEFAULT_SPECIALTIES_LIST,
+    professionsCatalog: (settings?.professionsCatalog && settings.professionsCatalog.length > 0) ? settings.professionsCatalog : DEFAULT_PROFESSIONS_CATALOG,
     beautySpecialties: settings?.beautySpecialties || [],
     timezone: settings?.timezone || '',
     logoUrl: settings?.logoUrl || '',
@@ -323,6 +369,36 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     coupons: settings?.coupons || [],
     billingCycleStartDay: settings?.billingCycleStartDay ?? 1,
     billingCycleEndDay: settings?.billingCycleEndDay ?? 6,
+    bcvRate: settings?.bcvRate || settings?.exchangeRates?.VES || 65.50,
+    commercialAllies: settings?.commercialAllies || [],
+    getCountryPricing: (countryInput?: string | null): CountryPricingInfo => {
+      const code = normalizeCountryCode(countryInput);
+      const display = getCountryDisplay(code);
+      const found = (settings?.countries || []).find(
+        c => normalizeCountryCode(c.code) === code
+      );
+      const globalBcv = Number(settings?.bcvRate || settings?.exchangeRates?.VES || 65.50);
+      const defaultRate = code === 'VE' ? globalBcv : code === 'AR' ? 1150 : code === 'CO' ? 4200 : 1;
+      const exchangeRate = code === 'VE'
+        ? (globalBcv > 0 ? globalBcv : Number(found?.exchangeRate || 65.50))
+        : Number(found?.exchangeRate || settings?.exchangeRates?.[found?.currency || ''] || defaultRate);
+
+      return {
+        code,
+        name: found?.name || display.name,
+        flag: found?.flag || display.flag,
+        phoneCode: found?.phoneCode || display.phoneCode,
+        currency: found?.currency || (code === 'AR' ? 'ARS' : code === 'CO' ? 'COP' : 'VES'),
+        currencySymbol: found?.currencySymbol || (code === 'AR' ? '$ ARS' : code === 'CO' ? '$ COP' : 'Bs.'),
+        rateLabel: found?.rateLabel || (code === 'AR' ? 'Dólar Oficial / MEP' : code === 'CO' ? 'TRM Oficial' : 'Tasa BCV'),
+        exchangeRate: exchangeRate > 0 ? exchangeRate : 1,
+        doctorMonthlyFee: Number(found?.doctorMonthlyFee ?? 25),
+        clinicMonthlyFee: Number(found?.clinicMonthlyFee ?? 200),
+        pharmacyB2BMonthlyFee: Number(found?.pharmacyB2BMonthlyFee ?? 200),
+        laboratoryMonthlyFee: Number(found?.laboratoryMonthlyFee ?? 50),
+        defaultSellerCommission: Number(found?.defaultSellerCommission ?? 20),
+      };
+    },
     updateSetting,
     addListItem,
     updateListItem,

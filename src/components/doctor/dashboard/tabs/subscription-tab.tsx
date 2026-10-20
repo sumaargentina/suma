@@ -15,6 +15,8 @@ import { es } from 'date-fns/locale';
 import Image from 'next/image';
 import { getSettings } from '@/lib/supabaseService';
 import { useToast } from '@/hooks/use-toast';
+import { useBcvRate } from '@/hooks/use-bcv-rate';
+import { resolveDoctorPaymentFinancials } from '@/lib/currency-utils';
 
 interface SubscriptionTabProps {
   doctorData: Doctor;
@@ -31,6 +33,7 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
   const { toast } = useToast();
+  const bcvInfo = useBcvRate();
   const paymentsPerPage = 20;
   
   const sortedPayments = useMemo(() => {
@@ -183,7 +186,11 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                   </div>
                   <p className="text-xl font-bold text-green-600">
                     ${subscriptionFee.toFixed(2)}
-                    <span className="text-sm font-normal text-muted-foreground">/mes</span>
+                    <span className="text-sm font-normal text-muted-foreground"> USD/mes</span>
+                  </p>
+                  <p className="text-xs text-emerald-700 font-mono font-semibold mt-1">
+                    Bs. {(subscriptionFee * bcvInfo.rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[10px] text-muted-foreground ml-1">(@{bcvInfo.rate.toFixed(2)})</span>
                   </p>
                 </CardContent>
               </Card>
@@ -246,13 +253,29 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                   </div>
                 ) : settings?.companyBankDetails && settings.companyBankDetails.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {settings.companyBankDetails.map((account, index) => (
+                    {(settings.companyBankDetails.filter((acc) => {
+                      const docCountry = (doctorData.country || 'VE').toUpperCase();
+                      const accCountry = (acc.country || 'VE').toUpperCase();
+                      return accCountry === docCountry || accCountry === 'GLOBAL';
+                    }).length > 0
+                      ? settings.companyBankDetails.filter((acc) => {
+                          const docCountry = (doctorData.country || 'VE').toUpperCase();
+                          const accCountry = (acc.country || 'VE').toUpperCase();
+                          return accCountry === docCountry || accCountry === 'GLOBAL';
+                        })
+                      : settings.companyBankDetails
+                    ).map((account, index) => (
                       <Card key={index} className="bg-white border-green-200 hover:border-green-300 transition-colors">
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <BanknoteIcon className="h-4 w-4 text-green-600" />
                               <span className="font-semibold text-green-800">{account.bank}</span>
+                              {account.currency && (
+                                <Badge variant="outline" className="text-[10px] font-bold border-green-300 text-green-800">
+                                  {account.currency}
+                                </Badge>
+                              )}
                             </div>
                             <Button
                               variant="ghost"
@@ -274,17 +297,25 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                               <p className="font-medium">{account.accountHolder}</p>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">CI/RIF:</span>
+                              <span className="text-muted-foreground">ID Fiscal (RIF / CUIT / DNI):</span>
                               <p className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
                                 {account.idNumber}
                               </p>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">Número de Cuenta:</span>
+                              <span className="text-muted-foreground">Cuenta / CBU / CVU / Correo:</span>
                               <p className="font-mono text-sm bg-green-50 px-2 py-1 rounded border">
                                 {account.accountNumber}
                               </p>
                             </div>
+                            {(account.alias || account.phone) && (
+                              <div>
+                                <span className="text-muted-foreground">Alias / Teléfono Pago Móvil:</span>
+                                <p className="font-mono text-xs bg-emerald-50 text-emerald-900 px-2 py-1 rounded border border-emerald-200 font-semibold">
+                                  {account.alias ? `Alias: ${account.alias}` : ''} {account.phone ? `Tel: ${account.phone}` : ''}
+                                </p>
+                              </div>
+                            )}
                             {account.description && (
                               <div>
                                 <span className="text-muted-foreground">Descripción:</span>
@@ -371,9 +402,22 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                             </p>
                           </div>
                           <div className="text-right">
-                            <div className="font-bold text-lg text-green-600">
-                              ${payment.amount.toFixed(2)}
-                            </div>
+                            {(() => {
+                              const fin = resolveDoctorPaymentFinancials(payment, bcvInfo.rate);
+                              return (
+                                <>
+                                  <div className="font-bold text-base text-green-600">
+                                    ${fin.amountUSD.toFixed(2)} USD
+                                  </div>
+                                  <div className="text-xs text-emerald-700 font-mono font-medium">
+                                    {fin.formattedLocal}
+                                    <span className="text-[10px] text-muted-foreground ml-1">
+                                      ({fin.isHistorical ? '🔒 hist.' : 'tasa'} @{fin.exchangeRate.toFixed(2)})
+                                    </span>
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                         
@@ -446,7 +490,7 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                 <TableHeader>
                   <TableRow>
                     <TableHead>Fecha</TableHead>
-                    <TableHead>Monto</TableHead>
+                    <TableHead>Monto (USD / Bs.)</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>ID Transacción</TableHead>
                     <TableHead className="text-right">Comprobante</TableHead>
@@ -454,14 +498,24 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                 </TableHeader>
                 <TableBody>
                   {currentPayments.length > 0 ? (
-                    currentPayments.map(p => (
-                      <TableRow key={p.id}>
-                        <TableCell>
-                          {format(new Date(p.date + 'T00:00:00'), "d MMM, yyyy", { locale: es })}
-                        </TableCell>
-                        <TableCell className="font-bold text-green-600">
-                          ${p.amount.toFixed(2)}
-                        </TableCell>
+                    currentPayments.map(p => {
+                      const fin = resolveDoctorPaymentFinancials(p, bcvInfo.rate);
+                      return (
+                        <TableRow key={p.id}>
+                          <TableCell>
+                            {format(new Date(p.date + 'T00:00:00'), "d MMM, yyyy", { locale: es })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-green-600">${fin.amountUSD.toFixed(2)} USD</span>
+                              <span className="text-xs text-emerald-700 font-mono font-medium">
+                                {fin.formattedLocal}
+                                <span className="text-[10px] text-muted-foreground ml-1">
+                                  ({fin.isHistorical ? '🔒 hist.' : 'tasa'} @{fin.exchangeRate.toFixed(2)})
+                                </span>
+                              </span>
+                            </div>
+                          </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {getStatusIcon(p.status)}
@@ -486,7 +540,8 @@ export function SubscriptionTab({ doctorData, doctorPayments, onOpenPaymentDialo
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))
+                    );
+                  })
                   ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="h-24 text-center">

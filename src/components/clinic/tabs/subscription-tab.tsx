@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 
 // Base monthly price - matches landing page
-const BASE_MONTHLY_PRICE = 29000;
+const BASE_MONTHLY_PRICE = 200;
 
 // Discounts for multi-month payments
 const DISCOUNTS: Record<number, number> = {
@@ -304,7 +304,7 @@ export function SubscriptionTab() {
                                         <p className="text-sm text-muted-foreground">Precio Base</p>
                                     </div>
                                     <p className="text-xl font-bold text-green-600">
-                                        ${BASE_MONTHLY_PRICE.toLocaleString('es-AR')}
+                                        ${BASE_MONTHLY_PRICE.toLocaleString('en-US')} USD
                                         <span className="text-sm font-normal text-muted-foreground">/mes</span>
                                     </p>
                                 </CardContent>
@@ -576,21 +576,21 @@ export function SubscriptionTab() {
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-sm text-muted-foreground">Precio por mes:</span>
-                                <span className="font-medium">${BASE_MONTHLY_PRICE.toLocaleString('es-AR')}</span>
+                                <span className="font-medium">${BASE_MONTHLY_PRICE.toLocaleString('en-US')} USD</span>
                             </div>
                             {discount > 0 && (
                                 <div className="flex justify-between items-center mb-2 text-green-600">
                                     <span className="text-sm">Descuento ({Math.round(discount * 100)}%):</span>
-                                    <span className="font-medium">-${((BASE_MONTHLY_PRICE * selectedMonths) * discount).toLocaleString('es-AR')}</span>
+                                    <span className="font-medium">-${((BASE_MONTHLY_PRICE * selectedMonths) * discount).toLocaleString('en-US')} USD</span>
                                 </div>
                             )}
                             <div className="border-t pt-2 mt-2 flex justify-between items-center">
                                 <span className="font-bold">Total a pagar:</span>
-                                <span className="text-2xl font-bold text-green-600">${paymentTotal.toLocaleString('es-AR')}</span>
+                                <span className="text-2xl font-bold text-green-600">${paymentTotal.toLocaleString('en-US')} USD</span>
                             </div>
                             {selectedMonths > 1 && (
                                 <p className="text-xs text-muted-foreground mt-1 text-right">
-                                    Equivale a ${pricePerMonth.toLocaleString('es-AR')}/mes
+                                    Equivale a ${pricePerMonth.toLocaleString('en-US')} USD/mes
                                 </p>
                             )}
                         </div>

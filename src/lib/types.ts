@@ -108,6 +108,8 @@ export interface FamilyMember {
   education?: string | null;
   occupation?: string | null;
   city?: string | null;
+  allergies?: string[] | null;
+  notes?: string | null;
   // Computed fields (not stored in DB)
   fullName?: string;
   age?: number;
@@ -121,6 +123,10 @@ export type BankDetail = {
   idNumber: string;
   description?: string | null;
   alias?: string;
+  currency?: 'USD' | 'VES' | string;
+  accountType?: 'pago_movil' | 'transferencia' | 'zelle' | 'efectivo_dolares' | 'cuenta_nacional' | 'otro';
+  country?: string; // Código ISO del país (VE, AR, CO) o 'GLOBAL' para cuentas internacionales
+  phone?: string;
 };
 
 export type Service = {
@@ -171,7 +177,7 @@ export const EXPENSE_CATEGORIES = [
   'Otros'
 ] as const;
 
-export type UserRole = 'patient' | 'doctor' | 'admin' | 'superadmin' | 'clinic' | 'secretary';
+export type UserRole = 'patient' | 'doctor' | 'admin' | 'superadmin' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory';
 
 export type WorkspaceType = 'private' | 'clinic' | 'public_hospital';
 
@@ -208,7 +214,8 @@ export interface ActiveWorkspace {
 
 export interface Secretary {
   id: string;
-  clinicId: string;
+  clinicId?: string;
+  laboratoryId?: string;
   name: string;
   email: string;
   role: 'secretary';
@@ -227,7 +234,10 @@ export type Expense = {
   id: string;
   date: string; // YYYY-MM-DD
   description: string;
-  amount: number;
+  amount: number; // Monto en USD
+  currency?: 'USD' | 'VES';
+  amountInLocalCurrency?: number; // Equivalente en Bs.
+  exchangeRate?: number; // Tasa BCV congelada al momento del gasto
   category?: ExpenseCategory | string; // Permite categorías predefinidas o personalizadas
   office?: string; // Consultorio/ubicación del gasto
 };
@@ -312,7 +322,10 @@ export type ClinicExpense = {
   id: string;
   clinicId: string;
   description: string;
-  amount: number;
+  amount: number; // Monto en USD
+  currency?: 'USD' | 'VES';
+  amountInLocalCurrency?: number; // Equivalente en Bs.
+  exchangeRate?: number; // Tasa BCV congelada
   category: string;
   date: string; // YYYY-MM-DD
   createdAt?: string;
@@ -403,6 +416,15 @@ export type Clinic = {
   lastPaymentDate?: string | null;
   nextPaymentDate?: string | null;
   subscriptionFee?: number;
+  billingMonths?: number;
+  discountPercentage?: number;
+  freeMonths?: number;
+  legalName?: string | null;
+  rif?: string | null;
+  regentName?: string | null;
+  regentLicense?: string | null;
+  contactName?: string | null;
+  contactRole?: string | null;
   lat?: number;
   lng?: number;
 };
@@ -426,8 +448,127 @@ export type ClinicPayment = {
 
 export type PaymentSettings = {
   cash: { enabled: boolean; description?: string };
-  transfer: { enabled: boolean; cbu?: string; alias?: string; bank?: string; holder?: string; cuit?: string };
-  mercadopago: { enabled: boolean; link?: string; qrImage?: string; publicKey?: string };
+  pagoMovil?: { enabled: boolean; bank?: string; phone?: string; idDocument?: string; holder?: string };
+  transfer: { 
+    enabled: boolean; 
+    bank?: string; 
+    holder?: string; 
+    accountNumber?: string; 
+    phone?: string; 
+    idDocument?: string; 
+    // Legacy fields for backwards compatibility
+    cbu?: string; 
+    alias?: string; 
+    cuit?: string; 
+  };
+  zelle?: { enabled: boolean; email?: string; holder?: string };
+  mercadopago?: { enabled: boolean; link?: string; qrImage?: string; publicKey?: string };
+};
+
+export type Laboratory = {
+  id: string;
+  adminEmail?: string;
+  name: string;
+  slug?: string;
+  logoUrl?: string;
+  description?: string;
+  phone?: string;
+  whatsapp?: string;
+  email: string;
+  website?: string;
+  password?: string;
+  licenseNumber?: string;
+  accreditations?: Record<string, unknown>[];
+  country?: string;
+  state?: string;
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  sector?: string;
+  bannerImage?: string;
+  latitude?: number;
+  longitude?: number;
+  openingHours?: Record<string, string[]>;
+  appointmentRequired?: boolean;
+  services?: Record<string, unknown>;
+  homeService?: boolean;
+  photos?: string[];
+  status?: 'active' | 'inactive';
+  verified?: boolean;
+  verifiedAt?: string | null;
+  bankDetails?: Record<string, unknown>;
+  totalStudiesPerformed?: number;
+  rating?: number;
+  totalReviews?: number;
+  paymentSettings?: PaymentSettings;
+  acceptedInsurances?: string[];
+  verificationStatus?: 'pending' | 'verified' | 'rejected';
+  subscriptionStatus?: 'active' | 'inactive' | 'pending_payment';
+  plan?: 'esencial' | 'profesional' | 'empresarial' | 'integral';
+  billingCycle?: 'monthly' | 'annual';
+  subscriptionFee?: number;
+  billingMonths?: number;
+  discountPercentage?: number;
+  freeMonths?: number;
+  legalName?: string | null;
+  rif?: string | null;
+  regentName?: string | null;
+  regentLicense?: string | null;
+  contactName?: string | null;
+  contactRole?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  // Legacy aliases for backward compatibility in UI components
+  lat?: number;
+  lng?: number;
+  reviewCount?: number;
+  coupons?: Coupon[];
+  lastPaymentDate?: string | null;
+  nextPaymentDate?: string | null;
+};
+
+export type LaboratoryService = {
+  id: string;
+  laboratoryId: string;
+  name: string;
+  serviceCategory?: string;
+  price: number;
+  duration?: number;
+  dailyCapacity?: number;
+  operatingHours?: Record<string, string[]>;
+  description?: string;
+  preparationInstructions?: string;
+  resultsDeliveryTime?: string;
+  isActive: boolean;
+  items?: { name: string; price: number }[];
+  createdAt?: string;
+};
+
+export type LaboratoryOrder = {
+  id: string;
+  doctorId: string;
+  patientId: string;
+  appointmentId?: string;
+  laboratoryId?: string;
+  orderNumber: string;
+  studies: { name: string; code?: string; urgency?: string }[];
+  diagnosis?: string;
+  clinicalIndications?: string;
+  digitalSignature?: string;
+  qrCode?: string;
+  verificationCode?: string;
+  validFrom?: string;
+  validUntil?: string;
+  status?: 'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  scheduledDate?: string;
+  completedDate?: string;
+  resultsAvailable?: boolean;
+  resultsUrl?: string;
+  resultsUploadedAt?: string;
+  doctorNotes?: string;
+  laboratoryNotes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Doctor = {
@@ -436,7 +577,12 @@ export type Doctor = {
   email: string;
   cedula: string;
   documentType?: DocumentType;
+  profession?: string;
   specialty: string;
+  hasMedicalRecord?: boolean | null;
+  has_medical_record?: boolean | null;
+  hasPrescription?: boolean | null;
+  has_prescription?: boolean | null;
   country?: string;
   state?: string;
   city: string;
@@ -491,6 +637,12 @@ export type Doctor = {
   // Digital Signature & Stamp
   signature_url?: string;
   stamp_url?: string;
+
+  // B2B Pharmacy Sponsorships
+  acceptsPharmacySponsorships?: boolean;
+  accepts_pharmacy_sponsorships?: boolean;
+  sponsorshipConditions?: string | null;
+  sponsorship_conditions?: string | null;
 };
 
 export interface MedicalRecord {
@@ -506,6 +658,13 @@ export interface MedicalRecord {
   evaluation?: string | null;
   requested_studies?: string | null;
   prescription?: string | null;
+  treatment_plan?: string | null;
+  prescription_expires_at?: string | null;
+  recipe_status?: 'active' | 'dispensed' | 'expired' | string | null;
+  dispensed_by_pharmacy_id?: string | null;
+  dispensed_by_pharmacy_name?: string | null;
+  dispensed_at?: string | null;
+  dispensation_notes?: string | null;
   notes?: string | null;
   evolution?: string | null;
   medical_report?: string | null;
@@ -520,6 +679,226 @@ export interface MedicalRecord {
   updated_at?: string;
   doctors?: Doctor;
 }
+
+export type Pharmacy = {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  licenseNumber?: string | null;
+  license_number?: string | null;
+  isChain?: boolean;
+  is_chain?: boolean;
+  chainName?: string | null;
+  chain_name?: string | null;
+  branchName?: string | null;
+  branch_name?: string | null;
+  address: string;
+  city: string;
+  state?: string | null;
+  sector?: string | null;
+  postalCode?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  openingHours?: Record<string, { open: string; close: string }> | null;
+  opening_hours?: Record<string, { open: string; close: string }> | null;
+  is24Hours?: boolean;
+  is_24_hours?: boolean;
+  logoUrl?: string | null;
+  logo_url?: string | null;
+  bannerUrl?: string | null;
+  banner_url?: string | null;
+  bannerImage?: string | null;
+  banner_image?: string | null;
+  photos?: string[] | null;
+  status?: 'pending' | 'active' | 'inactive' | 'suspended';
+  verified?: boolean;
+  totalPrescriptionsFilled?: number;
+  total_prescriptions_filled?: number;
+  rating?: number;
+  totalReviews?: number;
+  // B2B Sponsorship & Advertising Plan ($200/month)
+  sponsorshipPlanStatus?: 'inactive' | 'pending_payment' | 'active';
+  sponsorship_plan_status?: 'inactive' | 'pending_payment' | 'active';
+  sponsorshipPlanFee?: number;
+  sponsorship_plan_fee?: number;
+  sponsorshipNextPaymentDate?: string | null;
+  sponsorship_next_payment_date?: string | null;
+  discountPercentage?: number;
+  discount_percentage?: number;
+  freeMonths?: number;
+  free_months?: number;
+  freeTrialEndsAt?: string | null;
+  free_trial_ends_at?: string | null;
+  agreementNotes?: string | null;
+  agreement_notes?: string | null;
+  requestedPlan?: 'free' | 'b2b' | string | null;
+  requested_plan?: 'free' | 'b2b' | string | null;
+  legalName?: string | null;
+  legal_name?: string | null;
+  rif?: string | null;
+  regentName?: string | null;
+  regent_name?: string | null;
+  regentLicense?: string | null;
+  regent_license?: string | null;
+  contactName?: string | null;
+  contact_name?: string | null;
+  contactRole?: string | null;
+  contact_role?: string | null;
+  promotionalTagline?: string | null;
+  promotional_tagline?: string | null;
+  deliveryAvailable?: boolean;
+  delivery_available?: boolean;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  verifiedAt?: string;
+  verified_at?: string;
+};
+
+export type PharmacyProduct = {
+  id: string;
+  pharmacyId: string;
+  pharmacy_id?: string;
+  name: string;
+  genericName?: string | null;
+  generic_name?: string | null;
+  presentation?: string | null;
+  category?: string | null;
+  isAvailable: boolean;
+  is_available?: boolean;
+  stockQuantity?: number | null;
+  stock_quantity?: number | null;
+  isPromotion: boolean;
+  is_promotion?: boolean;
+  promoLabel?: string | null;
+  promo_label?: string | null;
+  referencePrice?: number | null;
+  reference_price?: number | null;
+  promoPrice?: number | null;
+  promo_price?: number | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  description?: string | null;
+  usageIndications?: string | null;
+  usage_indications?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SponsorshipMessage = {
+  id: string;
+  sender?: 'doctor' | 'pharmacy';
+  senderRole?: 'doctor' | 'pharmacy' | 'system';
+  senderName: string;
+  text: string;
+  timestamp: string;
+};
+
+export type DoctorPharmacySponsorship = {
+  id: string;
+  doctorId: string;
+  doctor_id?: string;
+  pharmacyId: string;
+  pharmacy_id?: string;
+  initiatedBy: 'doctor' | 'pharmacy';
+  initiated_by?: 'doctor' | 'pharmacy';
+  status: 'pending' | 'pending_doctor' | 'pending_pharmacy' | 'matched' | 'active' | 'paused' | 'rejected';
+  scopeType: 'city' | 'national' | 'branch';
+  scope_type?: 'city' | 'national' | 'branch';
+  targetCity?: string | null;
+  target_city?: string | null;
+  chainName?: string | null;
+  chain_name?: string | null;
+  agreementType?: 'monthly_fixed' | 'per_recipe_percentage' | 'fixed_monthly' | 'percentage' | 'per_recipe' | 'patient_discount' | 'custom' | null;
+  agreement_type?: string | null;
+  agreementValue?: string | null;
+  agreement_value?: string | null;
+  agreementNotes?: string | null;
+  agreement_notes?: string | null;
+  // Módulo 4: Cupón negociable entre médico y farmacia
+  hasPatientCoupon?: boolean;
+  has_patient_coupon?: boolean;
+  couponCode?: string | null;
+  coupon_code?: string | null;
+  couponDiscountPercent?: number | null;
+  coupon_discount_percent?: number | null;
+  couponDescription?: string | null;
+  coupon_description?: string | null;
+  // Módulo 2: Métricas ROI en tiempo real
+  impressionsCount?: number;
+  impressions_count?: number;
+  cardClicksCount?: number;
+  card_clicks_count?: number;
+  whatsappClicksCount?: number;
+  whatsapp_clicks_count?: number;
+  ordersCount?: number;
+  orders_count?: number;
+  dispensedRecipesCount?: number;
+  doctorApprovedActivation?: boolean;
+  doctor_approved_activation?: boolean;
+  pharmacyApprovedActivation?: boolean;
+  pharmacy_approved_activation?: boolean;
+  messages: SponsorshipMessage[];
+  unreadByDoctor?: number;
+  unread_by_doctor?: number;
+  unreadByPharmacy?: number;
+  unread_by_pharmacy?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  // Populated relations
+  doctor?: Partial<Doctor>;
+  pharmacy?: Partial<Pharmacy>;
+};
+
+export type PharmacyRecipeOrder = {
+  id: string;
+  recipeId?: string | null;
+  recipeCode?: string | null;
+  pharmacyId: string;
+  doctorId?: string | null;
+  patientId?: string | null;
+  patientName: string;
+  patientCedula?: string | null;
+  patientPhone?: string | null;
+  deliveryType: 'pickup' | 'delivery';
+  deliveryAddress?: string | null;
+  prescriptionText?: string | null;
+  matchedItems?: any[];
+  couponCode?: string | null;
+  discountPercentage?: number;
+  status: 'pending' | 'pending_quote' | 'quoted' | 'confirmed' | 'ready' | 'completed' | 'cancelled';
+  quotedTotalUsd?: number | null;
+  quotedTotalBs?: number | null;
+  pharmacyNotes?: string | null;
+  patientNotes?: string | null;
+  isChronicTreatment?: boolean;
+  refillIntervalDays?: number;
+  nextRefillDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  doctor?: Partial<Doctor>;
+  pharmacy?: Partial<Pharmacy>;
+};
+
+export type PharmacyPayment = {
+  id: string;
+  pharmacyId: string;
+  pharmacyName?: string;
+  amount: number;
+  date: string;
+  status: 'Pending' | 'Paid' | 'Rejected';
+  paymentMethod?: string;
+  transactionId?: string;
+  paymentProofUrl?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+};
 
 export type Seller = {
   id: string;
@@ -550,12 +929,13 @@ export type Patient = {
   phone: string | null;
   cedula: string | null;
   documentType?: DocumentType;
-  country?: string;
-  state?: string;
+  country?: string | null;
+  state?: string | null;
   city: string | null;
-  sector?: string;
-  address?: string;
+  sector?: string | null;
+  address?: string | null;
   favoriteDoctorIds?: string[];
+  favoritedDoctorIds?: string[];
   favoriteClinicIds?: string[];
   profileImage: string | null;
   profileCompleted?: boolean;
@@ -565,6 +945,9 @@ export type Patient = {
   maritalStatus?: 'soltero' | 'casado' | 'divorciado' | 'viudo' | 'union_libre' | null;
   education?: string | null;
   occupation?: string | null;
+  weight?: string | null;
+  height?: string | null;
+  whatsapp?: string | null;
 };
 
 export type Appointment = {
@@ -574,13 +957,16 @@ export type Appointment = {
   doctorName?: string; // Optional because now it can be a service appointment
   doctorId?: string; // Optional for service appointments
   clinicServiceId?: string; // New: For service appointments (e.g., Lab)
+  laboratoryId?: string; // For laboratory appointments
+  laboratoryServiceId?: string; // For laboratory study/test appointments
   serviceName?: string; // New: To verify which service was booked
   date: string;
   time: string;
+  reason?: string | null;
   services: Service[]; // This remains for legacy Doctor appointments (medical services)
   totalPrice: number;
   consultationFee: number;
-  paymentMethod: 'efectivo' | 'transferencia' | 'mercadopago';
+  paymentMethod: 'efectivo' | 'transferencia' | 'pagomovil' | 'zelle' | 'mercadopago' | string;
   paymentStatus: 'Pendiente' | 'Pagado' | 'Reembolsado';
   paymentProof: string | null;
   attendance: 'Atendido' | 'No Asistió' | 'Pendiente';
@@ -612,6 +998,22 @@ export type Appointment = {
   bookedByPatientId?: string; // Quién agendó la cita
   familyMemberName?: string; // Nombre del familiar (computed)
   bookedByName?: string; // Nombre de quien agendó (computed)
+  // Sistema Multi-Moneda y Auditoría Histórica Inmutable
+  currency?: 'USD' | 'VES' | string; // Moneda de referencia / base
+  paymentCurrency?: 'USD' | 'VES' | string; // Moneda seleccionada para el pago (USD o Bs.)
+  exchangeRate?: number; // Tasa de cambio congelada al momento del pago/reserva
+  amountInUSD?: number; // Monto histórico congelado en USD
+  amountInLocalCurrency?: number; // Monto histórico congelado en moneda local (Bs.)
+  paidAt?: string; // Fecha y hora en la que se registró el pago
+  paymentAccountDetails?: {
+    bank?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+    idNumber?: string;
+    phone?: string;
+    currency?: string;
+    accountType?: string;
+  };
 };
 
 export type IncludedDoctorCommission = {
@@ -647,7 +1049,11 @@ export type DoctorPayment = {
   doctorId: string;
   doctorName: string;
   date: string;
-  amount: number;
+  amount: number; // Monto en USD
+  amountInLocalCurrency?: number; // Monto en Bs. congelado al pagar
+  exchangeRate?: number; // Tasa BCV aplicada y congelada
+  paymentCurrency?: 'USD' | 'VES'; // Moneda original del pago
+  paidAt?: string; // Timestamp de pago/confirmación
   status: 'Paid' | 'Pending' | 'Rejected';
   paymentProofUrl: string | null;
   transactionId: string;
@@ -746,6 +1152,15 @@ export type CountryConfig = {
   phoneCode: string;
   currency: string;
   isActive?: boolean;
+  exchangeRate?: number; // Tasa de cambio frente al USD (ej: 65.50 para VES)
+  currencySymbol?: string; // Símbolo de la moneda (ej: "Bs.")
+  lastRateUpdate?: string; // Fecha y hora de actualización
+  rateLabel?: string; // Nombre de la tasa (ej: "Tasa BCV", "Dólar Oficial / MEP", "TRM Oficial")
+  doctorMonthlyFee?: number; // Mensualidad base del Médico en este país (ej: $25 USD)
+  clinicMonthlyFee?: number; // Mensualidad Plan Clínica en este país (ej: $200 USD)
+  pharmacyB2BMonthlyFee?: number; // Mensualidad Plan Alianza B2B Farmacia en este país (ej: $200 USD)
+  laboratoryMonthlyFee?: number; // Mensualidad Plan Laboratorio Clínico en este país (ej: $50 USD)
+  defaultSellerCommission?: number; // % Comisión Vendedores en este país (ej: 20%)
 };
 
 export type StateConfig = {
@@ -764,7 +1179,34 @@ export type City = {
   lng?: number;
 };
 
+export type CommercialAlly = {
+  id: string;
+  name: string;
+  logoUrl: string;
+  category?: 'farmacia' | 'clinica' | 'laboratorio' | 'marca' | 'aliado';
+  country?: string;
+  city?: string;
+  websiteUrl?: string;
+  isActive?: boolean;
+};
+
+export type SpecialtyConfigItem = {
+  name: string;
+  hasMedicalRecord: boolean;
+  hasPrescription: boolean;
+};
+
+export type ProfessionCategory = {
+  id: string;
+  name: string;
+  defaultHasMedicalRecord: boolean;
+  defaultHasPrescription: boolean;
+  isWellness?: boolean;
+  specialties: SpecialtyConfigItem[];
+};
+
 export type AppSettings = {
+  professionsCatalog?: ProfessionCategory[];
   countries?: CountryConfig[];
   states?: StateConfig[];
   cities: City[];
@@ -779,6 +1221,10 @@ export type AppSettings = {
   billingCycleEndDay?: number;
   coupons: Coupon[];
   companyExpenses: CompanyExpense[];
+  exchangeRates?: Record<string, number>;
+  bcvRate?: number; // Tasa oficial BCV en Venezuela (Bs./USD)
+  bcvLastUpdated?: string;
+  commercialAllies?: CommercialAlly[];
 }
 
 export type DoctorReview = {

@@ -5,7 +5,7 @@ import type {
     Doctor, Seller, Patient, Appointment, AdminSupportTicket,
     SellerPayment, DoctorPayment, AppSettings, MarketingMaterial,
     ChatMessage, DoctorReview, Service, Clinic, ClinicBranch, ClinicService, Secretary, ClinicSpecialty, ClinicExpense, PatientCommunication, ClinicPatientMessage, ClinicChatConversation,
-    FamilyMember, ClinicPayment, DoctorWorkspace
+    FamilyMember, ClinicPayment, DoctorWorkspace, Pharmacy, Laboratory, LaboratoryService, LaboratoryOrder
 } from './types';
 import { roundPrice } from './validation-utils';
 import { compressImageToWebP } from './image-compression';
@@ -20,6 +20,9 @@ const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
     for (const key in obj) {
         const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
         result[camelKey] = obj[key];
+    }
+    if ('favoriteDoctorIds' in result && !('favoritedDoctorIds' in result)) {
+        result.favoritedDoctorIds = result.favoriteDoctorIds;
     }
     return result;
 };
@@ -334,7 +337,7 @@ export const getSettings = async (): Promise<AppSettings | null> => {
 
 export const getAdminNotifications = () => getCollectionData<import('./types').AdminNotification>('admin_notifications');
 
-export const findUserByEmail = async (email: string): Promise<(Doctor | Seller | Patient | Clinic) & { role: 'doctor' | 'seller' | 'patient' | 'clinic' } | null> => {
+export const findUserByEmail = async (email: string): Promise<any | null> => {
     // Si estamos en el cliente, usar la API
     if (typeof window !== 'undefined') {
         try {
@@ -359,31 +362,105 @@ export const findUserByEmail = async (email: string): Promise<(Doctor | Seller |
     // Si estamos en el servidor, usar supabaseAdmin directamente
     const lowerEmail = email.toLowerCase();
 
-    const collections: { name: 'doctors' | 'sellers' | 'patients' | 'clinics' | 'secretaries'; role: 'doctor' | 'seller' | 'patient' | 'clinic' | 'secretary' }[] = [
+    const collections: { name: 'doctors' | 'sellers' | 'patients' | 'clinics' | 'secretaries' | 'pharmacies' | 'laboratories'; role: 'doctor' | 'seller' | 'patient' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory' }[] = [
         { name: 'doctors', role: 'doctor' },
         { name: 'sellers', role: 'seller' },
         { name: 'patients', role: 'patient' },
         { name: 'clinics', role: 'clinic' },
         { name: 'secretaries', role: 'secretary' },
+        { name: 'pharmacies', role: 'pharmacy' },
+        { name: 'laboratories', role: 'laboratory' },
     ];
 
     for (const { name, role } of collections) {
-        const { data, error } = await supabaseAdmin
-            .from(name)
-            .select('*')
-            .eq('email', lowerEmail)
-            .maybeSingle();
+        let query = supabaseAdmin.from(name).select('*');
+        if (name === 'clinics' || name === 'laboratories') {
+            query = query.or(`admin_email.eq.${lowerEmail},email.eq.${lowerEmail}`);
+        } else {
+            query = query.eq('email', lowerEmail);
+        }
+        const { data } = await query.maybeSingle();
 
         if (data) {
-            // Ensure password is included (it might be omitted by default in some Supabase queries or types)
             return {
                 ...toCamelCase(data as Record<string, unknown>),
                 role,
-            } as (Doctor | Seller | Patient | Clinic) & { role: 'doctor' | 'seller' | 'patient' | 'clinic' };
+            } as (Doctor | Seller | Patient | Clinic | Pharmacy | Laboratory) & { role: 'doctor' | 'seller' | 'patient' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory' };
         }
     }
 
     return null;
+};
+
+// =====================================================
+// PHARMACIES FUNCTIONS
+// =====================================================
+
+export const getPharmacies = async (): Promise<Pharmacy[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/pharmacies');
+            if (!res.ok) throw new Error('Error al cargar farmacias');
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching pharmacies via API:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('pharmacies')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>) as unknown as Pharmacy);
+    } catch (error) {
+        console.error('Error fetching pharmacies on server:', error);
+        return [];
+    }
+};
+
+export const addPharmacy = async (pharmacyData: Partial<Pharmacy>): Promise<Pharmacy> => {
+    const res = await fetch('/api/pharmacies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pharmacyData)
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al registrar la farmacia');
+    }
+
+    return data.pharmacy;
+};
+
+export const updatePharmacy = async (id: string, pharmacyData: Partial<Pharmacy>): Promise<Pharmacy> => {
+    const res = await fetch('/api/pharmacies', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...pharmacyData })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar la farmacia');
+    }
+
+    return data.pharmacy;
+};
+
+export const deletePharmacy = async (id: string): Promise<void> => {
+    const res = await fetch(`/api/pharmacies?id=${id}`, {
+        method: 'DELETE'
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al eliminar la farmacia');
+    }
 };
 
 
@@ -528,6 +605,10 @@ export const cleanupDoctorData = async (id: string): Promise<void> => {
 
 export const addSeller = async (sellerData: Omit<Seller, 'id'>) => {
     const snakeCaseData = toSnakeCase(sellerData as unknown as Record<string, unknown>);
+    if (typeof snakeCaseData.password === 'string' && !snakeCaseData.password.startsWith('$2')) {
+        const { hashPassword } = await import('./password-utils');
+        snakeCaseData.password = await hashPassword(snakeCaseData.password);
+    }
 
     const { data, error } = await supabaseAdmin
         .from('sellers')
@@ -538,6 +619,8 @@ export const addSeller = async (sellerData: Omit<Seller, 'id'>) => {
     if (error) throw new Error(error.message || String(error));
     return data;
 };
+
+export const getSellerById = getSeller;
 
 export const updateSeller = async (id: string, data: Partial<Seller>) => {
     const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
@@ -591,6 +674,12 @@ export const addPatient = async (patientData: Omit<Patient, 'id'>): Promise<stri
 
     // Si estamos en el servidor, usar supabaseAdmin directamente
     const snakeCaseData = toSnakeCase(patientData as unknown as Record<string, unknown>);
+    if ('favorited_doctor_ids' in snakeCaseData) {
+        if (!('favorite_doctor_ids' in snakeCaseData)) {
+            snakeCaseData.favorite_doctor_ids = snakeCaseData.favorited_doctor_ids;
+        }
+        delete snakeCaseData.favorited_doctor_ids;
+    }
 
     const { data, error } = await supabaseAdmin
         .from('patients')
@@ -629,6 +718,12 @@ export const updatePatient = async (id: string, data: Partial<Patient>) => {
     // Remove 'role' field as it doesn't exist in the patients table
     const { role, ...dataWithoutRole } = data as any;
     const snakeCaseData = toSnakeCase(dataWithoutRole as unknown as Record<string, unknown>);
+    if ('favorited_doctor_ids' in snakeCaseData) {
+        if (!('favorite_doctor_ids' in snakeCaseData)) {
+            snakeCaseData.favorite_doctor_ids = snakeCaseData.favorited_doctor_ids;
+        }
+        delete snakeCaseData.favorited_doctor_ids;
+    }
 
     const { error } = await supabaseAdmin
         .from('patients')
@@ -681,6 +776,21 @@ export const addClinic = async (clinicData: Omit<Clinic, 'id' | 'createdAt'>): P
 
     // Si estamos en el servidor, usar supabaseAdmin directamente
     const snakeCaseData = toSnakeCase(clinicData as unknown as Record<string, unknown>);
+    if (!snakeCaseData.admin_email && snakeCaseData.email) {
+        snakeCaseData.admin_email = snakeCaseData.email;
+    }
+    if (!snakeCaseData.slug && typeof snakeCaseData.name === 'string') {
+        snakeCaseData.slug = snakeCaseData.name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
+    }
+    if (typeof snakeCaseData.password === 'string' && !snakeCaseData.password.startsWith('$2')) {
+        const { hashPassword } = await import('./password-utils');
+        snakeCaseData.password = await hashPassword(snakeCaseData.password);
+    }
 
     const { data, error } = await supabaseAdmin
         .from('clinics')
@@ -963,15 +1073,24 @@ export const getClinicAppointments = async (clinicId: string, dateFilter?: strin
         }
     }
 
-    // Get all doctors belonging to this clinic
+    // Get all doctors belonging to this clinic (direct or via workspaces)
     const { data: doctors } = await supabaseAdmin
         .from('doctors')
         .select('id')
         .eq('clinic_id', clinicId);
 
-    const doctorIds = (doctors || []).map(d => d.id);
+    const { data: wsDoctors } = await supabaseAdmin
+        .from('doctor_workspaces')
+        .select('doctor_id')
+        .eq('clinic_id', clinicId)
+        .eq('status', 'active');
 
-    // Get all services belonging to this clinic
+    const doctorIds = Array.from(new Set([
+        ...(doctors || []).map(d => d.id),
+        ...(wsDoctors || []).map((w: any) => w.doctor_id)
+    ]));
+
+    // Get all services belonging to this clinic or laboratory
     const { data: services } = await supabaseAdmin
         .from('clinic_services')
         .select('id')
@@ -979,27 +1098,33 @@ export const getClinicAppointments = async (clinicId: string, dateFilter?: strin
 
     const serviceIds = (services || []).map(s => s.id);
 
-    if (doctorIds.length === 0 && serviceIds.length === 0) {
-        return [];
-    }
+    const { data: labServices } = await supabaseAdmin
+        .from('laboratory_services')
+        .select('id')
+        .eq('laboratory_id', clinicId);
 
-    // Build query - get appointments where doctor_id is in clinic doctors OR clinic_service_id is in clinic services
+    const labServiceIds = (labServices || []).map(s => s.id);
+
+    // Build query - get appointments for clinic or laboratory
     let query = supabaseAdmin
         .from('appointments')
         .select('*');
 
-    // Use OR condition for doctor_id and clinic_service_id
-    const orConditions: string[] = [];
+    const orConditions: string[] = [
+        `clinic_id.eq.${clinicId}`,
+        `laboratory_id.eq.${clinicId}`,
+    ];
     if (doctorIds.length > 0) {
         orConditions.push(`doctor_id.in.(${doctorIds.join(',')})`);
     }
     if (serviceIds.length > 0) {
         orConditions.push(`clinic_service_id.in.(${serviceIds.join(',')})`);
     }
-
-    if (orConditions.length > 0) {
-        query = query.or(orConditions.join(','));
+    if (labServiceIds.length > 0) {
+        orConditions.push(`laboratory_service_id.in.(${labServiceIds.join(',')})`);
     }
+
+    query = query.or(orConditions.join(','));
 
     if (dateFilter && endDateFilter) {
         query = query.gte('date', dateFilter).lte('date', endDateFilter);
@@ -1028,6 +1153,12 @@ export const addClinicBranch = async (branchData: Omit<ClinicBranch, 'id'>) => {
     }
 
     const snakeCaseData = toSnakeCase(branchData as unknown as Record<string, unknown>);
+    if ('active' in snakeCaseData) {
+        if (!('is_active' in snakeCaseData)) {
+            snakeCaseData.is_active = snakeCaseData.active;
+        }
+        delete snakeCaseData.active;
+    }
     const { data, error } = await supabaseAdmin
         .from('clinic_branches')
         .insert([snakeCaseData])
@@ -1049,6 +1180,12 @@ export const updateClinicBranch = async (id: string, branchData: Partial<ClinicB
     }
 
     const snakeCaseData = toSnakeCase(branchData as unknown as Record<string, unknown>);
+    if ('active' in snakeCaseData) {
+        if (!('is_active' in snakeCaseData)) {
+            snakeCaseData.is_active = snakeCaseData.active;
+        }
+        delete snakeCaseData.active;
+    }
     const { error } = await supabaseAdmin
         .from('clinic_branches')
         .update(snakeCaseData)
@@ -1178,9 +1315,16 @@ export const addClinicService = async (serviceData: Omit<ClinicService, 'id'>) =
     const packedData = packItemsToDescription(serviceData);
 
     const snakeCaseData = toSnakeCase(packedData as unknown as Record<string, unknown>);
-
-    // Ensure 'items' key is gone (it should be gone from packedData, but double check snakeCase conversion didn't keep it if logic changes)
-    // packItemsToDescription returns object WITHOUT 'items' key.
+    if ('active' in snakeCaseData) {
+        if (!('is_active' in snakeCaseData)) snakeCaseData.is_active = snakeCaseData.active;
+        delete snakeCaseData.active;
+    }
+    if ('category' in snakeCaseData && !('service_category' in snakeCaseData)) {
+        snakeCaseData.service_category = snakeCaseData.category;
+    }
+    if ('schedule' in snakeCaseData && !('operating_hours' in snakeCaseData)) {
+        snakeCaseData.operating_hours = snakeCaseData.schedule;
+    }
 
     const { data, error } = await supabaseAdmin
         .from('clinic_services')
@@ -1205,6 +1349,16 @@ export const updateClinicService = async (id: string, serviceData: Partial<Clini
     // Pack items into description
     const packedData = packItemsToDescription(serviceData);
     const snakeCaseData = toSnakeCase(packedData as unknown as Record<string, unknown>);
+    if ('active' in snakeCaseData) {
+        if (!('is_active' in snakeCaseData)) snakeCaseData.is_active = snakeCaseData.active;
+        delete snakeCaseData.active;
+    }
+    if ('category' in snakeCaseData && !('service_category' in snakeCaseData)) {
+        snakeCaseData.service_category = snakeCaseData.category;
+    }
+    if ('schedule' in snakeCaseData && !('operating_hours' in snakeCaseData)) {
+        snakeCaseData.operating_hours = snakeCaseData.schedule;
+    }
 
     const { error } = await supabaseAdmin
         .from('clinic_services')
@@ -1505,8 +1659,9 @@ export const addMessageToAppointment = async (appointmentId: string, message: { 
 
 export const addMarketingMaterial = async (materialData: Omit<MarketingMaterial, 'id'>) => {
     const snakeCaseData = toSnakeCase(materialData as unknown as Record<string, unknown>);
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { data, error } = await supabase
+    const { data, error } = await client
         .from('marketing_materials')
         .insert([snakeCaseData])
         .select()
@@ -1518,8 +1673,9 @@ export const addMarketingMaterial = async (materialData: Omit<MarketingMaterial,
 
 export const updateMarketingMaterial = async (id: string, data: Partial<MarketingMaterial>) => {
     const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { error } = await supabase
+    const { error } = await client
         .from('marketing_materials')
         .update(snakeCaseData)
         .eq('id', id);
@@ -1528,7 +1684,8 @@ export const updateMarketingMaterial = async (id: string, data: Partial<Marketin
 };
 
 export const deleteMarketingMaterial = async (id: string) => {
-    const { error } = await supabase
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+    const { error } = await client
         .from('marketing_materials')
         .delete()
         .eq('id', id);
@@ -1571,10 +1728,10 @@ export const addSupportTicket = async (ticketData: Omit<AdminSupportTicket, 'id'
         return await res.json();
     }
 
-    // Si estamos en el servidor, usar supabase directamente
+    // Si estamos en el servidor, usar supabaseAdmin directamente
     const snakeCaseData = toSnakeCase(newTicketData as unknown as Record<string, unknown>);
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('support_tickets')
         .insert([snakeCaseData])
         .select()
@@ -1666,10 +1823,10 @@ export const updateSupportTicket = async (id: string, data: Partial<AdminSupport
         return await res.json();
     }
 
-    // Si estamos en el servidor, usar supabase directamente
+    // Si estamos en el servidor, usar supabaseAdmin directamente
     const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from('support_tickets')
         .update(snakeCaseData)
         .eq('id', id);
@@ -1718,8 +1875,9 @@ export const addSellerPayment = async (paymentData: Omit<SellerPayment, 'id'>) =
         status: 'pending',
         read_by_seller: false,
     };
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { data, error } = await supabase
+    const { data, error } = await client
         .from('seller_payments')
         .insert([dataWithDefaults])
         .select()
@@ -1731,8 +1889,9 @@ export const addSellerPayment = async (paymentData: Omit<SellerPayment, 'id'>) =
 
 export const updateSellerPayment = async (id: string, data: Partial<SellerPayment>) => {
     const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { error } = await supabase
+    const { error } = await client
         .from('seller_payments')
         .update(snakeCaseData)
         .eq('id', id);
@@ -1746,8 +1905,9 @@ export const addDoctorPayment = async (paymentData: Omit<DoctorPayment, 'id'>) =
         read_by_admin: false,
         read_by_doctor: false,
     };
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { data, error } = await supabase
+    const { data, error } = await client
         .from('doctor_payments')
         .insert([dataWithDefaults])
         .select()
@@ -1758,7 +1918,8 @@ export const addDoctorPayment = async (paymentData: Omit<DoctorPayment, 'id'>) =
 };
 
 export const updateDoctorPaymentStatus = async (id: string, status: DoctorPayment['status']) => {
-    const { error } = await supabase
+    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+    const { error } = await client
         .from('doctor_payments')
         .update({ status, read_by_doctor: false })
         .eq('id', id);
@@ -2065,13 +2226,14 @@ export async function uploadMainPageImage(file: File, type: 'logo' | 'hero'): Pr
 
 export const getDoctorReviews = async (doctorId: string): Promise<DoctorReview[]> => {
     try {
-        const { data, error } = await supabase
+        const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+        const { data, error } = await client
             .from('doctor_reviews')
             .select('*')
             .eq('doctor_id', doctorId);
 
         if (error) throw new Error(error.message || String(error));
-        return (data || []) as DoctorReview[];
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as unknown as DoctorReview[];
     } catch (error) {
         console.error('Error fetching doctor reviews:', error);
         return [];
@@ -2080,13 +2242,14 @@ export const getDoctorReviews = async (doctorId: string): Promise<DoctorReview[]
 
 export const getPatientReviews = async (patientId: string): Promise<DoctorReview[]> => {
     try {
-        const { data, error } = await supabase
+        const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+        const { data, error } = await client
             .from('doctor_reviews')
             .select('*')
             .eq('patient_id', patientId);
 
         if (error) throw new Error(error.message || String(error));
-        return (data || []) as DoctorReview[];
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as unknown as DoctorReview[];
     } catch (error) {
         console.error('Error fetching patient reviews:', error);
         return [];
@@ -2617,15 +2780,24 @@ export const getClinicPatients = async (clinicId: string): Promise<Patient[]> =>
         }
     }
 
-    // Get all doctors belonging to this clinic
+    // Get all doctors belonging to this clinic (direct or via workspaces)
     const { data: doctors } = await supabaseAdmin
         .from('doctors')
         .select('id')
         .eq('clinic_id', clinicId);
 
-    const doctorIds = (doctors || []).map(d => d.id);
+    const { data: wsDoctors } = await supabaseAdmin
+        .from('doctor_workspaces')
+        .select('doctor_id')
+        .eq('clinic_id', clinicId)
+        .eq('status', 'active');
 
-    // Get all services belonging to this clinic
+    const doctorIds = Array.from(new Set([
+        ...(doctors || []).map(d => d.id),
+        ...(wsDoctors || []).map((w: any) => w.doctor_id)
+    ]));
+
+    // Get all services belonging to this clinic or laboratory
     const { data: services } = await supabaseAdmin
         .from('clinic_services')
         .select('id')
@@ -2633,30 +2805,45 @@ export const getClinicPatients = async (clinicId: string): Promise<Patient[]> =>
 
     const serviceIds = (services || []).map(s => s.id);
 
-    if (doctorIds.length === 0 && serviceIds.length === 0) {
-        return [];
-    }
+    const { data: labServices } = await supabaseAdmin
+        .from('laboratory_services')
+        .select('id')
+        .eq('laboratory_id', clinicId);
+
+    const labServiceIds = (labServices || []).map(s => s.id);
 
     // Get unique patient IDs from appointments
-    let appointmentsQuery = supabaseAdmin
-        .from('appointments')
-        .select('patient_id');
-
-    const orConditions: string[] = [];
+    const orConditions: string[] = [
+        `clinic_id.eq.${clinicId}`,
+        `laboratory_id.eq.${clinicId}`,
+    ];
     if (doctorIds.length > 0) {
         orConditions.push(`doctor_id.in.(${doctorIds.join(',')})`);
     }
     if (serviceIds.length > 0) {
         orConditions.push(`clinic_service_id.in.(${serviceIds.join(',')})`);
     }
-
-    if (orConditions.length > 0) {
-        appointmentsQuery = appointmentsQuery.or(orConditions.join(','));
+    if (labServiceIds.length > 0) {
+        orConditions.push(`laboratory_service_id.in.(${labServiceIds.join(',')})`);
     }
 
-    const { data: appointmentsData } = await appointmentsQuery;
+    const { data: appointmentsData } = await supabaseAdmin
+        .from('appointments')
+        .select('patient_id')
+        .or(orConditions.join(','));
 
-    const uniquePatientIds = [...new Set((appointmentsData || []).map(a => a.patient_id).filter(Boolean))];
+    // Also include patients from laboratory_orders for this laboratory
+    const { data: labOrdersData } = await supabaseAdmin
+        .from('laboratory_orders')
+        .select('patient_id')
+        .eq('laboratory_id', clinicId);
+
+    const uniquePatientIds = [
+        ...new Set([
+            ...(appointmentsData || []).map(a => a.patient_id),
+            ...(labOrdersData || []).map(o => o.patient_id),
+        ].filter(Boolean))
+    ];
 
     if (uniquePatientIds.length === 0) {
         return [];
@@ -3449,7 +3636,7 @@ export const addDoctorWorkspace = async (workspace: Partial<DoctorWorkspace>): P
         throw new Error(error.message || 'Failed to add workspace');
     }
 
-    return toCamelCase(data) as DoctorWorkspace;
+    return toCamelCase(data) as unknown as DoctorWorkspace;
 };
 
 export const updateDoctorWorkspace = async (workspaceId: string, updates: Partial<DoctorWorkspace>): Promise<boolean> => {
@@ -3469,3 +3656,301 @@ export const updateDoctorWorkspace = async (workspaceId: string, updates: Partia
     return true;
 };
 
+// =====================================================
+// LABORATORIES & LABORATORY SERVICES
+// =====================================================
+
+export const getLaboratories = async (): Promise<Laboratory[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/laboratories');
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching laboratories via API:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('laboratories')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>) as unknown as Laboratory);
+    } catch (error) {
+        console.error('Error fetching laboratories on server:', error);
+        return [];
+    }
+};
+
+export const getAdminLaboratories = getLaboratories;
+
+export const getLaboratory = async (idOrSlug: string): Promise<Laboratory | null> => {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+    if (typeof window !== 'undefined') {
+        try {
+            const param = isUuid ? `id=${idOrSlug}` : `slug=${idOrSlug}`;
+            const res = await fetch(`/api/laboratories?${param}`);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching laboratory via API:', error);
+            return null;
+        }
+    }
+
+    try {
+        const column = isUuid ? 'id' : 'slug';
+        const { data, error } = await supabaseAdmin
+            .from('laboratories')
+            .select('*')
+            .eq(column, idOrSlug)
+            .maybeSingle();
+
+        if (error || !data) return null;
+        return toCamelCase(data as Record<string, unknown>) as unknown as Laboratory;
+    } catch (error) {
+        console.error('Error fetching laboratory on server:', error);
+        return null;
+    }
+};
+
+export const addLaboratory = async (labData: Partial<Laboratory>): Promise<Laboratory> => {
+    const res = await fetch('/api/laboratories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(labData)
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al registrar el laboratorio');
+    }
+
+    return data.laboratory;
+};
+
+export const updateLaboratory = async (id: string, labData: Partial<Laboratory>): Promise<Laboratory> => {
+    const res = await fetch('/api/laboratories', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...labData })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar el laboratorio');
+    }
+
+    return data.laboratory;
+};
+
+export const deleteLaboratory = async (id: string): Promise<void> => {
+    const res = await fetch(`/api/laboratories?id=${id}`, {
+        method: 'DELETE'
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al eliminar el laboratorio');
+    }
+};
+
+// Laboratory Services
+export const getLaboratoryServices = async (laboratoryId: string): Promise<LaboratoryService[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch(`/api/laboratories/services?laboratoryId=${laboratoryId}`);
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching laboratory services via API:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('laboratory_services')
+            .select('*')
+            .eq('laboratory_id', laboratoryId)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>) as unknown as LaboratoryService);
+    } catch (error) {
+        console.error('Error fetching laboratory services on server:', error);
+        return [];
+    }
+};
+
+export const addLaboratoryService = async (serviceData: Partial<LaboratoryService>): Promise<LaboratoryService> => {
+    const res = await fetch('/api/laboratories/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serviceData)
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al agregar servicio de laboratorio');
+    }
+
+    return data;
+};
+
+export const updateLaboratoryService = async (id: string, serviceData: Partial<LaboratoryService>): Promise<LaboratoryService> => {
+    const res = await fetch('/api/laboratories/services', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...serviceData })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar servicio de laboratorio');
+    }
+
+    return data;
+};
+
+export const deleteLaboratoryService = async (id: string): Promise<void> => {
+    const res = await fetch(`/api/laboratories/services?id=${id}`, {
+        method: 'DELETE'
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al eliminar servicio de laboratorio');
+    }
+};
+
+
+// =====================================================
+// LABORATORY ORDERS
+// =====================================================
+
+export const getLaboratoryOrders = async (laboratoryId: string): Promise<LaboratoryOrder[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch(`/api/laboratories/orders?laboratoryId=${laboratoryId}`);
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (error) {
+            console.error('Error fetching laboratory orders via API:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('laboratory_orders')
+            .select('*')
+            .eq('laboratory_id', laboratoryId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map(item => toCamelCase(item as Record<string, unknown>) as unknown as LaboratoryOrder);
+    } catch (error) {
+        console.error('Error fetching laboratory orders on server:', error);
+        return [];
+    }
+};
+
+export const updateLaboratoryOrder = async (id: string, orderData: Partial<LaboratoryOrder>): Promise<LaboratoryOrder> => {
+    const res = await fetch('/api/laboratories/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...orderData })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar orden de laboratorio');
+    }
+
+    return data;
+};
+
+export const getLaboratorySecretaries = async (laboratoryId: string): Promise<Secretary[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch(`/api/laboratories/secretaries?laboratoryId=${laboratoryId}`);
+            if (!res.ok) {
+                const errText = await res.text();
+                console.error(`Failed to fetch laboratory secretaries via API: ${errText}`);
+                return [];
+            }
+            return await res.json();
+        } catch (error) {
+            console.error('Network error fetching laboratory secretaries:', error);
+            return [];
+        }
+    }
+
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('secretaries')
+            .select('*')
+            .eq('laboratory_id', laboratoryId);
+
+        if (error) {
+            console.error('Error fetching laboratory secretaries on server:', error);
+            return [];
+        }
+
+        return (data || []).map(item => ({
+            id: item.id,
+            email: item.email,
+            name: item.name,
+            role: 'secretary',
+            laboratoryId: item.laboratory_id,
+            clinicId: item.clinic_id,
+            permissions: item.permissions || [],
+            phone: item.phone || '',
+            country: item.country || 'VE',
+            state: item.state || '',
+            city: item.city || '',
+            sector: item.sector || '',
+            address: item.address || '',
+        }));
+    } catch (error) {
+        console.error('Server error fetching laboratory secretaries:', error);
+        return [];
+    }
+};
+
+export const addLaboratorySecretary = async (secretaryData: any) => {
+    const res = await fetch('/api/laboratories/secretaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(secretaryData)
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Error al crear secretaria de laboratorio');
+    }
+    return await res.json();
+};
+
+export const deleteLaboratorySecretary = async (id: string) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/laboratories/secretaries?id=${id}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al eliminar secretaria de laboratorio');
+        }
+        return;
+    }
+
+    const { error } = await supabaseAdmin
+        .from('secretaries')
+        .delete()
+        .eq('id', id);
+    if (error) throw new Error(error.message);
+};

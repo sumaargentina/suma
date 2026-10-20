@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getCurrentDateInArgentina, getPaymentDateInArgentina } from '@/lib/utils';
 import { DoctorConfigurationModal } from '../doctor-config-modal';
+import { ProfessionSpecialtySelector } from '@/components/ui/profession-specialty-selector';
 import { getClinicServices } from '@/lib/supabaseService';
 import { Service } from '@/lib/types';
 
@@ -59,6 +60,7 @@ export function DoctorsTab() {
         name: '',
         email: '',
         password: '', // Only for new doctors
+        profession: 'Médico',
         specialty: '',
     });
 
@@ -216,7 +218,7 @@ export function DoctorsTab() {
 
 
     const resetForm = () => {
-        setFormData({ dni: '', name: '', email: '', password: '', specialty: '' });
+        setFormData({ dni: '', name: '', email: '', password: '', profession: 'Médico', specialty: '' });
         setProfileFile(null);
         setBannerFile(null);
         setPreviewProfile('');
@@ -289,6 +291,7 @@ export function DoctorsTab() {
                 name: doctor.name,
                 email: doctor.email,
                 password: '', // Don't show password
+                profession: doctor.profession || 'Médico',
                 specialty: doctor.specialty,
             });
             setPreviewProfile(doctor.profileImage || '');
@@ -545,26 +548,13 @@ export function DoctorsTab() {
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="specialty" className="text-xs font-semibold">Especialidad de Atención en la Clínica *</Label>
-                                <Select
-                                    value={formData.specialty}
-                                    onValueChange={(val) => setFormData({ ...formData, specialty: val })}
-                                    required
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona la especialidad..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {specialties.map(s => (
-                                            <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {specialties.length === 0 && (
-                                    <p className="text-xs text-amber-600">
-                                        No hay especialidades configuradas en la clínica. Ve a Configuración &gt; Especialidades.
-                                    </p>
-                                )}
+                                <ProfessionSpecialtySelector
+                                    profession={formData.profession}
+                                    specialty={formData.specialty}
+                                    onChange={({ profession, specialty }) =>
+                                        setFormData(prev => ({ ...prev, profession, specialty }))
+                                    }
+                                />
                             </div>
 
                             {/* Sección Contraseña: Solo si es un médico NUEVO o si se está editando con cambio de clave */}
@@ -712,7 +702,7 @@ export function DoctorsTab() {
                                                 <Badge variant="secondary">{docsAppts.length}</Badge>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-green-700">
-                                                ${income.toLocaleString('es-AR')}
+                                                ${income.toLocaleString('en-US')}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <Button size="sm" variant="outline" onClick={() => handleViewDetails(doctor)}>
@@ -769,7 +759,7 @@ export function DoctorsTab() {
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0">
                                             <div className="text-2xl font-bold">
-                                                ${doctorHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('es-AR')}
+                                                ${doctorHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('en-US')}
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -803,7 +793,7 @@ export function DoctorsTab() {
                                                         <TableCell>
                                                             <Badge variant="outline">{appt.attendance || 'Pendiente'}</Badge>
                                                         </TableCell>
-                                                        <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('es-AR')}</TableCell>
+                                                        <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('en-US')}</TableCell>
                                                     </TableRow>
                                                 ))
                                             )}

@@ -175,7 +175,7 @@ class EmailService {
         
         <div class="price-box">
           <div class="price-label">Monto Total</div>
-          <div class="price-value">$${data.totalPrice.toLocaleString('es-AR')}</div>
+          <div class="price-value">$${data.totalPrice.toLocaleString('en-US')}</div>
         </div>
         
         <p style="color: #4b5563; line-height: 1.8;">

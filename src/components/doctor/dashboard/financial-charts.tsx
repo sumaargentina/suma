@@ -1,23 +1,28 @@
 "use client";
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, DollarSign, Calendar } from 'lucide-react';
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, eachMonthOfInterval, startOfYear } from 'date-fns';
+import { TrendingUp, DollarSign, Calendar, Coins } from 'lucide-react';
+import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Appointment, Expense } from '@/lib/types';
+import { formatCurrency } from '@/lib/currency-utils';
 
 interface FinancialChartsProps {
     appointments: Appointment[];
     expenses: Expense[];
     timeRange: 'today' | 'week' | 'month' | 'year' | 'all';
     selectedOffice: string;
+    bcvRate?: number;
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
 
-export function FinancialCharts({ appointments, expenses, timeRange, selectedOffice }: FinancialChartsProps) {
+export function FinancialCharts({ appointments, expenses, timeRange, selectedOffice, bcvRate = 65.50 }: FinancialChartsProps) {
+    const [chartCurrency, setChartCurrency] = useState<'USD' | 'VES'>('USD');
+    const effectiveRate = bcvRate > 0 ? bcvRate : 65.50;
 
     // Filtrar datos por consultorio
     const filteredAppointments = useMemo(() => {
@@ -57,17 +62,20 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                 return expDate >= monthStart && expDate <= monthEnd;
             });
 
-            const revenue = monthAppointments.reduce((sum, apt) => sum + apt.totalPrice, 0);
-            const costs = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+            const revenueUSD = monthAppointments.reduce((sum, apt) => sum + (apt.totalPrice || 0), 0);
+            const costsUSD = monthExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+            const multiplier = chartCurrency === 'VES' ? effectiveRate : 1;
 
             return {
                 month: format(month, 'MMM', { locale: es }),
-                ingresos: revenue,
-                gastos: costs,
-                beneficio: revenue - costs,
+                ingresos: Math.round(revenueUSD * multiplier * 100) / 100,
+                gastos: Math.round(costsUSD * multiplier * 100) / 100,
+                beneficio: Math.round((revenueUSD - costsUSD) * multiplier * 100) / 100,
+                revenueUSD,
+                costsUSD,
             };
         });
-    }, [filteredAppointments, filteredExpenses]);
+    }, [filteredAppointments, filteredExpenses, chartCurrency, effectiveRate]);
 
     // Datos para gráfico de distribución de gastos por categoría
     const expensesByCategoryData = useMemo(() => {
@@ -75,13 +83,15 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
 
         filteredExpenses.forEach(exp => {
             const category = exp.category || 'Sin categoría';
-            categoryMap.set(category, (categoryMap.get(category) || 0) + exp.amount);
+            const multiplier = chartCurrency === 'VES' ? effectiveRate : 1;
+            const amount = (exp.amount || 0) * multiplier;
+            categoryMap.set(category, (categoryMap.get(category) || 0) + amount);
         });
 
         return Array.from(categoryMap.entries())
-            .map(([name, value]) => ({ name, value }))
+            .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
             .sort((a, b) => b.value - a.value);
-    }, [filteredExpenses]);
+    }, [filteredExpenses, chartCurrency, effectiveRate]);
 
     // Datos para gráfico de ingresos por tipo de pago
     const paymentMethodData = useMemo(() => {
@@ -91,23 +101,25 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
             .filter(apt => apt.paymentStatus === 'Pagado')
             .forEach(apt => {
                 const method = apt.paymentMethod || 'No especificado';
-                methodMap.set(method, (methodMap.get(method) || 0) + apt.totalPrice);
+                const multiplier = chartCurrency === 'VES' ? effectiveRate : 1;
+                const amount = (apt.totalPrice || 0) * multiplier;
+                methodMap.set(method, (methodMap.get(method) || 0) + amount);
             });
 
         return Array.from(methodMap.entries())
-            .map(([name, value]) => ({ name, value }))
+            .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
             .sort((a, b) => b.value - a.value);
-    }, [filteredAppointments]);
+    }, [filteredAppointments, chartCurrency, effectiveRate]);
 
     // Estadísticas de comparación
     const comparisonStats = useMemo(() => {
         const totalRevenue = filteredAppointments
             .filter(apt => apt.paymentStatus === 'Pagado')
-            .reduce((sum, apt) => sum + apt.totalPrice, 0);
+            .reduce((sum, apt) => sum + (apt.totalPrice || 0), 0);
 
-        const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
-        const avgAppointmentValue = filteredAppointments.length > 0
+        const avgAppointmentValueUSD = filteredAppointments.filter(apt => apt.paymentStatus === 'Pagado').length > 0
             ? totalRevenue / filteredAppointments.filter(apt => apt.paymentStatus === 'Pagado').length
             : 0;
 
@@ -115,30 +127,83 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
             totalRevenue,
             totalExpenses,
             netProfit: totalRevenue - totalExpenses,
-            avgAppointmentValue,
+            avgAppointmentValueUSD,
+            avgAppointmentValueVES: avgAppointmentValueUSD * effectiveRate,
             profitMargin: totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0,
         };
-    }, [filteredAppointments, filteredExpenses]);
+    }, [filteredAppointments, filteredExpenses, effectiveRate]);
+
+    const formatChartTooltip = (value: number) => {
+        if (chartCurrency === 'USD') {
+            const vesVal = value * effectiveRate;
+            return [
+                `$${value.toFixed(2)} USD / ${formatCurrency(vesVal, 'VES')}`,
+                ''
+            ];
+        } else {
+            const usdVal = effectiveRate > 0 ? value / effectiveRate : 0;
+            return [
+                `${formatCurrency(value, 'VES')} / $${usdVal.toFixed(2)} USD`,
+                ''
+            ];
+        }
+    };
 
     return (
         <div className="space-y-6">
+            {/* Barra superior con selector de moneda para las gráficas */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700">
+                <div className="flex items-center gap-2">
+                    <Coins className="h-5 w-5 text-emerald-600" />
+                    <div>
+                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                            Moneda de Visualización de Gráficos:
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                            (Tasa oficial BCV: Bs. {effectiveRate.toFixed(2)})
+                        </span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-lg border shadow-sm">
+                    <Button
+                        size="sm"
+                        variant={chartCurrency === 'USD' ? 'default' : 'ghost'}
+                        onClick={() => setChartCurrency('USD')}
+                        className="h-8 text-xs font-semibold px-3"
+                    >
+                        Dólares ($ USD)
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant={chartCurrency === 'VES' ? 'default' : 'ghost'}
+                        onClick={() => setChartCurrency('VES')}
+                        className="h-8 text-xs font-semibold px-3"
+                    >
+                        Bolívares (Bs.)
+                    </Button>
+                </div>
+            </div>
+
             {/* KPIs Destacados */}
             <div className="grid gap-4 md:grid-cols-3">
-                <Card className="border-l-4 border-l-green-500">
+                <Card className="border-l-4 border-l-green-500 shadow-sm">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Valor Promedio por Cita</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-green-600">
-                            ${comparisonStats.avgAppointmentValue.toFixed(2)}
+                            ${comparisonStats.avgAppointmentValueUSD.toFixed(2)} USD
                         </div>
+                        <p className="text-xs text-emerald-700 font-mono font-medium mt-0.5">
+                            {formatCurrency(comparisonStats.avgAppointmentValueVES, 'VES')}
+                        </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Ingreso promedio por consulta
+                            Ingreso medio por consulta cobrada
                         </p>
                     </CardContent>
                 </Card>
 
-                <Card className="border-l-4 border-l-blue-500">
+                <Card className="border-l-4 border-l-blue-500 shadow-sm">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Margen de Beneficio</CardTitle>
                     </CardHeader>
@@ -147,12 +212,12 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                             {comparisonStats.profitMargin.toFixed(1)}%
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Rentabilidad sobre ingresos
+                            Rentabilidad sobre ingresos totales
                         </p>
                     </CardContent>
                 </Card>
 
-                <Card className="border-l-4 border-l-purple-500">
+                <Card className="border-l-4 border-l-purple-500 shadow-sm">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Tasa de Conversión</CardTitle>
                     </CardHeader>
@@ -163,7 +228,7 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                                 : 0}%
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Citas pagadas vs totales
+                            Citas cobradas vs agendadas
                         </p>
                     </CardContent>
                 </Card>
@@ -172,22 +237,26 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
             {/* Gráfico de Tendencia Mensual */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-primary" />
-                        Tendencia de Ingresos y Gastos
-                    </CardTitle>
-                    <CardDescription>
-                        Evolución mensual de tus finanzas en el último año
-                    </CardDescription>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <TrendingUp className="h-5 w-5 text-primary" />
+                                Tendencia de Ingresos y Gastos ({chartCurrency === 'USD' ? 'USD' : 'Bs.'})
+                            </CardTitle>
+                            <CardDescription>
+                                Evolución mensual de tus finanzas en el último año
+                            </CardDescription>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
+                    <ResponsiveContainer width="100%" height={320}>
                         <LineChart data={monthlyTrendData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="month" />
-                            <YAxis />
+                            <YAxis tickFormatter={(val) => chartCurrency === 'USD' ? `$${val}` : `Bs. ${val}`} />
                             <Tooltip
-                                formatter={(value: number) => `$${value.toFixed(2)}`}
+                                formatter={(value: number) => formatChartTooltip(value)[0]}
                                 labelStyle={{ color: '#000' }}
                             />
                             <Legend />
@@ -195,22 +264,22 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                                 type="monotone"
                                 dataKey="ingresos"
                                 stroke="#10b981"
-                                strokeWidth={2}
-                                name="Ingresos"
+                                strokeWidth={2.5}
+                                name={`Ingresos (${chartCurrency === 'USD' ? '$' : 'Bs.'})`}
                             />
                             <Line
                                 type="monotone"
                                 dataKey="gastos"
                                 stroke="#ef4444"
-                                strokeWidth={2}
-                                name="Gastos"
+                                strokeWidth={2.5}
+                                name={`Gastos (${chartCurrency === 'USD' ? '$' : 'Bs.'})`}
                             />
                             <Line
                                 type="monotone"
                                 dataKey="beneficio"
                                 stroke="#3b82f6"
-                                strokeWidth={2}
-                                name="Beneficio"
+                                strokeWidth={2.5}
+                                name={`Beneficio (${chartCurrency === 'USD' ? '$' : 'Bs.'})`}
                             />
                         </LineChart>
                     </ResponsiveContainer>
@@ -224,7 +293,7 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <DollarSign className="h-5 w-5 text-red-600" />
-                            Gastos por Categoría
+                            Gastos por Categoría ({chartCurrency === 'USD' ? 'USD' : 'Bs.'})
                         </CardTitle>
                         <CardDescription>
                             Distribución de tus gastos operativos
@@ -232,7 +301,7 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                     </CardHeader>
                     <CardContent>
                         {expensesByCategoryData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={250}>
+                            <ResponsiveContainer width="100%" height={260}>
                                 <PieChart>
                                     <Pie
                                         data={expensesByCategoryData}
@@ -240,7 +309,7 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                                         cy="50%"
                                         labelLine={false}
                                         label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                        outerRadius={80}
+                                        outerRadius={85}
                                         fill="#8884d8"
                                         dataKey="value"
                                     >
@@ -248,11 +317,11 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+                                    <Tooltip formatter={(value: number) => formatChartTooltip(value)[0]} />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (
-                            <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="h-[260px] flex items-center justify-center text-muted-foreground">
                                 No hay gastos registrados
                             </div>
                         )}
@@ -264,21 +333,21 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Calendar className="h-5 w-5 text-green-600" />
-                            Ingresos por Método de Pago
+                            Ingresos por Método de Pago ({chartCurrency === 'USD' ? 'USD' : 'Bs.'})
                         </CardTitle>
                         <CardDescription>
-                            Distribución de pagos recibidos
+                            Distribución de cobros recibidos
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         {paymentMethodData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={250}>
+                            <ResponsiveContainer width="100%" height={260}>
                                 <BarChart data={paymentMethodData}>
                                     <CartesianGrid strokeDasharray="3 3" />
                                     <XAxis dataKey="name" />
-                                    <YAxis />
-                                    <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
-                                    <Bar dataKey="value" fill="#10b981" name="Ingresos">
+                                    <YAxis tickFormatter={(val) => chartCurrency === 'USD' ? `$${val}` : `Bs. ${val}`} />
+                                    <Tooltip formatter={(value: number) => formatChartTooltip(value)[0]} />
+                                    <Bar dataKey="value" fill="#10b981" name={`Ingresos (${chartCurrency === 'USD' ? '$' : 'Bs.'})`}>
                                         {paymentMethodData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
@@ -286,7 +355,7 @@ export function FinancialCharts({ appointments, expenses, timeRange, selectedOff
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
-                            <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="h-[260px] flex items-center justify-center text-muted-foreground">
                                 No hay ingresos registrados
                             </div>
                         )}

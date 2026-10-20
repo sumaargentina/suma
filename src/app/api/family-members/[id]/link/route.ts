@@ -14,20 +14,21 @@ const mapPatientData = (data: any) => ({
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await params;
         const body = await request.json();
         const identifier = String(body.identifier || ''); // ensure string
 
-        console.log(`🔗 Linking family member ${params.id} to identifier: ${identifier}`);
+        console.log(`🔗 Linking family member ${id} to identifier: ${identifier}`);
 
         if (!identifier.trim()) {
             return NextResponse.json({ error: 'Email o DNI es requerido' }, { status: 400 });
         }
 
         // 1. Verify family member exists and belongs to requesting user (TODO: Add auth check here if not handled by middleware)
-        const familyMember = await getFamilyMember(params.id);
+        const familyMember = await getFamilyMember(id);
         if (!familyMember) {
             return NextResponse.json({ error: 'Familiar no encontrado' }, { status: 404 });
         }
@@ -93,7 +94,7 @@ export async function POST(
         }
 
         // 3. Link
-        await linkFamilyMemberToPatient(params.id, user.id);
+        await linkFamilyMemberToPatient(id, user.id);
 
         return NextResponse.json({
             success: true,

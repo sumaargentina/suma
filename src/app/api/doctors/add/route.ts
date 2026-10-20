@@ -57,11 +57,23 @@ export async function POST(request: NextRequest) {
             return result;
         };
 
-        const dataWithDefaults = {
+        const dataWithDefaults: Record<string, unknown> = {
             ...toSnakeCase(sanitizedData),
             read_by_admin: false,
             read_by_seller: false,
         };
+
+        if ('insurances' in dataWithDefaults) {
+            if (!('accepted_insurances' in dataWithDefaults)) {
+                dataWithDefaults.accepted_insurances = dataWithDefaults.insurances;
+            }
+            delete dataWithDefaults.insurances;
+        }
+
+        if (typeof dataWithDefaults.password === 'string' && !dataWithDefaults.password.startsWith('$2')) {
+            const { hashPassword } = await import('@/lib/password-utils');
+            dataWithDefaults.password = await hashPassword(dataWithDefaults.password);
+        }
 
         console.log('API: Inserting data:', JSON.stringify(dataWithDefaults, null, 2));
 

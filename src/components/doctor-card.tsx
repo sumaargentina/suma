@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Heart, MapPin, Star, Share2, Copy, Send, Mail, ShieldCheck, User, Banknote } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings";
+import { findProfessionBySpecialty } from "@/lib/professions-catalog";
 import type { Doctor } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,7 +17,22 @@ import { Badge } from "@/components/ui/badge";
 
 export function DoctorCard({ doctor }: { doctor: Doctor }) {
   const { user, toggleFavoriteDoctor } = useAuth();
+  const { professionsCatalog } = useSettings();
   const { toast } = useToast();
+
+  const resolvedProfession =
+    doctor.profession ||
+    findProfessionBySpecialty(doctor.specialty, professionsCatalog)?.name ||
+    'Médico';
+
+  const hasTitlePrefix = /^(dr\.?|dra\.?|lic\.?|ing\.?|prof\.?)\s/i.test(doctor.name.trim());
+  const isDoctorOrDentist =
+    resolvedProfession === 'Médico' || resolvedProfession === 'Dentista (Odontólogo)';
+  const displayDoctorName = hasTitlePrefix
+    ? doctor.name
+    : isDoctorOrDentist
+      ? `Dr(a). ${doctor.name}`
+      : doctor.name;
 
   const isFavorite = user?.role === 'patient' && user.favoriteDoctorIds?.includes(doctor.id);
 
@@ -139,14 +156,19 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
           {/* SECCIÓN DE CONTENIDO */}
           <CardContent className="flex-1 p-3 sm:p-5 flex flex-col justify-between gap-2 sm:gap-3 min-w-0">
             <div>
-              {/* Header: Nombre y Especialidad */}
+              {/* Header: Nombre, Profesión y Especialidad */}
               <div className="mb-1 sm:mb-2">
                 <h3 className="text-base sm:text-xl font-bold text-slate-900 leading-snug mb-0.5 line-clamp-1 group-hover:text-primary transition-colors">
-                  Dr. {doctor.name}
+                  {displayDoctorName}
                 </h3>
-                <p className="text-xs sm:text-sm font-medium text-primary line-clamp-1">
-                  {doctor.specialty}
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200/70">
+                    {resolvedProfession}
+                  </span>
+                  <p className="text-xs sm:text-sm font-medium text-primary line-clamp-1">
+                    {doctor.specialty}
+                  </p>
+                </div>
               </div>
 
               {/* Info: Ubicación y Rating */}
@@ -208,7 +230,7 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
 
                   if (prices.length === 0) return <span>Consultar precio</span>;
                   const minPrice = Math.min(...prices);
-                  return <span>Desde ${new Intl.NumberFormat('es-AR').format(minPrice)}</span>;
+                  return <span>Desde ${new Intl.NumberFormat('en-US').format(minPrice)}</span>;
                 })()}
               </div>
             </div>

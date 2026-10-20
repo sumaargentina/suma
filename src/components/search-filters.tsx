@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 import {
     Sheet,
     SheetContent,
@@ -25,7 +25,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { getCitiesByState } from "@/lib/geo-data";
+import { useSettings } from "@/lib/settings";
+import { DEFAULT_PROFESSIONS_CATALOG, findProfessionBySpecialty } from "@/lib/professions-catalog";
+import { getCitiesByState, normalizeCountryCode } from "@/lib/geo-data";
 import { LocationFilterPopover } from "@/components/location-filter-popover";
 
 interface SearchFiltersProps {
@@ -38,20 +40,19 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user } = useAuth();
-
-    // Ciudades venezolanas completas combinadas con ciudades registradas
-    const availableCities = React.useMemo(() => {
-        const veCities = getCitiesByState('VE').map(c => c.name);
-        const combined = new Set([
-            ...veCities,
-            ...(cities || [])
-        ]);
-        return Array.from(combined).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-    }, [cities]);
+    const { professionsCatalog } = useSettings();
+    const catalog = React.useMemo(
+        () => (professionsCatalog && professionsCatalog.length > 0 ? professionsCatalog : DEFAULT_PROFESSIONS_CATALOG),
+        [professionsCatalog]
+    );
 
     // Estados locales
     const [query, setQuery] = React.useState(searchParams.get("q") || "");
+    const [profession, setProfession] = React.useState(searchParams.get("profession") || "all");
     const [specialty, setSpecialty] = React.useState(searchParams.get("specialty") || "all");
+    const [country, setCountry] = React.useState(
+        normalizeCountryCode(searchParams.get("country") || user?.country || "VE")
+    );
     const [state, setState] = React.useState(searchParams.get("state") || "all");
     const [city, setCity] = React.useState(searchParams.get("city") || "all");
     const [minRating, setMinRating] = React.useState(Number(searchParams.get("minRating")) || 0);
@@ -63,20 +64,110 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     const [isOpen, setIsOpen] = React.useState(false);
     const [isSearching, setIsSearching] = React.useState(false);
 
+    // Ciudades del país activo combinadas con ciudades registradas
+    const availableCities = React.useMemo(() => {
+        const countryCities = getCitiesByState(country).map(c => c.name);
+        const combined = new Set([
+            ...countryCities,
+            ...(cities || [])
+        ]);
+        return Array.from(combined).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    }, [cities, country]);
+
     // Ref para el timeout del debounce
     const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
 
-    // Flag para controlar que el auto-select de la ciudad del usuario solo ocurra una sola vez al cargar la página
+    // Flag para controlar que el auto-select de la ciudad/país del usuario ocurra al cargar la página
     const hasAppliedUserCityRef = React.useRef(false);
+
+    // Opciones buscables para 1° Nivel: Profesión
+    const professionFilterOptions: SearchableSelectOption[] = React.useMemo(
+        () => [
+            { value: "all", label: "Todas las profesiones" },
+            ...catalog.map((p) => ({
+                value: p.name,
+                label: p.name,
+                badge: `${p.specialties.length}`,
+            })),
+        ],
+        [catalog]
+    );
+
+    // Opciones buscables para 2° Nivel: Especialidad (filtradas por 1° Nivel por defecto)
+    const specialtyFilterOptions: SearchableSelectOption[] = React.useMemo(() => {
+        const defaultOpt: SearchableSelectOption = {
+            value: "all",
+            label: profession === "all" ? "Todas las especialidades" : `Todo en ${profession}`,
+        };
+
+        if (profession !== "all") {
+            const foundProf = catalog.find((p) => p.name.toLowerCase() === profession.toLowerCase());
+            if (foundProf) {
+                return [
+                    defaultOpt,
+                    ...foundProf.specialties.map((s) => ({
+                        value: s.name,
+                        label: s.name,
+                        sublabel: foundProf.name,
+                        meta: { profession: foundProf.name },
+                    })),
+                ];
+            }
+        }
+
+        // Si está en "Todas las profesiones", agrupar primero las de Médico y luego el resto con su categoría
+        const list: SearchableSelectOption[] = [defaultOpt];
+        const seen = new Set<string>();
+        for (const prof of catalog) {
+            for (const s of prof.specialties) {
+                if (!seen.has(s.name)) {
+                    seen.add(s.name);
+                    list.push({
+                        value: s.name,
+                        label: s.name,
+                        sublabel: prof.name,
+                        meta: { profession: prof.name },
+                    });
+                }
+            }
+        }
+        return list;
+    }, [profession, catalog]);
+
+    // Opciones de respaldo de otras profesiones si el usuario filtró por una profesión y escribe otra especialidad
+    const fallbackSpecialtyFilterOptions: SearchableSelectOption[] = React.useMemo(() => {
+        if (profession === "all") return [];
+        const list: SearchableSelectOption[] = [];
+        for (const prof of catalog) {
+            if (prof.name.toLowerCase() === profession.toLowerCase()) continue;
+            for (const s of prof.specialties) {
+                list.push({
+                    value: s.name,
+                    label: s.name,
+                    sublabel: `Categoría: ${prof.name}`,
+                    meta: { profession: prof.name },
+                });
+            }
+        }
+        return list;
+    }, [profession, catalog]);
 
     // Sincronizar estados locales cuando los searchParams de la URL cambian
     React.useEffect(() => {
         const urlQuery = searchParams.get("q") || "";
+        const urlProfession = searchParams.get("profession") || "all";
         const urlSpecialty = searchParams.get("specialty") || "all";
+        const urlCountry = searchParams.get("country");
         const urlState = searchParams.get("state") || "all";
         const urlCity = searchParams.get("city") || "all";
         setQuery(urlQuery);
+        setProfession(urlProfession);
         setSpecialty(urlSpecialty);
+        if (urlCountry) {
+            setCountry(normalizeCountryCode(urlCountry));
+        } else if (user?.country) {
+            setCountry(normalizeCountryCode(user.country));
+        }
         setState(urlState);
         setCity(urlCity);
         setMinRating(Number(searchParams.get("minRating")) || 0);
@@ -85,12 +176,14 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
             Number(searchParams.get("maxPrice")) || maxPrice
         ]);
         setVerifiedOnly(searchParams.get("verified") === "true");
-    }, [searchParams, maxPrice]);
+    }, [searchParams, maxPrice, user?.country]);
 
     // Función para construir URL con parámetros actuales o con overrides
     const buildSearchUrl = React.useCallback((overrides?: {
         q?: string;
+        profession?: string;
         specialty?: string;
+        country?: string;
         state?: string;
         city?: string;
         minRating?: number;
@@ -100,8 +193,16 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
     }) => {
         const params = new URLSearchParams();
         
+        const countryVal = normalizeCountryCode(
+            overrides?.country !== undefined ? overrides.country : (user?.role === 'patient' && user.country ? user.country : country)
+        );
+        params.set("country", countryVal);
+
         const qVal = overrides?.q !== undefined ? overrides.q : query;
         if (qVal) params.set("q", qVal);
+
+        const profVal = overrides?.profession !== undefined ? overrides.profession : profession;
+        if (profVal && profVal !== "all") params.set("profession", profVal);
 
         const specVal = overrides?.specialty !== undefined ? overrides.specialty : specialty;
         if (specVal && specVal !== "all") params.set("specialty", specVal);
@@ -125,25 +226,50 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
         if (verVal) params.set("verified", "true");
 
         return `/find-a-doctor?${params.toString()}`;
-    }, [query, specialty, state, city, minRating, priceRange, maxPrice, verifiedOnly]);
+    }, [query, profession, specialty, country, state, city, minRating, priceRange, maxPrice, verifiedOnly, user]);
 
-    // Auto-select city for patient - SOLAMENTE una vez al montar el componente si no hay parámetros en la URL
+    // Auto-select country & city for logged-in user (especialmente pacientes)
     React.useEffect(() => {
+        if (!user) return;
+        const userCountry = normalizeCountryCode(user.country || "VE");
+
+        // Siempre garantizar que si el usuario tiene país diferente al de la URL (o no hay country en URL), se filtre por su país
+        const currentUrlCountry = searchParams.get("country");
+        if (user.role === 'patient' && (!currentUrlCountry || normalizeCountryCode(currentUrlCountry) !== userCountry)) {
+            setCountry(userCountry);
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("country", userCountry);
+            if (!hasAppliedUserCityRef.current && !searchParams.has("city") && !searchParams.has("state")) {
+                if (user.city) {
+                    setCity(user.city);
+                    params.set("city", user.city);
+                }
+                if (user.state) {
+                    setState(user.state);
+                    params.set("state", user.state);
+                }
+            }
+            hasAppliedUserCityRef.current = true;
+            router.replace(`?${params.toString()}`, { scroll: false });
+            return;
+        }
+
         if (hasAppliedUserCityRef.current) return;
         
-        // Si ya hay parámetros en la URL o no es paciente, marcar como aplicado y salir
         if (searchParams.has("city") || searchParams.has("state") || searchParams.has("specialty") || searchParams.has("q")) {
             hasAppliedUserCityRef.current = true;
             return;
         }
 
-        if (user?.role === 'patient' && user.city) {
+        if (user.role === 'patient' && (user.city || user.country)) {
             hasAppliedUserCityRef.current = true;
-            setCity(user.city);
+            setCountry(userCountry);
+            if (user.city) setCity(user.city);
             if (user.state) setState(user.state);
 
             const params = new URLSearchParams();
-            params.set("city", user.city);
+            params.set("country", userCountry);
+            if (user.city) params.set("city", user.city);
             if (user.state) params.set("state", user.state);
             router.replace(`?${params.toString()}`, { scroll: false });
         } else {
@@ -166,17 +292,34 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
         }, 300);
     };
 
-    // Cambiar especialidad
-    const handleSpecialtyChange = (newSpecialty: string) => {
+    // Cambiar profesión (Nivel 1)
+    const handleProfessionChange = (newProfession: string) => {
+        setProfession(newProfession);
+        setSpecialty("all");
+        router.push(buildSearchUrl({ profession: newProfession, specialty: "all" }), { scroll: false });
+    };
+
+    // Cambiar especialidad (Nivel 2)
+    const handleSpecialtyChange = (newSpecialty: string, option?: SearchableSelectOption) => {
         setSpecialty(newSpecialty);
+        if (newSpecialty !== "all") {
+            const targetProf = (option?.meta?.profession as string) || findProfessionBySpecialty(newSpecialty, catalog)?.name;
+            if (targetProf && targetProf !== profession) {
+                setProfession(targetProf);
+                router.push(buildSearchUrl({ profession: targetProf, specialty: newSpecialty }), { scroll: false });
+                return;
+            }
+        }
         router.push(buildSearchUrl({ specialty: newSpecialty }), { scroll: false });
     };
 
-    // Cambiar ubicación
-    const handleLocationChange = (newState: string, newCity: string) => {
+    // Cambiar ubicación (País / Estado / Ciudad)
+    const handleLocationChange = (newState: string, newCity: string, newCountry?: string) => {
+        const targetCountry = normalizeCountryCode(newCountry || country);
+        setCountry(targetCountry);
         setState(newState);
         setCity(newCity);
-        router.push(buildSearchUrl({ state: newState, city: newCity }), { scroll: false });
+        router.push(buildSearchUrl({ country: targetCountry, state: newState, city: newCity }), { scroll: false });
     };
 
     // Limpiar timeout al desmontar
@@ -198,17 +341,20 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
         setIsSearching(false);
     };
 
-    // Limpiar todos los filtros
+    // Limpiar todos los filtros (preservando el país activo)
     const handleClearFilters = () => {
+        const targetCountry = normalizeCountryCode(user?.country || country || "VE");
         setQuery("");
+        setProfession("all");
         setSpecialty("all");
+        setCountry(targetCountry);
         setState("all");
         setCity("all");
         setMinRating(0);
         setPriceRange([0, maxPrice]);
         setVerifiedOnly(false);
         hasAppliedUserCityRef.current = true;
-        router.push("/find-a-doctor", { scroll: false });
+        router.push(`/find-a-doctor?country=${targetCountry}`, { scroll: false });
         setIsOpen(false);
     };
 
@@ -221,6 +367,7 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
 
     // Filtros activos
     const activeFiltersCount = [
+        profession !== "all",
         specialty !== "all",
         state !== "all" || city !== "all",
         minRating > 0,
@@ -298,27 +445,38 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
 
                     {/* Filtros Desktop */}
                     <div className="hidden md:flex items-center gap-2">
-                        {/* Especialidad */}
-                        <Select value={specialty} onValueChange={handleSpecialtyChange}>
-                            <SelectTrigger className="w-[160px] h-11 border-0 bg-slate-50/80 hover:bg-slate-100 focus:ring-0 rounded-xl font-medium text-slate-700">
-                                <div className="flex items-center gap-2">
-                                    <Stethoscope className="h-4 w-4 text-primary" />
-                                    <SelectValue placeholder="Especialidad" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                                <SelectItem value="all">Todas</SelectItem>
-                                {specialties.map((s) => (
-                                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {/* Nivel 1: Profesión (con filtro por escritura) */}
+                        <div className="w-[175px]">
+                            <SearchableSelect
+                                options={professionFilterOptions}
+                                value={profession}
+                                onValueChange={handleProfessionChange}
+                                placeholder="Profesión"
+                                searchPlaceholder="Escribe profesión..."
+                                triggerClassName="h-11 border-0 bg-slate-50/80 hover:bg-slate-100 rounded-xl font-medium text-slate-700"
+                            />
+                        </div>
 
-                        {/* Ubicación: Estado y Ciudad con Búsqueda en Vivo */}
+                        {/* Nivel 2: Especialidad (con filtro por escritura) */}
+                        <div className="w-[195px]">
+                            <SearchableSelect
+                                options={specialtyFilterOptions}
+                                fallbackOptionsOnSearch={fallbackSpecialtyFilterOptions}
+                                value={specialty}
+                                onValueChange={handleSpecialtyChange}
+                                placeholder="Especialidad"
+                                searchPlaceholder="Escribe especialidad..."
+                                triggerClassName="h-11 border-0 bg-slate-50/80 hover:bg-slate-100 rounded-xl font-medium text-slate-700"
+                            />
+                        </div>
+
+                        {/* Ubicación: País, Estado y Ciudad con Búsqueda en Vivo */}
                         <LocationFilterPopover
+                            selectedCountry={country}
                             selectedState={state}
                             selectedCity={city}
                             onLocationChange={handleLocationChange}
+                            lockCountry={user?.role === 'patient'}
                             variant="desktop"
                         />
 
@@ -374,33 +532,48 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
                                 </div>
 
                                 <div className="p-6 space-y-8">
-                                    {/* Especialidad */}
+                                    {/* Nivel 1: Profesión */}
                                     <div className="space-y-3">
                                         <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                            <Stethoscope className="h-4 w-4" /> Especialidad
+                                            <Stethoscope className="h-4 w-4" /> 1° Nivel: Profesión / Categoría
                                         </Label>
-                                        <Select value={specialty} onValueChange={handleSpecialtyChange}>
-                                            <SelectTrigger className="w-full h-14 rounded-xl bg-slate-50 border-slate-200 font-medium">
-                                                <SelectValue placeholder="Seleccionar especialidad" />
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xl max-h-[300px]">
-                                                <SelectItem value="all">Todas las especialidades</SelectItem>
-                                                {specialties.map((s) => (
-                                                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <SearchableSelect
+                                            options={professionFilterOptions}
+                                            value={profession}
+                                            onValueChange={handleProfessionChange}
+                                            placeholder="Selecciona o escribe profesión..."
+                                            searchPlaceholder="Escribe las iniciales de la profesión..."
+                                            triggerClassName="w-full h-12 rounded-xl bg-slate-50 border-slate-200 font-medium"
+                                        />
                                     </div>
 
-                                    {/* Ubicación: Estado y Ciudad con Búsqueda en Vivo */}
+                                    {/* Nivel 2: Especialidad */}
                                     <div className="space-y-3">
                                         <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                            <MapPin className="h-4 w-4" /> Ubicación (Estado / Ciudad)
+                                            <Sparkles className="h-4 w-4" /> 2° Nivel: Especialidad
+                                        </Label>
+                                        <SearchableSelect
+                                            options={specialtyFilterOptions}
+                                            fallbackOptionsOnSearch={fallbackSpecialtyFilterOptions}
+                                            value={specialty}
+                                            onValueChange={handleSpecialtyChange}
+                                            placeholder="Selecciona o escribe especialidad..."
+                                            searchPlaceholder="Escribe las iniciales de la especialidad..."
+                                            triggerClassName="w-full h-12 rounded-xl bg-slate-50 border-slate-200 font-medium"
+                                        />
+                                    </div>
+
+                                    {/* Ubicación: País, Estado y Ciudad con Búsqueda en Vivo */}
+                                    <div className="space-y-3">
+                                        <Label className="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                            <MapPin className="h-4 w-4" /> Ubicación (País / Estado / Ciudad)
                                         </Label>
                                         <LocationFilterPopover
+                                            selectedCountry={country}
                                             selectedState={state}
                                             selectedCity={city}
                                             onLocationChange={handleLocationChange}
+                                            lockCountry={user?.role === 'patient'}
                                             variant="sheet"
                                         />
                                     </div>
@@ -554,6 +727,18 @@ export function SearchFilters({ specialties, cities, maxPrice = 100000 }: Search
             {activeFiltersCount > 0 && (
                 <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
                     <span className="text-xs font-medium text-slate-400 mr-1">Filtros:</span>
+
+                    {profession !== "all" && (
+                        <Badge
+                            variant="secondary"
+                            className="pl-2.5 pr-1.5 py-1.5 bg-teal-50 border border-teal-200 text-teal-800 hover:bg-teal-100 gap-1.5 rounded-full shadow-sm cursor-pointer group transition-all"
+                            onClick={() => handleProfessionChange("all")}
+                        >
+                            <Stethoscope className="h-3 w-3 text-teal-600" />
+                            {profession}
+                            <X className="h-3 w-3 text-teal-400 group-hover:text-red-500 transition-colors" />
+                        </Badge>
+                    )}
 
                     {specialty !== "all" && (
                         <Badge

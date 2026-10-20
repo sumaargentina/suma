@@ -3,13 +3,7 @@
 import React, { useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
 import {
   getSupportedCountries,
   getStatesByCountry,
@@ -287,10 +281,11 @@ export function LocationSelector({
     });
   };
 
-  // Manejar cambio de Ciudad
-  const handleCityChange = (newCity: string) => {
+  // Manejar cambio de Ciudad (incluyendo cuando el usuario escribe una ciudad de otro estado directamente)
+  const handleCityChange = (newCity: string, option?: SearchableSelectOption) => {
+    const targetState = (option?.meta?.state as string) || matchedState;
     let coords = { lat: 0, lng: 0 };
-    const stateQuery = normalizeGeoText(matchedState);
+    const stateQuery = normalizeGeoText(targetState);
     const countryQuery = normalizeGeoText(currentCountry);
     const cityQuery = normalizeGeoText(newCity);
 
@@ -307,12 +302,12 @@ export function LocationSelector({
       }
     }
     if (!coords.lat && !coords.lng) {
-      coords = getCoordinates(currentCountry, matchedState, newCity);
+      coords = getCoordinates(currentCountry, targetState, newCity);
     }
 
     onLocationChange({
       country: currentCountry,
-      state: matchedState,
+      state: targetState,
       city: newCity,
       sector,
       address,
@@ -320,6 +315,60 @@ export function LocationSelector({
       lng: coords.lng,
     });
   };
+
+  // Opciones para País, Estado y Ciudad con soporte de escritura rápida
+  const countryOptions: SearchableSelectOption[] = useMemo(
+    () =>
+      countries.map((c) => ({
+        value: c.code,
+        label: `${c.flag} ${c.name}`,
+        keywords: `${c.code} ${c.name}`,
+      })),
+    [countries]
+  );
+
+  const stateOptions: SearchableSelectOption[] = useMemo(
+    () =>
+      states.map((s) => ({
+        value: s.name,
+        label: s.name,
+        keywords: s.code,
+      })),
+    [states]
+  );
+
+  const cityOptions: SearchableSelectOption[] = useMemo(
+    () =>
+      cities.map((c) => ({
+        value: c.name,
+        label: c.name,
+        sublabel: matchedState || undefined,
+        meta: { state: matchedState },
+      })),
+    [cities, matchedState]
+  );
+
+  // Todas las ciudades del país actual para permitir escribir directamente en Ciudad aunque sea de otro estado
+  const allCountryCityOptions: SearchableSelectOption[] = useMemo(() => {
+    const list: SearchableSelectOption[] = [];
+    const seen = new Set<string>();
+    for (const s of states) {
+      const sCities = getCitiesByState(currentCountry, s.name);
+      for (const c of sCities) {
+        const key = `${normalizeGeoText(c.name)}|${normalizeGeoText(s.name)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            value: c.name.trim(),
+            label: c.name.trim(),
+            sublabel: `Estado: ${s.name}`,
+            meta: { state: s.name },
+          });
+        }
+      }
+    }
+    return list;
+  }, [states, currentCountry]);
 
   // Manejar Sector
   const handleSectorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -345,32 +394,22 @@ export function LocationSelector({
 
   return (
     <div className={`space-y-3 md:space-y-4 ${className}`}>
-      {/* Geographic Cascading Selectors: País -> Estado -> Ciudad */}
+      {/* Geographic Cascading Selectors: País -> Estado -> Ciudad (con búsqueda por escritura) */}
       <div className={`grid grid-cols-1 ${compact ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3`}>
         {/* Country */}
         <div className="space-y-1.5">
           <Label className="text-xs md:text-sm font-medium">
             País <span className="text-destructive">*</span>
           </Label>
-          <Select
+          <SearchableSelect
+            options={countryOptions}
             value={currentCountry || undefined}
             onValueChange={handleCountryChange}
             disabled={disabled}
-          >
-            <SelectTrigger className="h-9 md:h-10 text-xs md:text-sm">
-              <SelectValue placeholder="Selecciona un país" />
-            </SelectTrigger>
-            <SelectContent className="max-h-60 overflow-y-auto">
-              {countries.map((c) => (
-                <SelectItem key={c.code} value={c.code}>
-                  <span className="flex items-center gap-2">
-                    <span>{c.flag}</span>
-                    <span>{c.name}</span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder="Selecciona o escribe un país"
+            searchPlaceholder="Escribe el país..."
+            emptyMessage="País no encontrado."
+          />
           {errors?.country && (
             <p className="text-[11px] text-destructive">{errors.country}</p>
           )}
@@ -381,22 +420,15 @@ export function LocationSelector({
           <Label className="text-xs md:text-sm font-medium">
             Estado / Provincia <span className="text-destructive">*</span>
           </Label>
-          <Select
+          <SearchableSelect
+            options={stateOptions}
             value={matchedState || undefined}
             onValueChange={handleStateChange}
             disabled={disabled || states.length === 0}
-          >
-            <SelectTrigger className="h-9 md:h-10 text-xs md:text-sm">
-              <SelectValue placeholder={states.length === 0 ? "Sin estados" : "Selecciona un estado"} />
-            </SelectTrigger>
-            <SelectContent className="max-h-60 overflow-y-auto">
-              {states.map((s) => (
-                <SelectItem key={s.name} value={s.name}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder={states.length === 0 ? "Sin estados" : "Selecciona o escribe estado..."}
+            searchPlaceholder="Escribe las iniciales del estado..."
+            emptyMessage="No se encontró ese estado."
+          />
           {errors?.state && (
             <p className="text-[11px] text-destructive">{errors.state}</p>
           )}
@@ -407,22 +439,16 @@ export function LocationSelector({
           <Label className="text-xs md:text-sm font-medium">
             Ciudad / Municipio <span className="text-destructive">*</span>
           </Label>
-          <Select
+          <SearchableSelect
+            options={cityOptions.length > 0 ? cityOptions : allCountryCityOptions}
+            fallbackOptionsOnSearch={allCountryCityOptions}
             value={matchedCity || undefined}
             onValueChange={handleCityChange}
-            disabled={disabled || cities.length === 0}
-          >
-            <SelectTrigger className="h-9 md:h-10 text-xs md:text-sm">
-              <SelectValue placeholder={!matchedState ? "Primero elige un estado" : "Selecciona una ciudad"} />
-            </SelectTrigger>
-            <SelectContent className="max-h-60 overflow-y-auto">
-              {cities.map((c) => (
-                <SelectItem key={c.name} value={c.name}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            disabled={disabled}
+            placeholder={!matchedState ? "Escribe o elige una ciudad..." : "Selecciona o escribe ciudad..."}
+            searchPlaceholder="Escribe las iniciales de la ciudad..."
+            emptyMessage="No se encontró esa ciudad."
+          />
           {errors?.city && (
             <p className="text-[11px] text-destructive">{errors.city}</p>
           )}

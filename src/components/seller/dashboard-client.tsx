@@ -118,6 +118,7 @@ export function SellerDashboardClient({ currentTab }: { currentTab: string }) {
                 <ReferralsTab 
                   referredDoctors={referredDoctors} 
                   referralCode={sellerData.referralCode}
+                  sellerData={sellerData}
                   onUpdate={fetchData}
                 />
               )}

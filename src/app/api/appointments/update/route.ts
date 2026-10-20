@@ -17,7 +17,7 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 export async function PATCH(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Requiere autenticación
-        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'secretary', 'admin']);
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'laboratory', 'secretary', 'admin']);
 
         if (authResult instanceof NextResponse) {
             logSecurityEvent('APPOINTMENT_UPDATE_UNAUTHORIZED', {
@@ -66,6 +66,7 @@ export async function PATCH(request: NextRequest) {
         const canAccess =
             user.role === 'admin' ||
             user.role === 'clinic' ||
+            user.role === 'laboratory' ||
             user.role === 'secretary' ||
             (user.role === 'patient' && appointment.patient_id === user.id) ||
             (user.role === 'doctor' && appointment.doctor_id === user.id);
@@ -92,6 +93,42 @@ export async function PATCH(request: NextRequest) {
             dataWithFlags.read_by_patient = false;
         }
 
+        // Si se marca como Pagado, registrar fecha de pago y congelar tasa de cambio del día
+        if (data.paymentStatus === 'Pagado') {
+            if (!dataWithFlags.paid_at) {
+                dataWithFlags.paid_at = new Date().toISOString();
+            }
+            // Si no viene la tasa o monto en moneda local congelado, obtener la tasa del día de la configuración
+            if (!dataWithFlags.exchange_rate || !dataWithFlags.amount_in_local_currency) {
+                try {
+                    const { data: settingsRow } = await supabaseAdmin
+                        .from('settings')
+                        .select('data')
+                        .eq('id', 'main')
+                        .maybeSingle();
+
+                    const settingsData = settingsRow?.data || {};
+                    const rateOfTheDay = Number(settingsData.bcvRate) || 65.50;
+
+                    let totalUSD = Number(data.totalPrice || data.amountInUSD);
+                    if (!totalUSD || isNaN(totalUSD)) {
+                        const { data: apptRow } = await supabaseAdmin
+                            .from('appointments')
+                            .select('total_price, amount_in_usd')
+                            .eq('id', id)
+                            .maybeSingle();
+                        totalUSD = Number(apptRow?.total_price || apptRow?.amount_in_usd || 0);
+                    }
+
+                    dataWithFlags.exchange_rate = rateOfTheDay;
+                    dataWithFlags.amount_in_usd = totalUSD;
+                    dataWithFlags.amount_in_local_currency = Math.round(totalUSD * rateOfTheDay * 100) / 100;
+                } catch (rateErr) {
+                    console.warn('⚠️ Could not automatically freeze exchange rate on payment confirmation:', rateErr);
+                }
+            }
+        }
+
         logSecurityEvent('APPOINTMENT_UPDATE', {
             userId: user.id,
             appointmentId: id,
@@ -100,10 +137,27 @@ export async function PATCH(request: NextRequest) {
 
         console.log('📝 Updating appointment:', id, 'with data:', dataWithFlags);
 
-        const { error } = await supabaseAdmin
+        let { error } = await supabaseAdmin
             .from('appointments')
             .update(dataWithFlags)
             .eq('id', id);
+
+        if (error && error.code === '42703') {
+            console.warn('⚠️ Some currency columns do not exist yet in appointments table. Retrying update with base columns...');
+            const newCols = [
+                'currency', 'payment_currency', 'exchange_rate',
+                'amount_in_usd', 'amount_in_local_currency', 'paid_at', 'payment_account_details'
+            ];
+            const fallbackData = { ...dataWithFlags };
+            newCols.forEach(col => delete fallbackData[col]);
+
+            const retryResult = await supabaseAdmin
+                .from('appointments')
+                .update(fallbackData)
+                .eq('id', id);
+
+            error = retryResult.error;
+        }
 
         if (error) {
             console.error('❌ Error updating appointment:', error);

@@ -52,6 +52,12 @@ export async function PATCH(request: NextRequest) {
         // Remove 'role' field as it doesn't exist in the patients table
         const { role, ...dataWithoutRole } = data;
         const snakeCaseData = toSnakeCase(dataWithoutRole);
+        if ('favorited_doctor_ids' in snakeCaseData) {
+            if (!('favorite_doctor_ids' in snakeCaseData)) {
+                snakeCaseData.favorite_doctor_ids = snakeCaseData.favorited_doctor_ids;
+            }
+            delete snakeCaseData.favorited_doctor_ids;
+        }
 
         const { error } = await supabaseAdmin
             .from('patients')

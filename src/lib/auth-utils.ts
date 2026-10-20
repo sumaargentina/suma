@@ -14,7 +14,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 // Tipos de roles permitidos
-export type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary';
+export type UserRole = 'patient' | 'doctor' | 'seller' | 'admin' | 'clinic' | 'secretary' | 'pharmacy' | 'laboratory';
 
 // Información del usuario autenticado
 export interface AuthUser {
@@ -23,6 +23,7 @@ export interface AuthUser {
     role: UserRole;
     name?: string;
     clinicId?: string;
+    laboratoryId?: string;
 }
 
 // Resultado de la verificación de autenticación
@@ -39,9 +40,24 @@ interface AuthResult {
  */
 export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
     try {
-        // Obtener el token JWT desde las cookies
-        const cookieStore = await cookies();
-        const authToken = cookieStore.get('auth-token')?.value;
+        // Obtener el token JWT desde request.cookies, next/headers cookies(), o header Authorization
+        let authToken = request.cookies?.get('auth-token')?.value;
+
+        if (!authToken) {
+            try {
+                const cookieStore = await cookies();
+                authToken = cookieStore.get('auth-token')?.value;
+            } catch {
+                // Ignorar si cookies() se llama fuera del request store de Next.js
+            }
+        }
+
+        if (!authToken) {
+            const authHeader = request.headers.get('authorization');
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                authToken = authHeader.substring(7).trim();
+            }
+        }
 
         if (!authToken) {
             return { authenticated: false, error: 'No hay sesión activa' };
@@ -51,7 +67,7 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
             // Verificar y decodificar el JWT
             const { payload } = await jwtVerify(authToken, JWT_SECRET);
 
-            const userId = payload.userId as string;
+            const userId = (payload.userId || payload.id) as string;
             const role = payload.role as UserRole;
             const email = payload.email as string;
             const name = payload.name as string;
@@ -66,9 +82,10 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
                 return { authenticated: false, error: 'Rol no válido' };
             }
 
+            const selectCols = role === 'secretary' ? 'id, email, name, clinic_id, laboratory_id' : 'id, email, name';
             const { data: user, error } = await supabaseAdmin
                 .from(tableName)
-                .select('id, email, name')
+                .select(selectCols)
                 .eq('id', userId)
                 .single();
 
@@ -76,14 +93,17 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
                 return { authenticated: false, error: 'Usuario no encontrado' };
             }
 
+            const secUser = user as any;
+
             return {
                 authenticated: true,
                 user: {
                     id: userId,
-                    email: email || user.email,
+                    email: email || secUser.email,
                     role: role,
-                    name: name || user.name,
-                    clinicId: payload.clinicId as string | undefined
+                    name: name || secUser.name,
+                    clinicId: (payload.clinicId as string | undefined) || secUser.clinic_id || undefined,
+                    laboratoryId: (payload.laboratoryId as string | undefined) || secUser.laboratory_id || undefined
                 }
             };
         } catch (jwtError) {
@@ -154,7 +174,9 @@ function getTableByRole(role: UserRole): string | null {
         seller: 'sellers',
         admin: 'admins',
         clinic: 'clinics',
-        secretary: 'clinic_secretaries'
+        secretary: 'secretaries',
+        pharmacy: 'pharmacies',
+        laboratory: 'laboratories'
     };
     return tables[role] || null;
 }
