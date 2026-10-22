@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
 import type { Doctor } from '@/lib/types';
-import { Trash2, Copy, Check, Share2, ExternalLink, Link2 } from 'lucide-react';
+import { Trash2, Copy, Check, Share2, ExternalLink, Link2, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { uploadPublicImage } from '@/lib/supabaseService';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
@@ -126,6 +127,117 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
   const initialPhone = getInitialPhoneData(doctorData.whatsapp);
   const [countryCode, setCountryCode] = useState(initialPhone.code);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone.number);
+  const [cedulaValue, setCedulaValue] = useState(doctorData.cedula || '');
+  const [medicalLicenseValue, setMedicalLicenseValue] = useState(doctorData.medicalLicense || '');
+
+  // Real-time duplicate validation states
+  const [cedulaError, setCedulaError] = useState('');
+  const [isCheckingCedula, setIsCheckingCedula] = useState(false);
+  const [licenseError, setLicenseError] = useState('');
+  const [isCheckingLicense, setIsCheckingLicense] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+
+  useEffect(() => {
+    if (doctorData.cedula) {
+      setCedulaError('');
+      return;
+    }
+    const clean = cedulaValue.replace(/\D/g, '');
+    if (!clean || clean.length < 5) {
+      setCedulaError('');
+      setIsCheckingCedula(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingCedula(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'cedula', value: cedulaValue.trim(), excludeId: doctorData.id })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setCedulaError(data.isUnique === false ? (data.message || 'Esta cédula ya está siendo usada.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingCedula(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cedulaValue, doctorData.cedula, doctorData.id]);
+
+  useEffect(() => {
+    const clean = medicalLicenseValue.trim();
+    if (!clean || clean.length < 3) {
+      setLicenseError('');
+      setIsCheckingLicense(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingLicense(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'doctor_medical_license', value: clean, excludeId: doctorData.id })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setLicenseError(data.isUnique === false ? (data.message || 'Esta matrícula médica ya está registrada.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingLicense(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [medicalLicenseValue, doctorData.id]);
+
+  useEffect(() => {
+    const clean = phoneNumber.replace(/\D/g, '');
+    if (!clean || clean.length < 7) {
+      setPhoneError('');
+      setIsCheckingPhone(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingPhone(true);
+    const timer = setTimeout(async () => {
+      try {
+        const fullPhone = `${countryCode}${clean}`;
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'phone', value: fullPhone, excludeId: doctorData.id })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setPhoneError(data.isUnique === false ? (data.message || 'Este número telefónico ya está siendo usado.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingPhone(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [phoneNumber, countryCode, doctorData.id]);
 
   useEffect(() => {
     if (doctorData) {
@@ -148,13 +260,22 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
     e.preventDefault();
     if (!doctorData) return;
 
+    if (cedulaError || licenseError || phoneError) {
+      toast({
+        variant: 'destructive',
+        title: 'Datos duplicados',
+        description: cedulaError || licenseError || phoneError,
+      });
+      return;
+    }
+
     try {
       const formData = new FormData(e.currentTarget);
       const dataToValidate = {
         name: formData.get('name') as string,
-        cedula: doctorData.cedula || (formData.get('cedula') as string),
+        cedula: doctorData.cedula || cedulaValue.trim() || (formData.get('cedula') as string),
         documentType: doctorData.documentType || documentType,
-        medicalLicense: formData.get('medicalLicense') as string,
+        medicalLicense: medicalLicenseValue.trim() || (formData.get('medicalLicense') as string),
         whatsapp: phoneNumber ? `${countryCode}${phoneNumber}` : '',
         city: locationData.city || doctorData.city || '',
         address: locationData.address || '',
@@ -361,21 +482,36 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                       {DOCUMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input
-                    id="cedula"
-                    name="cedula"
-                    defaultValue={doctorData.cedula}
-                    className="h-9 md:h-10 text-xs md:text-sm flex-1 bg-slate-50 dark:bg-slate-900 cursor-not-allowed"
-                    disabled={!!doctorData.cedula}
-                    readOnly={!!doctorData.cedula || isClinicEmployee}
-                    maxLength={15}
-                  />
+                  <div className="relative flex-1">
+                    <Input
+                      id="cedula"
+                      name="cedula"
+                      value={doctorData.cedula || cedulaValue}
+                      onChange={(e) => setCedulaValue(e.target.value)}
+                      className={cn(
+                        "h-9 md:h-10 text-xs md:text-sm w-full",
+                        doctorData.cedula && "bg-slate-50 dark:bg-slate-900 cursor-not-allowed",
+                        cedulaError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                      )}
+                      disabled={!!doctorData.cedula}
+                      readOnly={!!doctorData.cedula || isClinicEmployee}
+                      maxLength={15}
+                    />
+                    {isCheckingCedula && (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-2.5" />
+                    )}
+                  </div>
                 </div>
-                {doctorData.cedula && (
+                {cedulaError ? (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {cedulaError}
+                  </p>
+                ) : doctorData.cedula ? (
                   <p className="text-[11px] text-muted-foreground mt-1">
                     🔒 La Cédula no puede ser modificada por seguridad. Para correcciones, contacta a soporte.
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
             <div className="border-t pt-4">
@@ -393,15 +529,31 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
 
             <div className="space-y-1 md:space-y-2">
               <Label htmlFor="medicalLicense" className="text-xs md:text-sm">Número de Matrícula / Colegio Profesional</Label>
-              <Input
-                id="medicalLicense"
-                name="medicalLicense"
-                defaultValue={doctorData.medicalLicense || ''}
-                placeholder="Ej: 123456"
-                className="h-9 md:h-10 text-xs md:text-sm"
-                readOnly={isClinicEmployee}
-              />
-              <p className="text-xs text-muted-foreground">Este número será verificado por el administrador</p>
+              <div className="relative">
+                <Input
+                  id="medicalLicense"
+                  name="medicalLicense"
+                  value={medicalLicenseValue}
+                  onChange={(e) => setMedicalLicenseValue(e.target.value)}
+                  placeholder="Ej: 123456"
+                  className={cn(
+                    "h-9 md:h-10 text-xs md:text-sm",
+                    licenseError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                  )}
+                  readOnly={isClinicEmployee}
+                />
+                {isCheckingLicense && (
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-2.5" />
+                )}
+              </div>
+              {licenseError ? (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {licenseError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Este número será verificado por el administrador</p>
+              )}
             </div>
             <div className="space-y-1 md:space-y-2">
               <Label htmlFor="whatsapp" className="text-xs md:text-sm">Nro. WhatsApp</Label>
@@ -411,21 +563,34 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                   onChange={setCountryCode}
                   className="w-[120px] h-9 md:h-10"
                 />
-                <Input
-                  id="whatsapp"
-                  name="whatsapp-number"
-                  value={phoneNumber}
-                  onChange={(e) => {
-                    // Solo números, sin ceros iniciales
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (val.startsWith('0')) val = val.slice(1);
-                    setPhoneNumber(val);
-                  }}
-                  placeholder="123456789"
-                  className="h-9 md:h-10 text-xs md:text-sm flex-1"
-                  maxLength={15}
-                />
+                <div className="relative flex-1">
+                  <Input
+                    id="whatsapp"
+                    name="whatsapp-number"
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.startsWith('0')) val = val.slice(1);
+                      setPhoneNumber(val);
+                    }}
+                    placeholder="123456789"
+                    className={cn(
+                      "h-9 md:h-10 text-xs md:text-sm w-full",
+                      phoneError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                    )}
+                    maxLength={15}
+                  />
+                  {isCheckingPhone && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-2.5" />
+                  )}
+                </div>
               </div>
+              {phoneError && (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {phoneError}
+                </p>
+              )}
             </div>
             <div className="border-t pt-4">
               <h4 className="text-xs md:text-sm font-semibold mb-3">Ubicación y Sede Principal</h4>
@@ -540,7 +705,15 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
             </div>
 
           </CardContent>
-          <CardFooter><Button type="submit" className="w-full md:w-auto">Guardar Perfil</Button></CardFooter>
+          <CardFooter>
+            <Button
+              type="submit"
+              className="w-full md:w-auto"
+              disabled={!!cedulaError || !!licenseError || !!phoneError}
+            >
+              Guardar Perfil
+            </Button>
+          </CardFooter>
         </form>
       </Card>
       {!isClinicEmployee && (

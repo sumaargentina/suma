@@ -50,9 +50,12 @@ export default function ServiceBookingPage() {
     const [step, setStep] = useState<'selectDateTime' | 'selectServices' | 'payment' | 'confirmation'>('selectDateTime');
 
     // Booking state
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
+        const now = new Date();
+        return now.getDay() === 0 ? addDays(now, 1) : now;
+    });
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
-    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'pagomovil' | 'zelle' | 'mercadopago' | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'pagomovil' | 'zelle' | 'mercadopago' | null>('efectivo');
 
     // New state for item selection
     const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([]);
@@ -200,15 +203,9 @@ export default function ServiceBookingPage() {
     }, [service, bookedSlots]);
 
     const handleDateTimeContinue = () => {
-        // Verificar que el usuario esté logueado como paciente
         if (!user) {
             toast({ variant: 'destructive', title: 'Iniciar Sesión Requerido', description: 'Debes iniciar sesión para continuar con la reserva.' });
-            router.push('/auth/login');
-            return;
-        }
-
-        if (user.role !== 'patient') {
-            toast({ variant: 'destructive', title: 'Acceso Restringido', description: 'Solo los pacientes pueden agendar citas.' });
+            router.push(`/auth/login?redirect=/clinica/${slug}/servicio/${serviceId}`);
             return;
         }
 
@@ -260,10 +257,13 @@ export default function ServiceBookingPage() {
             await addAppointment({
                 patientId: user.id,
                 patientName: user.name,
-                doctorId: undefined, // Explicit
-                doctorName: clinic!.name, // Show clinic name in place of doctor name
+                bookedByPatientId: user.id,
+                doctorId: undefined,
+                doctorName: clinic!.name,
+                clinicId: clinic!.id,
                 clinicServiceId: service!.id,
                 serviceName: finalServiceName,
+                specialty: service!.serviceCategory || 'Laboratorio / Servicio',
                 date: format(selectedDate!, 'yyyy-MM-dd'),
                 time: selectedTime!,
                 totalPrice: totalPrice,

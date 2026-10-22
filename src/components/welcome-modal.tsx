@@ -8,7 +8,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card } from '@/components/ui/card';
@@ -22,12 +21,13 @@ import {
   Sparkles,
   Heart,
   Briefcase,
-  GraduationCap
+  GraduationCap,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
 import { useToast } from '@/hooks/use-toast';
-import * as supabaseService from '@/lib/supabaseService';
-import { COUNTRY_CODES, DOCUMENT_TYPES, DocumentType, Patient } from '@/lib/types';
+import { DOCUMENT_TYPES, DocumentType, Patient } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 import { validateCedula } from '@/lib/validation-utils';
@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -50,7 +51,6 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const { cities, isLoading } = useSettings();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
-
 
   const { toast } = useToast();
   const [fetchedCities, setFetchedCities] = useState<any[]>([]);
@@ -66,7 +66,6 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
           const data = await response.json();
 
           if (data?.cities && Array.isArray(data.cities)) {
-            console.log("Cities fetched via API:", data.cities);
             setFetchedCities(data.cities);
           }
         } catch (err) {
@@ -78,9 +77,6 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
     };
     fetchCitiesDirectly();
   }, [cities.length, isLoading]);
-
-  const displayCities = cities.length > 0 ? cities : fetchedCities;
-  const loadingCities = isLoading || isFetchingCities;
 
   // Estado para el formulario de perfil
   const [birthDate, setBirthDate] = useState<string>('');
@@ -104,10 +100,96 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const [education, setEducation] = useState('');
   const [occupation, setOccupation] = useState('');
 
+  // Validaciones en tiempo real de duplicados
+  const [cedulaError, setCedulaError] = useState('');
+  const [isCheckingCedula, setIsCheckingCedula] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+
+  useEffect(() => {
+    const clean = cedulaNumber.replace(/\D/g, '');
+    if (!clean || clean.length < 5) {
+      setCedulaError('');
+      setIsCheckingCedula(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingCedula(true);
+    const timer = setTimeout(async () => {
+      try {
+        const finalCedula = documentType === 'Cédula'
+          ? `${cedulaPrefix}-${clean}`
+          : cedulaNumber.trim().toUpperCase();
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'cedula',
+            value: finalCedula,
+            excludeId: user?.id
+          })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setCedulaError(data.isUnique === false ? (data.message || 'Esta cédula ya está siendo usada.') : '');
+        }
+      } catch {
+        // Ignore network glitch
+      } finally {
+        if (!cancelled) setIsCheckingCedula(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cedulaNumber, cedulaPrefix, documentType, user?.id]);
+
+  useEffect(() => {
+    const clean = phone.replace(/\D/g, '');
+    if (!clean || clean.length < 7) {
+      setPhoneError('');
+      setIsCheckingPhone(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingPhone(true);
+    const timer = setTimeout(async () => {
+      try {
+        const fullPhone = `${countryCode}${clean}`;
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'phone',
+            value: fullPhone,
+            excludeId: user?.id
+          })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setPhoneError(data.isUnique === false ? (data.message || 'Este número telefónico ya está siendo usado.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingPhone(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [phone, countryCode, user?.id]);
+
   const steps = [
     {
       title: "¡Bienvenido a SUMA! 🎉",
-      description: "Estamos emocionados de tenerte con nosotros. Para brindarte la mejor experiencia, necesitamos que completes tu perfil.",
+      description: "Estamos emocionados de tenerte con nosotros. Completa tu perfil para comenzar.",
       icon: Sparkles,
       color: "text-blue-600"
     },
@@ -138,6 +220,44 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   ];
 
   const handleNext = () => {
+    if (currentStep === 1) {
+      if (!birthDate || !gender || !cedulaNumber.trim()) {
+        toast({
+          variant: 'destructive',
+          title: 'Campos obligatorios',
+          description: 'Por favor completa tu fecha de nacimiento, género y documento de identidad.'
+        });
+        return;
+      }
+      if (cedulaError) {
+        toast({
+          variant: 'destructive',
+          title: 'Documento en uso',
+          description: cedulaError
+        });
+        return;
+      }
+    }
+
+    if (currentStep === 2) {
+      if (!phone.trim() || !locationData.state || !locationData.city) {
+        toast({
+          variant: 'destructive',
+          title: 'Campos obligatorios',
+          description: 'Por favor ingresa tu teléfono, estado y ciudad.'
+        });
+        return;
+      }
+      if (phoneError) {
+        toast({
+          variant: 'destructive',
+          title: 'Teléfono en uso',
+          description: phoneError
+        });
+        return;
+      }
+    }
+
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -157,12 +277,20 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
       ? `${cedulaPrefix}-${rawCedula.replace(/\D/g, '')}` 
       : rawCedula.toUpperCase();
 
-    // Validación de campos obligatorios
     if (!birthDate || !gender || !rawCedula || !phone || !locationData.state || !locationData.city) {
       toast({
         variant: 'destructive',
         title: 'Campos incompletos',
         description: 'Por favor completa todos los campos obligatorios incluyendo Documento, Teléfono, Estado y Ciudad.'
+      });
+      return;
+    }
+
+    if (cedulaError || phoneError) {
+      toast({
+        variant: 'destructive',
+        title: 'Datos duplicados',
+        description: cedulaError || phoneError
       });
       return;
     }
@@ -180,18 +308,39 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
     }
 
     try {
-      // Verificar que la Cédula sea única
-      const allPatients = await supabaseService.getPatients();
-      const existingPatient = allPatients.find(p =>
-        p.cedula && p.cedula.toLowerCase().replace(/[-.\s]/g, '') === finalCedula.toLowerCase().replace(/[-.\s]/g, '') && p.id !== user.id
-      );
+      // Verificar en servidor que Cédula y Teléfono sean únicos
+      const [cedRes, phoneRes] = await Promise.all([
+        fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'cedula', value: finalCedula, excludeId: user.id })
+        }).then(r => r.json()),
+        fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'phone', value: `${countryCode}${phone}`, excludeId: user.id })
+        }).then(r => r.json())
+      ]);
 
-      if (existingPatient) {
+      if (cedRes.isUnique === false) {
+        setCedulaError(cedRes.message || 'Esta cédula ya está siendo usada.');
         toast({
           variant: 'destructive',
-          title: 'Documento ya registrado',
-          description: 'Este documento de identidad ya está registrado por otro usuario.'
+          title: 'Cédula en uso',
+          description: cedRes.message || 'Esta cédula ya está siendo usada.'
         });
+        setCurrentStep(1);
+        return;
+      }
+
+      if (phoneRes.isUnique === false) {
+        setPhoneError(phoneRes.message || 'Este número telefónico ya está siendo usado.');
+        toast({
+          variant: 'destructive',
+          title: 'Teléfono en uso',
+          description: phoneRes.message || 'Este número telefónico ya está siendo usado.'
+        });
+        setCurrentStep(2);
         return;
       }
 
@@ -224,7 +373,6 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         profileCompleted: true
       };
 
-      console.log('Guardando perfil con datos:', updateData);
       await updateUser(updateData);
 
       toast({
@@ -232,8 +380,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
         description: "Tu información ha sido guardada correctamente.",
       });
 
-      setCurrentStep(4); // Ir al paso final
-      // Cerrar la modal tras un pequeño delay para UX
+      setCurrentStep(4);
       setTimeout(() => {
         onClose();
       }, 1200);
@@ -249,32 +396,32 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
   const handleFinish = () => {
     onClose();
-    router.push('/find-a-doctor'); // Redirigir a buscar médicos
+    router.push('/find-a-doctor');
   };
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
         return (
-          <div className="text-center space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+          <div className="text-center space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
               <Card className="text-center p-4">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <User className="w-6 h-6 text-green-600" />
+                <div className="w-11 h-11 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2.5">
+                  <User className="w-5 h-5 text-green-600" />
                 </div>
                 <h4 className="font-medium text-sm">Perfil Completo</h4>
                 <p className="text-xs text-gray-500 mt-1">Información personal</p>
               </Card>
               <Card className="text-center p-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Phone className="w-6 h-6 text-purple-600" />
+                <div className="w-11 h-11 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2.5">
+                  <Phone className="w-5 h-5 text-purple-600" />
                 </div>
                 <h4 className="font-medium text-sm">Contacto</h4>
                 <p className="text-xs text-gray-500 mt-1">Datos de comunicación</p>
               </Card>
               <Card className="text-center p-4">
-                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <MapPin className="w-6 h-6 text-orange-600" />
+                <div className="w-11 h-11 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2.5">
+                  <MapPin className="w-5 h-5 text-orange-600" />
                 </div>
                 <h4 className="font-medium text-sm">Ubicación</h4>
                 <p className="text-xs text-gray-500 mt-1">Ciudad de residencia</p>
@@ -285,61 +432,36 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
       case 1:
         return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <User className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Información Personal
-              </h3>
-              <p className="text-gray-600 text-sm">
-                Cuéntanos un poco más sobre ti para personalizar tu experiencia.
-              </p>
-            </div>
-
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Fecha de Nacimiento
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  Fecha de Nacimiento *
                 </label>
                 <input
                   type="date"
                   value={birthDate}
-                  onChange={(e) => {
-                    setBirthDate(e.target.value);
-                    if (e.target.value) {
-                      const ageCalc = new Date().getFullYear() - new Date(e.target.value).getFullYear();
-                      // Ajuste simple, una librería como date-fns es más precisa pero esto sirve para feedback visual inmediato
-                      /* const today = new Date();
-                      const birth = new Date(e.target.value);
-                      let ageCalc = today.getFullYear() - birth.getFullYear();
-                      const m = today.getMonth() - birth.getMonth();
-                      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-                          ageCalc--;
-                      } */
-                    }
-                  }}
+                  onChange={(e) => setBirthDate(e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 />
                 {birthDate && (
-                  <p className="text-sm text-green-600 font-medium">
+                  <p className="text-xs text-green-600 font-medium">
                     Edad calculada: {new Date().getFullYear() - new Date(birthDate).getFullYear() - (new Date().getMonth() < new Date(birthDate).getMonth() || (new Date().getMonth() === new Date(birthDate).getMonth() && new Date().getDate() < new Date(birthDate).getDate()) ? 1 : 0)} años
                   </p>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  Género
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" />
+                  Género *
                 </label>
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value as 'masculino' | 'femenino' | '')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 >
                   <option value="" disabled>Selecciona tu sexo</option>
                   <option value="masculino">Hombre (Masculino)</option>
@@ -379,9 +501,9 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                     : 'Nro. de Cédula de Identidad *'}
                 </Label>
                 {documentType === 'Cédula' ? (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 relative">
                     <Select value={cedulaPrefix} onValueChange={(val: 'V' | 'E') => setCedulaPrefix(val)}>
-                      <SelectTrigger className="w-[100px] h-10">
+                      <SelectTrigger className="w-[95px] h-10">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -389,30 +511,57 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                         <SelectItem value="E">E - Ext</SelectItem>
                       </SelectContent>
                     </Select>
-                    <input
-                      id="welcome-cedula"
-                      type="tel"
-                      placeholder="Ej. 12345678"
-                      value={cedulaNumber}
-                      onChange={(e) => setCedulaNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-10"
-                      required
-                    />
+                    <div className="relative flex-1">
+                      <input
+                        id="welcome-cedula"
+                        type="tel"
+                        placeholder="Ej. 12345678"
+                        value={cedulaNumber}
+                        onChange={(e) => setCedulaNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className={cn(
+                          "w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 h-10",
+                          cedulaError
+                            ? "border-red-500 focus:ring-red-500 bg-red-50/30"
+                            : "border-gray-300 focus:ring-blue-500"
+                        )}
+                        required
+                      />
+                      {isCheckingCedula && (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <input
-                    id="welcome-cedula"
-                    type="text"
-                    placeholder={documentType === 'Pasaporte' ? 'Ej. ABC123456' : 'Ej. 12345678'}
-                    value={cedulaNumber}
-                    onChange={(e) => setCedulaNumber(e.target.value.toUpperCase().slice(0, 20))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-10"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      id="welcome-cedula"
+                      type="text"
+                      placeholder={documentType === 'Pasaporte' ? 'Ej. ABC123456' : 'Ej. 12345678'}
+                      value={cedulaNumber}
+                      onChange={(e) => setCedulaNumber(e.target.value.toUpperCase().slice(0, 20))}
+                      className={cn(
+                        "w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 h-10",
+                        cedulaError
+                          ? "border-red-500 focus:ring-red-500 bg-red-50/30"
+                          : "border-gray-300 focus:ring-blue-500"
+                      )}
+                      required
+                    />
+                    {isCheckingCedula && (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                    )}
+                  </div>
                 )}
-                <p className="text-[11px] text-gray-500">
-                  🔒 No se podrá modificar después por motivos de seguridad médica.
-                </p>
+                {cedulaError ? (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {cedulaError}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-gray-500">
+                    🔒 No se podrá modificar después por motivos de seguridad médica.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -420,91 +569,80 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
       case 2:
         return (
-          <div className="space-y-5">
-            <div className="text-center">
-              <div className="mx-auto w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mb-3">
-                <Phone className="w-7 h-7 text-purple-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                Información de Contacto y Ubicación
-              </h3>
-              <p className="text-gray-600 text-xs">
-                Selecciona tu país, estado y ciudad para conectarte con los mejores especialistas de tu zona.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-purple-600" />
-                  Teléfono / WhatsApp
-                </label>
-                <div className="flex gap-2">
-                  <CountryCodeSelect
-                    value={countryCode}
-                    onChange={setCountryCode}
-                    className="w-[110px]"
-                  />
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-purple-600" />
+                Teléfono / WhatsApp *
+              </label>
+              <div className="flex gap-2">
+                <CountryCodeSelect
+                  value={countryCode}
+                  onChange={setCountryCode}
+                  className="w-[110px]"
+                />
+                <div className="relative flex-1">
                   <input
                     type="tel"
                     placeholder="Ej: 412 123 4567"
                     value={phone}
                     onChange={(e) => {
-                      // Solo números, sin ceros iniciales
                       let val = e.target.value.replace(/\D/g, '');
                       if (val.startsWith('0')) val = val.slice(1);
                       setPhone(val);
                     }}
-                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={cn(
+                      "w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 h-10",
+                      phoneError
+                        ? "border-red-500 focus:ring-red-500 bg-red-50/30"
+                        : "border-gray-300 focus:ring-blue-500"
+                    )}
                   />
+                  {isCheckingPhone && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                  )}
                 </div>
               </div>
+              {phoneError && (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {phoneError}
+                </p>
+              )}
+            </div>
 
-              <div className="border-t pt-3">
-                <h4 className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  Ubicación Geográfica y Dirección
-                </h4>
-                <LocationSelector
-                  country={locationData.country}
-                  state={locationData.state}
-                  city={locationData.city}
-                  sector={locationData.sector}
-                  address={locationData.address}
-                  onLocationChange={setLocationData}
-                  showAddressFields={true}
-                  compact={true}
-                />
-              </div>
+            <div className="border-t pt-3">
+              <h4 className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                Ubicación Geográfica y Dirección
+              </h4>
+              <LocationSelector
+                country={locationData.country}
+                state={locationData.state}
+                city={locationData.city}
+                sector={locationData.sector}
+                address={locationData.address}
+                onLocationChange={setLocationData}
+                showAddressFields={true}
+                compact={true}
+              />
             </div>
           </div>
         );
 
       case 3:
         return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="mx-auto w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4">
-                <Heart className="w-8 h-8 text-rose-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Información Adicional
-              </h3>
-              <p className="text-gray-600 text-sm">
-                Estos datos son opcionales pero útiles para tu atención médica.
-              </p>
-            </div>
-
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Heart className="w-4 h-4" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Heart className="w-3.5 h-3.5" />
                   Tipo de Sangre
                 </label>
                 <select
                   value={bloodType}
                   onChange={(e) => setBloodType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 >
                   <option value="">Seleccionar (opcional)</option>
                   <option value="A+">A+</option>
@@ -518,15 +656,15 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <User className="w-4 h-4" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" />
                   Estado Civil
                 </label>
                 <select
                   value={maritalStatus}
                   onChange={(e) => setMaritalStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 >
                   <option value="">Seleccionar (opcional)</option>
                   <option value="soltero">Soltero/a</option>
@@ -537,15 +675,15 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <GraduationCap className="w-4 h-4" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5" />
                   Nivel de Estudios
                 </label>
                 <select
                   value={education}
                   onChange={(e) => setEducation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 >
                   <option value="">Seleccionar (opcional)</option>
                   <option value="primario">Primario</option>
@@ -556,9 +694,9 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Briefcase className="w-4 h-4" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5" />
                   Ocupación / Trabajo
                 </label>
                 <input
@@ -566,14 +704,14 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   placeholder="Ej: Contador, Docente..."
                   value={occupation}
                   onChange={(e) => setOccupation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                <User className="w-4 h-4" />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" />
                 Religión
               </label>
               <input
@@ -581,7 +719,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                 placeholder="Ej: Católica, Evangélica... (opcional)"
                 value={religion}
                 onChange={(e) => setReligion(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"
               />
             </div>
           </div>
@@ -589,40 +727,18 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
       case 4:
         return (
-          <div className="text-center space-y-6">
-            <div className="mx-auto w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-10 h-10 text-emerald-600" />
+          <div className="text-center space-y-5">
+            <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-emerald-600" />
             </div>
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-gray-900">
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-gray-900">
                 ¡Perfil Completado! 🎉
               </h3>
-              <p className="text-gray-600">
+              <p className="text-sm text-gray-600">
                 Tu perfil está completo. Ya puedes explorar todos los servicios de SUMA y
                 comenzar a buscar médicos especialistas.
               </p>
-            </div>
-
-            <div className="bg-blue-50 rounded-lg p-4 mt-6">
-              <h4 className="font-medium text-blue-900 mb-2">¿Qué puedes hacer ahora?</h4>
-              <ul className="text-sm text-blue-800 space-y-1 text-left">
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-blue-600" />
-                  Buscar médicos especialistas
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-blue-600" />
-                  Agendar citas médicas
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-blue-600" />
-                  Ver tu historial de citas
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-blue-600" />
-                  Guardar médicos favoritos
-                </li>
-              </ul>
             </div>
           </div>
         );
@@ -634,57 +750,69 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+      <DialogContent className="w-[95vw] max-w-xl max-h-[88vh] flex flex-col p-0 overflow-hidden rounded-2xl">
+        <div className="shrink-0 px-6 py-4 border-b bg-slate-50/70">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
               <Sparkles className="w-4 h-4 text-blue-600" />
             </div>
             {steps[currentStep].title}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs mt-1">
             {steps[currentStep].description}
           </DialogDescription>
-        </DialogHeader>
+        </div>
 
-        <div className="py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
           {renderStepContent()}
         </div>
 
-        <div className="flex justify-between items-center pt-4 border-t">
+        <div className="shrink-0 flex justify-between items-center px-6 py-3.5 border-t bg-slate-50">
           <div className="flex gap-2">
             {steps.map((_, index) => (
               <div
                 key={index}
-                className={`w-2 h-2 rounded-full ${index <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
+                className={`w-2 h-2 rounded-full ${index <= currentStep ? 'bg-blue-600' : 'bg-gray-300'}`}
               />
             ))}
           </div>
 
           <div className="flex gap-2">
             {currentStep > 0 && currentStep < 4 && (
-              <Button variant="outline" onClick={handleBack}>
+              <Button variant="outline" size="sm" onClick={handleBack}>
                 Atrás
               </Button>
             )}
 
             {currentStep < 3 && (
-              <Button onClick={handleNext} className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleNext}
+                disabled={
+                  (currentStep === 1 && (!!cedulaError || isCheckingCedula)) ||
+                  (currentStep === 2 && (!!phoneError || isCheckingPhone))
+                }
+                className="flex items-center gap-2"
+              >
                 Continuar
                 <ArrowRight className="w-4 h-4" />
               </Button>
             )}
 
             {currentStep === 3 && (
-              <Button onClick={handleCompleteProfile} className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleCompleteProfile}
+                disabled={!!cedulaError || !!phoneError}
+                className="flex items-center gap-2"
+              >
                 Completar Perfil
                 <CheckCircle className="w-4 h-4" />
               </Button>
             )}
 
             {currentStep === 4 && (
-              <Button onClick={handleFinish} className="flex items-center gap-2">
+              <Button size="sm" onClick={handleFinish} className="flex items-center gap-2">
                 ¡Empezar!
                 <ArrowRight className="w-4 h-4" />
               </Button>

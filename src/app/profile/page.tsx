@@ -27,7 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { User, Save, Lock, Camera, Upload, X } from 'lucide-react';
+import { User, Save, Lock, Camera, Upload, X, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { z } from 'zod';
 import { useSettings } from '@/lib/settings';
 import Image from 'next/image';
@@ -94,6 +95,85 @@ export default function ProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+
+  // Real-time duplicate validation states
+  const [cedulaError, setCedulaError] = useState('');
+  const [isCheckingCedula, setIsCheckingCedula] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+
+  useEffect(() => {
+    if (user?.cedula) {
+      setCedulaError('');
+      return;
+    }
+    const clean = cedula.replace(/\D/g, '');
+    if (!clean || clean.length < 5) {
+      setCedulaError('');
+      setIsCheckingCedula(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingCedula(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'cedula', value: cedula.trim(), excludeId: user?.id })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setCedulaError(data.isUnique === false ? (data.message || 'Esta cédula ya está siendo usada.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingCedula(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cedula, user?.id, user?.cedula]);
+
+  useEffect(() => {
+    const clean = phone.replace(/\D/g, '');
+    if (!clean || clean.length < 7) {
+      setPhoneError('');
+      setIsCheckingPhone(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingPhone(true);
+    const timer = setTimeout(async () => {
+      try {
+        const fullPhone = `${countryCode}${clean}`;
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'phone', value: fullPhone, excludeId: user?.id })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setPhoneError(data.isUnique === false ? (data.message || 'Este número telefónico ya está siendo usado.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingPhone(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [phone, countryCode, user?.id]);
 
   useEffect(() => {
     if (user === undefined) return;
@@ -313,28 +393,58 @@ export default function ProfilePage() {
       return;
     }
 
+    if (cedulaError || phoneError) {
+      toast({ variant: 'destructive', title: 'Datos duplicados', description: cedulaError || phoneError });
+      return;
+    }
+
     // No permitir cambiar la cédula si ya existe
     const finalCedula = user.cedula || result.data.cedula;
 
-    // Validar cédula única si se está estableciendo por primera vez
-    if (!user.cedula && result.data.cedula) {
-      try {
-        const cedulaResponse = await fetch('/api/validate-unique', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'patient_cedula', value: result.data.cedula, excludeId: user.id })
-        });
-        const cedulaCheck = await cedulaResponse.json();
+    // Validar cédula y teléfono únicos antes de guardar
+    try {
+      const checks: Promise<any>[] = [];
+      if (!user.cedula && result.data.cedula) {
+        checks.push(
+          fetch('/api/validate-unique', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'cedula', value: result.data.cedula, excludeId: user.id })
+          }).then(r => r.json())
+        );
+      } else {
+        checks.push(Promise.resolve({ isUnique: true }));
+      }
 
-        if (!cedulaCheck.isUnique) {
-          toast({ variant: 'destructive', title: 'DNI/Cédula ya registrado', description: cedulaCheck.message });
-          return;
-        }
-      } catch (error) {
-        console.error('Error validating cedula:', error);
-        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo validar el documento' });
+      if (fullPhone) {
+        checks.push(
+          fetch('/api/validate-unique', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'phone', value: fullPhone, excludeId: user.id })
+          }).then(r => r.json())
+        );
+      } else {
+        checks.push(Promise.resolve({ isUnique: true }));
+      }
+
+      const [cedulaCheck, phoneCheck] = await Promise.all(checks);
+
+      if (!cedulaCheck.isUnique) {
+        setCedulaError(cedulaCheck.message || 'Esta cédula ya está siendo usada.');
+        toast({ variant: 'destructive', title: 'Cédula ya registrada', description: cedulaCheck.message || 'Esta cédula ya está siendo usada.' });
         return;
       }
+
+      if (!phoneCheck.isUnique) {
+        setPhoneError(phoneCheck.message || 'Este número telefónico ya está siendo usado.');
+        toast({ variant: 'destructive', title: 'Teléfono ya registrado', description: phoneCheck.message || 'Este número telefónico ya está siendo usado.' });
+        return;
+      }
+    } catch (error) {
+      console.error('Error validating unique fields:', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo validar la disponibilidad de los datos.' });
+      return;
     }
 
     // Calcular edad
@@ -573,19 +683,32 @@ export default function ProfilePage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cedula">{documentType === 'Pasaporte' ? 'Número de Pasaporte' : 'Cédula de Identidad'}</Label>
-                    <Input
-                      id="cedula"
-                      value={cedula}
-                      onChange={(e) => setCedula(e.target.value)}
-                      placeholder={documentType === 'Pasaporte' ? 'ej., ABC123456' : 'ej., 12345678'}
-                      disabled={!!user?.cedula} // Deshabilitar si ya tiene documento
-                      className={user?.cedula ? "bg-slate-50 dark:bg-slate-900 cursor-not-allowed" : ""}
-                    />
-                    {user?.cedula && (
+                    <div className="relative">
+                      <Input
+                        id="cedula"
+                        value={cedula}
+                        onChange={(e) => setCedula(e.target.value)}
+                        placeholder={documentType === 'Pasaporte' ? 'ej., ABC123456' : 'ej., 12345678'}
+                        disabled={!!user?.cedula}
+                        className={cn(
+                          user?.cedula && "bg-slate-50 dark:bg-slate-900 cursor-not-allowed",
+                          cedulaError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                        )}
+                      />
+                      {isCheckingCedula && (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                      )}
+                    </div>
+                    {cedulaError ? (
+                      <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {cedulaError}
+                      </p>
+                    ) : user?.cedula ? (
                       <p className="text-[11px] text-muted-foreground mt-1">
                         🔒 La Cédula no se puede modificar después del registro por seguridad.
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -598,24 +721,38 @@ export default function ProfilePage() {
                         onChange={setCountryCode}
                         className="w-[130px]"
                       />
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => {
-                          let val = e.target.value.replace(/\D/g, '');
-                          // Eliminar 0 inicial si el usuario lo escribe, ya que el código de país lo reemplaza
-                          if (val.startsWith('0')) val = val.slice(1);
-                          setPhone(val);
-                        }}
-                        placeholder="Ej: 412 123 4567"
-                        className="flex-1"
-                        maxLength={15}
-                      />
+                      <div className="relative flex-1">
+                        <Input
+                          id="phone"
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => {
+                            let val = e.target.value.replace(/\D/g, '');
+                            if (val.startsWith('0')) val = val.slice(1);
+                            setPhone(val);
+                          }}
+                          placeholder="Ej: 412 123 4567"
+                          className={cn(
+                            "w-full",
+                            phoneError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                          )}
+                          maxLength={15}
+                        />
+                        {isCheckingPhone && (
+                          <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Selecciona el código de país e ingresa el número (ej: 412 123 4567).
-                    </p>
+                    {phoneError ? (
+                      <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {phoneError}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Selecciona el código de país e ingresa el número (ej: 412 123 4567).
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -662,7 +799,7 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={!!cedulaError || !!phoneError || isCheckingCedula || isCheckingPhone}>
                   <Save className="mr-2 h-4 w-4" />
                   Guardar Cambios
                 </Button>

@@ -1,25 +1,24 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, Lock, ArrowRight } from "lucide-react";
+import { Loader2, Mail, Lock, ArrowRight, AlertCircle } from "lucide-react";
 import Link from 'next/link';
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
 
 interface AuthFormProps {
     defaultView?: 'login' | 'register';
     showSocial?: boolean;
 }
 
-export function AuthForm({ defaultView = 'login', showSocial = false }: AuthFormProps) {
-    const router = useRouter();
-    const { login, register, loginWithGoogle, loading: authLoading } = useAuth();
+export function AuthForm({ defaultView = 'login' }: AuthFormProps) {
+    const { login, register, loginWithGoogle } = useAuth();
 
     const [view, setView] = useState<'login' | 'register'>(defaultView);
     const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +43,49 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
     const [confirmPassword, setConfirmPassword] = useState('');
     const [name, setName] = useState('');
 
+    // Real-time email uniqueness check on register tab
+    const [emailError, setEmailError] = useState('');
+    const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+
+    useEffect(() => {
+        if (view !== 'register') {
+            setEmailError('');
+            setIsCheckingEmail(false);
+            return;
+        }
+        const clean = email.trim();
+        if (!clean || !clean.includes('@') || !clean.includes('.')) {
+            setEmailError('');
+            setIsCheckingEmail(false);
+            return;
+        }
+
+        let cancelled = false;
+        setIsCheckingEmail(true);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/validate-unique', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'email', value: clean })
+                });
+                const data = await res.json();
+                if (!cancelled) {
+                    setEmailError(data.isUnique === false ? (data.message || 'Este correo ya está siendo usado.') : '');
+                }
+            } catch {
+                // Ignore
+            } finally {
+                if (!cancelled) setIsCheckingEmail(false);
+            }
+        }, 350);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [email, view]);
+
     // Handle Login
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -53,7 +95,6 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
 
         try {
             await login(email, password);
-            // El login ya redirige automáticamente según el rol
         } catch (err: any) {
             setError(err.message || 'Error al iniciar sesión');
         } finally {
@@ -64,11 +105,14 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
     // Handle Register
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (emailError) {
+            setError(emailError);
+            return;
+        }
         setIsLoading(true);
         setError(null);
         setSuccessMessage(null);
 
-        // Validar que las contraseñas coincidan
         if (password !== confirmPassword) {
             setError('Las contraseñas no coinciden');
             setIsLoading(false);
@@ -78,9 +122,6 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
         try {
             await register(name, email, password);
             setSuccessMessage('¡Cuenta creada exitosamente! Redirigiendo...');
-            setTimeout(() => {
-                // register() en auth.tsx ya redirige al médico o a /dashboard
-            }, 1500);
         } catch (err: any) {
             setError(err.message || 'Error al crear la cuenta');
         } finally {
@@ -91,7 +132,6 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
     return (
         <div className="w-full max-w-md mx-auto space-y-6">
             <div className="text-center space-y-2">
-                {/* Logo de SUMA */}
                 <div className="mx-auto mb-6 flex items-center justify-center">
                     <Image
                         src="/images/logo_suma.png"
@@ -120,7 +160,6 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
                 </TabsList>
 
                 <div className="space-y-4">
-                    {/* Error & Success Messages */}
                     {error && (
                         <Alert variant="destructive">
                             <AlertDescription>{error}</AlertDescription>
@@ -132,7 +171,6 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
                         </Alert>
                     )}
 
-                    {/* Botón de Google OAuth */}
                     <Button
                         type="button"
                         variant="outline"
@@ -244,12 +282,24 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
                                         id="register-email"
                                         type="email"
                                         placeholder="nombre@ejemplo.com"
-                                        className="pl-10"
+                                        className={cn(
+                                            "pl-10",
+                                            emailError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                                        )}
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                     />
+                                    {isCheckingEmail && (
+                                        <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                                    )}
                                 </div>
+                                {emailError && (
+                                    <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                        {emailError}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -288,7 +338,7 @@ export function AuthForm({ defaultView = 'login', showSocial = false }: AuthForm
                             <Button
                                 type="submit"
                                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600"
-                                disabled={isLoading}
+                                disabled={isLoading || !!emailError || isCheckingEmail}
                             >
                                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                 Crear Cuenta

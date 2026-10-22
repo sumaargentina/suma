@@ -4,6 +4,8 @@ import {
     isDoctorCedulaUnique,
     isDoctorMedicalLicenseUnique,
     isPatientCedulaUnique,
+    isCedulaUniqueAcrossAllTables,
+    isPhoneUniqueAcrossAllTables,
     isReferralCodeUnique,
     isAppointmentSlotAvailable,
 } from '@/lib/unique-validation';
@@ -24,19 +26,23 @@ export async function POST(request: NextRequest) {
 
         switch (type) {
             case 'email':
-                result = await isEmailUniqueAcrossAllTables(value);
+                result = await isEmailUniqueAcrossAllTables(value, excludeId);
                 break;
 
+            case 'cedula':
             case 'doctor_cedula':
-                result = await isDoctorCedulaUnique(value, excludeId);
+            case 'patient_cedula':
+                result = await isCedulaUniqueAcrossAllTables(value, excludeId);
+                break;
+
+            case 'phone':
+            case 'doctor_phone':
+            case 'patient_phone':
+                result = await isPhoneUniqueAcrossAllTables(value, excludeId);
                 break;
 
             case 'doctor_medical_license':
                 result = await isDoctorMedicalLicenseUnique(value, excludeId);
-                break;
-
-            case 'patient_cedula':
-                result = await isPatientCedulaUnique(value, excludeId);
                 break;
 
             case 'referral_code':

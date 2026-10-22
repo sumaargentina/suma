@@ -956,6 +956,8 @@ export type Appointment = {
   patientName: string;
   doctorName?: string; // Optional because now it can be a service appointment
   doctorId?: string; // Optional for service appointments
+  clinicId?: string; // Clinic ID when booked with a clinic doctor or clinic service
+  specialty?: string; // Doctor or service specialty
   clinicServiceId?: string; // New: For service appointments (e.g., Lab)
   laboratoryId?: string; // For laboratory appointments
   laboratoryServiceId?: string; // For laboratory study/test appointments

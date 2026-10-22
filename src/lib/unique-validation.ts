@@ -5,8 +5,8 @@
  * Funciones para verificar campos únicos antes de guardar
  * en la base de datos.
  * 
- * @version 1.0.0
- * @date 2025-12-24
+ * @version 1.1.0
+ * @date 2026-10-22
  */
 
 import { supabaseAdmin } from './supabase-admin';
@@ -26,12 +26,14 @@ export interface DoctorUniqueFields {
     email: string;
     cedula?: string;
     medicalLicense?: string;
+    phone?: string;
     excludeId?: string; // Para excluir el registro actual en updates
 }
 
 export interface PatientUniqueFields {
     email: string;
     cedula?: string;
+    phone?: string;
     excludeId?: string;
 }
 
@@ -39,6 +41,142 @@ export interface SellerUniqueFields {
     email: string;
     referralCode?: string;
     excludeId?: string;
+}
+
+// =====================================================
+// CROSS-TABLE CEDULA & PHONE VALIDATIONS
+// =====================================================
+
+/**
+ * Verifica si la cédula/DNI ya existe en médicos o pacientes (comparando dígitos numéricos)
+ */
+export async function isCedulaUniqueAcrossAllTables(
+    cedula: string,
+    excludeId?: string
+): Promise<UniqueValidationResult> {
+    if (!cedula || cedula.trim() === '') {
+        return { isUnique: true, field: 'cedula', message: '' };
+    }
+
+    const digits = cedula.replace(/\D/g, '');
+    if (digits.length < 5) {
+        return { isUnique: true, field: 'cedula', message: '' };
+    }
+
+    // Buscar en doctors
+    const { data: doctors, error: docErr } = await supabaseAdmin
+        .from('doctors')
+        .select('id, cedula')
+        .not('cedula', 'is', null);
+
+    if (!docErr && doctors) {
+        const matchDoc = doctors.find(d => {
+            if (excludeId && d.id === excludeId) return false;
+            const dDigits = (d.cedula || '').replace(/\D/g, '');
+            return dDigits.length >= 5 && dDigits === digits;
+        });
+        if (matchDoc) {
+            return {
+                isUnique: false,
+                field: 'cedula',
+                existingId: matchDoc.id,
+                message: 'Esta cédula ya está siendo usada.'
+            };
+        }
+    }
+
+    // Buscar en patients
+    const { data: patients, error: patErr } = await supabaseAdmin
+        .from('patients')
+        .select('id, cedula')
+        .not('cedula', 'is', null);
+
+    if (!patErr && patients) {
+        const matchPat = patients.find(p => {
+            if (excludeId && p.id === excludeId) return false;
+            const pDigits = (p.cedula || '').replace(/\D/g, '');
+            return pDigits.length >= 5 && pDigits === digits;
+        });
+        if (matchPat) {
+            return {
+                isUnique: false,
+                field: 'cedula',
+                existingId: matchPat.id,
+                message: 'Esta cédula ya está siendo usada.'
+            };
+        }
+    }
+
+    return { isUnique: true, field: 'cedula', message: '' };
+}
+
+/**
+ * Verifica si el número telefónico ya existe en médicos o pacientes
+ */
+export async function isPhoneUniqueAcrossAllTables(
+    phone: string,
+    excludeId?: string
+): Promise<UniqueValidationResult> {
+    if (!phone || phone.trim() === '') {
+        return { isUnique: true, field: 'phone', message: '' };
+    }
+
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 7) {
+        return { isUnique: true, field: 'phone', message: '' };
+    }
+    const tail = digits.length >= 10 ? digits.slice(-10) : digits;
+
+    const matchesPhone = (val?: string | null) => {
+        if (!val) return false;
+        const vDigits = val.replace(/\D/g, '');
+        if (vDigits.length < 7) return false;
+        if (vDigits === digits) return true;
+        if (digits.length >= 10 && vDigits.length >= 10 && vDigits.slice(-10) === tail) return true;
+        return false;
+    };
+
+    // Buscar en doctors
+    const { data: doctors, error: docErr } = await supabaseAdmin
+        .from('doctors')
+        .select('id, phone, whatsapp');
+
+    if (!docErr && doctors) {
+        const matchDoc = doctors.find(d => {
+            if (excludeId && d.id === excludeId) return false;
+            return matchesPhone(d.phone) || matchesPhone(d.whatsapp);
+        });
+        if (matchDoc) {
+            return {
+                isUnique: false,
+                field: 'phone',
+                existingId: matchDoc.id,
+                message: 'Este número telefónico ya está siendo usado.'
+            };
+        }
+    }
+
+    // Buscar en patients
+    const { data: patients, error: patErr } = await supabaseAdmin
+        .from('patients')
+        .select('id, phone, whatsapp');
+
+    if (!patErr && patients) {
+        const matchPat = patients.find(p => {
+            if (excludeId && p.id === excludeId) return false;
+            return matchesPhone(p.phone) || matchesPhone(p.whatsapp);
+        });
+        if (matchPat) {
+            return {
+                isUnique: false,
+                field: 'phone',
+                existingId: matchPat.id,
+                message: 'Este número telefónico ya está siendo usado.'
+            };
+        }
+    }
+
+    return { isUnique: true, field: 'phone', message: '' };
 }
 
 // =====================================================
@@ -87,36 +225,7 @@ export async function isDoctorCedulaUnique(
     cedula: string,
     excludeId?: string
 ): Promise<UniqueValidationResult> {
-    if (!cedula || cedula.trim() === '') {
-        return { isUnique: true, field: 'cedula', message: '' };
-    }
-
-    const query = supabaseAdmin
-        .from('doctors')
-        .select('id, cedula')
-        .eq('cedula', cedula.trim());
-
-    if (excludeId) {
-        query.neq('id', excludeId);
-    }
-
-    const { data, error } = await query.maybeSingle();
-
-    if (error) {
-        console.error('Error checking doctor cedula:', error);
-        return { isUnique: false, field: 'cedula', message: 'Error al verificar el DNI/Cédula' };
-    }
-
-    if (data) {
-        return {
-            isUnique: false,
-            field: 'cedula',
-            existingId: data.id,
-            message: 'Este DNI/Cédula ya está registrado como médico.'
-        };
-    }
-
-    return { isUnique: true, field: 'cedula', message: '' };
+    return isCedulaUniqueAcrossAllTables(cedula, excludeId);
 }
 
 /**
@@ -167,7 +276,7 @@ export async function validateDoctorUniqueFields(
     const results: UniqueValidationResult[] = [];
 
     // Verificar email
-    const emailResult = await isDoctorEmailUnique(fields.email, fields.excludeId);
+    const emailResult = await isEmailUniqueAcrossAllTables(fields.email, fields.excludeId);
     if (!emailResult.isUnique) results.push(emailResult);
 
     // Verificar cédula
@@ -180,6 +289,12 @@ export async function validateDoctorUniqueFields(
     if (fields.medicalLicense) {
         const licenseResult = await isDoctorMedicalLicenseUnique(fields.medicalLicense, fields.excludeId);
         if (!licenseResult.isUnique) results.push(licenseResult);
+    }
+
+    // Verificar teléfono
+    if (fields.phone) {
+        const phoneResult = await isPhoneUniqueAcrossAllTables(fields.phone, fields.excludeId);
+        if (!phoneResult.isUnique) results.push(phoneResult);
     }
 
     return results;
@@ -231,36 +346,7 @@ export async function isPatientCedulaUnique(
     cedula: string,
     excludeId?: string
 ): Promise<UniqueValidationResult> {
-    if (!cedula || cedula.trim() === '') {
-        return { isUnique: true, field: 'cedula', message: '' };
-    }
-
-    const query = supabaseAdmin
-        .from('patients')
-        .select('id, cedula')
-        .eq('cedula', cedula.trim());
-
-    if (excludeId) {
-        query.neq('id', excludeId);
-    }
-
-    const { data, error } = await query.maybeSingle();
-
-    if (error) {
-        console.error('Error checking patient cedula:', error);
-        return { isUnique: false, field: 'cedula', message: 'Error al verificar el DNI/Cédula' };
-    }
-
-    if (data) {
-        return {
-            isUnique: false,
-            field: 'cedula',
-            existingId: data.id,
-            message: 'Este DNI/Cédula ya está registrado.'
-        };
-    }
-
-    return { isUnique: true, field: 'cedula', message: '' };
+    return isCedulaUniqueAcrossAllTables(cedula, excludeId);
 }
 
 /**
@@ -271,12 +357,17 @@ export async function validatePatientUniqueFields(
 ): Promise<UniqueValidationResult[]> {
     const results: UniqueValidationResult[] = [];
 
-    const emailResult = await isPatientEmailUnique(fields.email, fields.excludeId);
+    const emailResult = await isEmailUniqueAcrossAllTables(fields.email, fields.excludeId);
     if (!emailResult.isUnique) results.push(emailResult);
 
     if (fields.cedula) {
         const cedulaResult = await isPatientCedulaUnique(fields.cedula, fields.excludeId);
         if (!cedulaResult.isUnique) results.push(cedulaResult);
+    }
+
+    if (fields.phone) {
+        const phoneResult = await isPhoneUniqueAcrossAllTables(fields.phone, fields.excludeId);
+        if (!phoneResult.isUnique) results.push(phoneResult);
     }
 
     return results;
@@ -369,71 +460,80 @@ export async function isReferralCodeUnique(
  * Útil para el registro cuando no sabemos qué rol tendrá el usuario
  */
 export async function isEmailUniqueAcrossAllTables(
-    email: string
+    email: string,
+    excludeId?: string
 ): Promise<UniqueValidationResult> {
-    const lowerEmail = email.toLowerCase();
+    if (!email || email.trim() === '') {
+        return { isUnique: true, field: 'email', message: '' };
+    }
+
+    const lowerEmail = email.trim().toLowerCase();
 
     // Verificar en doctors
-    const { data: doctor } = await supabaseAdmin
+    const docQuery = supabaseAdmin
         .from('doctors')
         .select('id')
-        .eq('email', lowerEmail)
-        .maybeSingle();
+        .eq('email', lowerEmail);
+    if (excludeId) docQuery.neq('id', excludeId);
+    const { data: doctor } = await docQuery.maybeSingle();
 
     if (doctor) {
         return {
             isUnique: false,
             field: 'email',
             existingId: doctor.id,
-            message: 'Este correo electrónico ya está registrado como médico.'
+            message: 'Este correo electrónico ya está siendo usado (registrado como médico).'
         };
     }
 
     // Verificar en patients
-    const { data: patient } = await supabaseAdmin
+    const patQuery = supabaseAdmin
         .from('patients')
         .select('id')
-        .eq('email', lowerEmail)
-        .maybeSingle();
+        .eq('email', lowerEmail);
+    if (excludeId) patQuery.neq('id', excludeId);
+    const { data: patient } = await patQuery.maybeSingle();
 
     if (patient) {
         return {
             isUnique: false,
             field: 'email',
             existingId: patient.id,
-            message: 'Este correo electrónico ya está registrado como paciente.'
+            message: 'Este correo electrónico ya está siendo usado (registrado como paciente).'
         };
     }
 
     // Verificar en sellers
-    const { data: seller } = await supabaseAdmin
+    const selQuery = supabaseAdmin
         .from('sellers')
         .select('id')
-        .eq('email', lowerEmail)
-        .maybeSingle();
+        .eq('email', lowerEmail);
+    if (excludeId) selQuery.neq('id', excludeId);
+    const { data: seller } = await selQuery.maybeSingle();
 
     if (seller) {
         return {
             isUnique: false,
             field: 'email',
             existingId: seller.id,
-            message: 'Este correo electrónico ya está registrado como vendedora.'
+            message: 'Este correo electrónico ya está siendo usado (registrado como vendedora).'
         };
     }
 
     // Verificar en admins
-    const { data: admin } = await supabaseAdmin
+    const admQuery = supabaseAdmin
         .from('admins')
         .select('id')
-        .eq('email', lowerEmail)
-        .maybeSingle();
+        .eq('email', lowerEmail);
+    if (excludeId) admQuery.neq('id', excludeId);
+    const { data: admin } = await admQuery.maybeSingle();
 
     if (admin) {
         return {
             isUnique: false,
             field: 'email',
             existingId: admin.id,
-            message: 'Este correo electrónico ya está registrado como administrador.'
+            message: 'Este correo electrónico ya está siendo usado (registrado como administrador).'
         };
     }
 
@@ -455,11 +555,12 @@ export async function isAppointmentSlotAvailable(
 ): Promise<UniqueValidationResult> {
     const query = supabaseAdmin
         .from('appointments')
-        .select('id, patient_name')
+        .select('id, patient_name, patient_confirmation_status')
         .eq('doctor_id', doctorId)
         .eq('date', date)
         .eq('time', time)
-        .neq('attendance', 'Cancelada');
+        .neq('attendance', 'Cancelada')
+        .neq('patient_confirmation_status', 'Cancelada');
 
     if (excludeId) {
         query.neq('id', excludeId);

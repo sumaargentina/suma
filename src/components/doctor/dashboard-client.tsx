@@ -156,17 +156,31 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isWalkInDialogOpen, setIsWalkInDialogOpen] = useState(false);
     const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+    const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
-    // Comprobar si el médico necesita completar su bienvenida/onboarding
+    // Comprobar si el médico necesita completar su bienvenida/onboarding (solo si no lo ha completado ni cerrado en esta sesión)
     useEffect(() => {
-        if (user && user.role === 'doctor') {
+        if (user && user.role === 'doctor' && !welcomeDismissed) {
+            const isAlreadyCompleted =
+                user.onboardingCompleted === true ||
+                doctorData?.onboardingCompleted === true ||
+                (typeof window !== 'undefined' && sessionStorage.getItem(`doctor_welcome_done_${user.id}`) === 'true');
+
+            if (isAlreadyCompleted) {
+                setShowWelcomeModal(false);
+                return;
+            }
+
             const isWelcomeParam = searchParams.get('welcome') === 'true';
-            const isProfileIncomplete = !user.onboardingCompleted && (!user.specialty || user.specialty === 'Pendiente' || !user.medicalLicense);
+            const effectiveSpecialty = doctorData?.specialty || user.specialty;
+            const effectiveLicense = doctorData?.medicalLicense || user.medicalLicense;
+            const isProfileIncomplete = !effectiveSpecialty || effectiveSpecialty === 'Pendiente' || !effectiveLicense;
+
             if (isWelcomeParam || isProfileIncomplete) {
                 setShowWelcomeModal(true);
             }
         }
-    }, [user, searchParams]);
+    }, [user, doctorData, welcomeDismissed, searchParams]);
 
     // Entity states for dialogs
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -1790,7 +1804,22 @@ ID Transacción: ${transactionId}`;
             {showWelcomeModal && (
                 <DoctorWelcomeModal
                     isOpen={showWelcomeModal}
-                    onClose={() => setShowWelcomeModal(false)}
+                    onClose={() => {
+                        setShowWelcomeModal(false);
+                        setWelcomeDismissed(true);
+                        if (typeof window !== 'undefined' && user?.id) {
+                            sessionStorage.setItem(`doctor_welcome_done_${user.id}`, 'true');
+                        }
+                    }}
+                    onComplete={(updatedData) => {
+                        setWelcomeDismissed(true);
+                        setShowWelcomeModal(false);
+                        if (typeof window !== 'undefined' && user?.id) {
+                            sessionStorage.setItem(`doctor_welcome_done_${user.id}`, 'true');
+                        }
+                        setDoctorData(prev => prev ? { ...prev, ...updatedData } as Doctor : null);
+                        fetchData();
+                    }}
                 />
             )}
         </div>

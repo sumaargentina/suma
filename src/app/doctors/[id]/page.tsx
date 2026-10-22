@@ -68,10 +68,36 @@ const capitalizeWords = (str: string) => {
 };
 
 const getScheduleForDay = (schedule: any, dayIndex: number) => {
-  if (!schedule) return null;
   const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const dayName = days[dayIndex];
-  return schedule[dayName];
+
+  if (!schedule || typeof schedule !== 'object' || Object.keys(schedule).length === 0) {
+    if (dayIndex >= 1 && dayIndex <= 5) {
+      return { active: true, slots: [{ start: '08:00', end: '17:00' }] };
+    }
+    return { active: false, slots: [] };
+  }
+
+  const dayObj = schedule[dayName];
+  if (!dayObj) return { active: false, slots: [] };
+
+  const isActive = dayObj.active !== undefined ? Boolean(dayObj.active) : Boolean(dayObj.enabled);
+  const rawSlots = Array.isArray(dayObj.slots) ? dayObj.slots : [];
+
+  const normalizedSlots = rawSlots.map((s: any) => {
+    if (typeof s === 'string') {
+      const [hh, mm] = s.split(':').map(Number);
+      const endHH = String((hh || 8) + 1).padStart(2, '0');
+      const startMM = String(mm || 0).padStart(2, '0');
+      return { start: `${String(hh || 8).padStart(2, '0')}:${startMM}`, end: `${endHH}:${startMM}` };
+    }
+    return s;
+  }).filter((s: any) => s && s.start && s.end);
+
+  return {
+    active: isActive,
+    slots: normalizedSlots.length > 0 ? normalizedSlots : (isActive ? [{ start: '08:00', end: '17:00' }] : []),
+  };
 };
 
 const generateTimeSlots = (start: string, end: string, duration: number) => {
@@ -100,7 +126,7 @@ export default function DoctorProfile() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [step, setStep] = useState<'selectPatient' | 'selectDateTime' | 'selectServices' | 'selectPayment' | 'confirmation'>('selectPatient');
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'mercadopago' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'mercadopago' | null>('efectivo');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBankDetail, setSelectedBankDetail] = useState<BankDetail | null>(null);
   const [paymentProof, setPaymentProof] = useState<File | null>(null);
@@ -297,7 +323,7 @@ export default function DoctorProfile() {
       sessionStorage.setItem('returnToDoctorUrl', `/doctors/${id}`);
       localStorage.setItem('returnToDoctorUrl', `/doctors/${id}`);
     }
-    if ((!user || user.role !== 'patient') && (step === 'selectServices' || step === 'selectPayment')) {
+    if (!user && (step === 'selectServices' || step === 'selectPayment')) {
       if (selectedDate && selectedTime) {
         try {
           const pendingAppointmentData = {
@@ -305,7 +331,7 @@ export default function DoctorProfile() {
             selectedDate: selectedDate.toISOString(),
             selectedTime: selectedTime,
             selectedServices: [],
-            paymentMethod: null,
+            paymentMethod: 'efectivo',
             selectedBankDetail: null,
             appliedCoupon: null,
             discountAmount: 0,
@@ -598,9 +624,17 @@ export default function DoctorProfile() {
   };
 
   const handlePaymentSubmit = async () => {
-    if (!user || !doctor || !selectedDate || !selectedTime || !paymentMethod) return;
+    if (!user || !doctor || !selectedDate || !selectedTime) return;
+    if (!paymentMethod) {
+      toast({
+        variant: "destructive",
+        title: "Método de Pago Requerido",
+        description: "Por favor, selecciona un método de pago para confirmar tu cita.",
+      });
+      return;
+    }
 
-    if (paymentMethod === 'transferencia') {
+    if (paymentMethod === 'transferencia' && !doctor.clinicId) {
       if (!selectedBankDetail) {
         toast({
           variant: "destructive",
@@ -667,6 +701,8 @@ export default function DoctorProfile() {
           : user.name,
         doctorId: doctor.id,
         doctorName: doctor.name,
+        specialty: doctor.specialty,
+        clinicId: doctor.clinicId || undefined,
         consultationFee: (currentAddress && currentAddress.consultationFee !== undefined) ? currentAddress.consultationFee : (doctor.consultationFee || 0),
         date: selectedDate.toISOString().split('T')[0],
         time: selectedTime,
@@ -797,7 +833,7 @@ export default function DoctorProfile() {
     setSelectedDate(new Date());
     setSelectedTime(null);
     setSelectedServices([]);
-    setPaymentMethod(null);
+    setPaymentMethod('efectivo');
     setSelectedBankDetail(null);
     setPaymentProof(null);
     handleRemoveCoupon();
@@ -810,8 +846,7 @@ export default function DoctorProfile() {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) {
       return true;
     }
-    if (!currentAddress?.schedule && !doctor?.schedule) return true;
-    const scheduleToUse = currentAddress?.schedule || doctor?.schedule;
+    const scheduleToUse = currentAddress?.schedule || doctor?.schedule || {};
     const daySchedule = getScheduleForDay(scheduleToUse, date.getDay());
     return !daySchedule?.active;
   }
@@ -820,29 +855,15 @@ export default function DoctorProfile() {
   const canAcceptAppointments = useMemo(() => {
     if (!doctor) return { canBook: false, hasPresencial: false, hasOnline: false, message: '' };
 
-    // Verificar si tiene consulta online activa
-    const hasOnline = doctor.onlineConsultation?.enabled === true &&
-      doctor.onlineConsultation?.schedule !== undefined;
-
-    // Verificar si tiene consultorios con horarios
-    const hasPresencial = (() => {
-      // Si tiene addresses con schedule
-      if (doctor.addresses && doctor.addresses.length > 0) {
-        return doctor.addresses.some(addr => addr.schedule !== undefined);
-      }
-      // O si tiene schedule general
-      return doctor.schedule !== undefined;
-    })();
-
+    const hasOnline = doctor.onlineConsultation?.enabled === true;
+    const hasPresencial = true;
     const canBook = hasPresencial || hasOnline;
 
     let message = '';
-    if (!canBook) {
-      message = 'Este médico aún no ha configurado sus horarios de atención. Por favor, contacte directamente para consultar disponibilidad.';
-    } else if (!hasPresencial && hasOnline) {
+    if (!hasPresencial && hasOnline) {
       message = 'Este médico solo atiende consultas online.';
     } else if (hasPresencial && !hasOnline) {
-      message = 'Este médico solo atiende consultas presenciales.';
+      message = 'Este médico atiende consultas presenciales.';
     }
 
     return { canBook, hasPresencial, hasOnline, message };
@@ -851,8 +872,7 @@ export default function DoctorProfile() {
   const renderStepContent = () => {
     if (!doctor) return null;
     let currentStep = step;
-    // Redirigir a selectPatient si no está autenticado y está en pasos que requieren auth
-    if (!authLoading && (step === 'selectServices' || step === 'selectPayment') && (!user || user.role !== 'patient')) {
+    if (!authLoading && (step === 'selectServices' || step === 'selectPayment') && !user) {
       currentStep = 'selectPatient';
     }
 
@@ -869,8 +889,7 @@ export default function DoctorProfile() {
               <div
                 onClick={() => {
                   if (!user) {
-                    // Si no hay usuario, redirigir a login
-                    router.push(`/login?redirect=/doctors/${params.id}`);
+                    router.push(`/auth/login?redirect=/doctors/${params.id}`);
                     return;
                   }
                   setBookingFor('myself');
@@ -899,7 +918,7 @@ export default function DoctorProfile() {
                           className="h-7 text-xs border-primary text-primary hover:bg-primary/10"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/login?redirect=/doctors/${params.id}`);
+                            router.push(`/auth/login?redirect=/doctors/${params.id}`);
                           }}
                         >
                           Iniciar sesión

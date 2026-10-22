@@ -92,13 +92,13 @@ export async function POST(request: NextRequest) {
                     .eq('password', 'OAUTH_GOOGLE_USER');
 
                 const defaultSchedule = {
-                    monday: { enabled: true, slots: ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'] },
-                    tuesday: { enabled: true, slots: ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'] },
-                    wednesday: { enabled: true, slots: ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'] },
-                    thursday: { enabled: true, slots: ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'] },
-                    friday: { enabled: true, slots: ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'] },
-                    saturday: { enabled: false, slots: [] },
-                    sunday: { enabled: false, slots: [] },
+                    monday: { active: true, slots: [{ start: '08:00', end: '17:00' }] },
+                    tuesday: { active: true, slots: [{ start: '08:00', end: '17:00' }] },
+                    wednesday: { active: true, slots: [{ start: '08:00', end: '17:00' }] },
+                    thursday: { active: true, slots: [{ start: '08:00', end: '17:00' }] },
+                    friday: { active: true, slots: [{ start: '08:00', end: '17:00' }] },
+                    saturday: { active: false, slots: [] },
+                    sunday: { active: false, slots: [] },
                 };
 
                 const { data: newDoctor, error: insertDocError } = await supabaseAdmin

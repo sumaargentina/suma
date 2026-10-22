@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Stethoscope, Loader2, Eye, EyeOff, MapPin, X } from "lucide-react";
+import { ArrowLeft, Stethoscope, Loader2, Eye, EyeOff, MapPin, X, AlertCircle } from "lucide-react";
+import { cn } from '@/lib/utils';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/lib/settings';
@@ -84,6 +85,145 @@ export default function RegisterDoctorPage() {
     countryCode: '+58',
     phone: '',
   });
+
+  // Real-time duplicate validation states
+  const [emailError, setEmailError] = useState('');
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [dniError, setDniError] = useState('');
+  const [isCheckingDni, setIsCheckingDni] = useState(false);
+  const [licenseError, setLicenseError] = useState('');
+  const [isCheckingLicense, setIsCheckingLicense] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+
+  useEffect(() => {
+    const clean = formData.email.trim();
+    if (!clean || !clean.includes('@') || !clean.includes('.')) {
+      setEmailError('');
+      setIsCheckingEmail(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingEmail(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'email', value: clean })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setEmailError(data.isUnique === false ? (data.message || 'Este correo ya está siendo usado.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingEmail(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.email]);
+
+  useEffect(() => {
+    const clean = formData.dni.replace(/\D/g, '');
+    if (!clean || clean.length < 5) {
+      setDniError('');
+      setIsCheckingDni(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingDni(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'cedula', value: formData.dni.trim() })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setDniError(data.isUnique === false ? (data.message || 'Esta cédula ya está siendo usada.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingDni(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.dni]);
+
+  useEffect(() => {
+    const clean = formData.medicalLicense.trim();
+    if (!clean || clean.length < 3) {
+      setLicenseError('');
+      setIsCheckingLicense(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingLicense(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'doctor_medical_license', value: clean })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setLicenseError(data.isUnique === false ? (data.message || 'Esta matrícula médica ya está registrada.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingLicense(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.medicalLicense]);
+
+  useEffect(() => {
+    const clean = formData.phone.replace(/\D/g, '');
+    if (!clean || clean.length < 7) {
+      setPhoneError('');
+      setIsCheckingPhone(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingPhone(true);
+    const timer = setTimeout(async () => {
+      try {
+        const fullPhone = `${formData.countryCode} ${formData.phone.trim()}`.trim();
+        const res = await fetch('/api/validate-unique', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'phone', value: fullPhone })
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setPhoneError(data.isUnique === false ? (data.message || 'Este número telefónico ya está siendo usado.') : '');
+        }
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setIsCheckingPhone(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.phone, formData.countryCode]);
 
   // Si viene con enlace de vendedora (?ref=CODIGO), vincular sellerId y preconfigurar País/Estado/Ciudad de la vendedora
   useEffect(() => {
@@ -224,6 +364,21 @@ export default function RegisterDoctorPage() {
         return;
       }
 
+      // Validar teléfono único
+      const phoneResponse = await fetch('/api/validate-unique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'phone', value: result.data.phone })
+      });
+      const phoneCheck = await phoneResponse.json();
+
+      if (!phoneCheck.isUnique) {
+        setPhoneError(phoneCheck.message || 'Este número telefónico ya está siendo usado.');
+        toast({ variant: 'destructive', title: 'Teléfono ya registrado', description: phoneCheck.message });
+        setIsLoading(false);
+        return;
+      }
+
       await registerDoctor({
         ...result.data,
         profession: formData.profession,
@@ -319,7 +474,28 @@ export default function RegisterDoctorPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Correo Electrónico</Label>
-                <Input id="email" name="email" type="email" placeholder="m@example.com" required value={formData.email} onChange={handleChange} disabled={isLoading} />
+                <div className="relative">
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="m@example.com"
+                    required
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    className={cn(emailError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30")}
+                  />
+                  {isCheckingEmail && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                  )}
+                </div>
+                {emailError && (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {emailError}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -438,22 +614,56 @@ export default function RegisterDoctorPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    id="dni"
-                    name="dni"
-                    placeholder="Número de Cédula"
-                    required
-                    value={formData.dni}
-                    onChange={handleChange}
-                    disabled={isLoading}
-                    className="flex-1"
-                    maxLength={15}
-                  />
+                  <div className="relative flex-1">
+                    <Input
+                      id="dni"
+                      name="dni"
+                      placeholder="Número de Cédula"
+                      required
+                      value={formData.dni}
+                      onChange={handleChange}
+                      disabled={isLoading}
+                      className={cn(
+                        "w-full",
+                        dniError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                      )}
+                      maxLength={15}
+                    />
+                    {isCheckingDni && (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                    )}
+                  </div>
                 </div>
+                {dniError && (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {dniError}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="medicalLicense">Número de Matrícula / Colegio Médico</Label>
-                <Input id="medicalLicense" name="medicalLicense" placeholder="Ej: 123456" required value={formData.medicalLicense} onChange={handleChange} disabled={isLoading} />
+                <div className="relative">
+                  <Input
+                    id="medicalLicense"
+                    name="medicalLicense"
+                    placeholder="Ej: 123456"
+                    required
+                    value={formData.medicalLicense}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    className={cn(licenseError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30")}
+                  />
+                  {isCheckingLicense && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                  )}
+                </div>
+                {licenseError && (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {licenseError}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -479,21 +689,39 @@ export default function RegisterDoctorPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  id="phone"
-                  name="phone"
-                  placeholder="11 1234 5678"
-                  required
-                  type="tel"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  className="flex-1"
-                />
+                <div className="relative flex-1">
+                  <Input
+                    id="phone"
+                    name="phone"
+                    placeholder="412 123 4567"
+                    required
+                    type="tel"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    className={cn(
+                      "w-full",
+                      phoneError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"
+                    )}
+                  />
+                  {isCheckingPhone && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-3" />
+                  )}
+                </div>
               </div>
+              {phoneError && (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {phoneError}
+                </p>
+              )}
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isLoading || !!emailError || !!dniError || !!licenseError || !!phoneError}
+            >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Crear Cuenta de Médico
             </Button>

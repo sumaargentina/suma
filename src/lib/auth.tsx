@@ -805,9 +805,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fetch actualizado desde Supabase
     const freshUser = await supabaseService.findUserByEmail(normalizedEmail);
     if (freshUser) {
-      const loggedInUser = buildUserFromData({ ...freshUser, id: newDoctorId, role: 'doctor' });
+      const loggedInUser = buildUserFromData({ ...freshUser, id: newDoctorId, role: 'doctor', onboardingCompleted: true });
       setUser(loggedInUser);
       localStorage.setItem('user', JSON.stringify(loggedInUser));
+      await setAuthToken(loggedInUser.id, loggedInUser.email, 'doctor', loggedInUser.name);
       router.push('/doctor/dashboard');
     }
   };
@@ -964,15 +965,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/');
   };
 
-  const updateUser = async (data: Partial<Patient | Seller>) => {
+  const updateUser = async (data: Partial<Patient | Seller | Doctor>) => {
     if (!user || !user.id) return;
 
-    if (user.role === 'patient') {
-      await supabaseService.updatePatient(user.id, data as Partial<Patient>);
-    } else if (user.role === 'seller') {
-      await supabaseService.updateSeller(user.id, data as Partial<Seller>);
-    } else {
-      return;
+    try {
+      if (user.role === 'patient') {
+        await supabaseService.updatePatient(user.id, data as Partial<Patient>);
+      } else if (user.role === 'seller') {
+        await supabaseService.updateSeller(user.id, data as Partial<Seller>);
+      } else if (user.role === 'doctor') {
+        await supabaseService.updateDoctor(user.id, data as Partial<Doctor>);
+      }
+    } catch (err) {
+      console.error('Error syncing updateUser to Supabase:', err);
     }
 
     const updatedUser = { ...user, ...data };
