@@ -22,7 +22,7 @@ const SellerFormSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
   email: z.string().email("Correo electrónico inválido."),
   phone: z.string().optional().or(z.literal('')),
-  commissionRate: z.number().min(0, "La comisión no puede ser negativa.").max(1, "Usa formato decimal (ej. 0.2 para 20%)."),
+  commissionRate: z.number().min(0, "La comisión no puede ser negativa.").max(100, "La comisión no puede superar el 100%."),
   password: z.string().optional().or(z.literal('')),
   confirmPassword: z.string().optional().or(z.literal('')),
 }).superRefine(({ password, confirmPassword }, ctx) => {
@@ -248,11 +248,12 @@ export function SellersTab() {
   const handleSaveSeller = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const rawCommission = parseFloat((formData.get('commissionRate') as string || '0.2').replace(',', '.'));
     const dataToValidate = {
       name: (formData.get('name') as string || '').trim(),
       email: (formData.get('email') as string || '').trim(),
       phone: (formData.get('phone') as string || '').trim(),
-      commissionRate: parseFloat(formData.get('commissionRate') as string),
+      commissionRate: Number.isNaN(rawCommission) ? 0.2 : rawCommission,
       password: formData.get('password') as string,
       confirmPassword: formData.get('confirmPassword') as string,
     };
@@ -262,6 +263,10 @@ export function SellersTab() {
       toast({ variant: 'destructive', title: 'Error de Validación', description: result.error.errors.map(err => err.message).join(' ') });
       return;
     }
+
+    const normalizedCommissionRate = result.data.commissionRate > 1
+      ? Number((result.data.commissionRate / 100).toFixed(4))
+      : result.data.commissionRate;
 
     setIsSavingSeller(true);
     try {
@@ -281,7 +286,7 @@ export function SellersTab() {
           name: result.data.name,
           email: normalizedEmail,
           phone: result.data.phone || null,
-          commissionRate: result.data.commissionRate,
+          commissionRate: normalizedCommissionRate,
           country: sellerLocationData.country,
           state: sellerLocationData.state,
           city: sellerLocationData.city,
@@ -318,7 +323,7 @@ export function SellersTab() {
           name: result.data.name,
           email: normalizedEmail,
           password: hashedPassword,
-          commissionRate: result.data.commissionRate,
+          commissionRate: normalizedCommissionRate,
           referralCode: referralCode,
           phone: result.data.phone || null,
           country: sellerLocationData.country,
@@ -907,7 +912,7 @@ export function SellersTab() {
                 : 'Crea una cuenta de vendedora. Se generará automáticamente su código de referido y recibirá un correo con sus credenciales.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSaveSeller}>
+          <form onSubmit={handleSaveSeller} noValidate>
             <div className="space-y-4 py-4">
               <div>
                 <Label htmlFor="name">Nombre Completo</Label>
@@ -924,8 +929,8 @@ export function SellersTab() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="commissionRate">Tasa de Comisión por Médico Referido (ej. 0.20 para 20%)</Label>
-                <Input id="commissionRate" name="commissionRate" type="number" step="0.01" min="0" max="1" defaultValue={editingSeller?.commissionRate ?? 0.2} required />
+                <Label htmlFor="commissionRate">Tasa de Comisión por Médico Referido (ej. 0.20 o 20 para 20%)</Label>
+                <Input id="commissionRate" name="commissionRate" type="number" step="any" min="0" max="100" defaultValue={editingSeller?.commissionRate ?? 0.2} required />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
