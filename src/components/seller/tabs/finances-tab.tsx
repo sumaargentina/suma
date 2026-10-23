@@ -65,6 +65,12 @@ export function FinancesTab({ sellerData, sellerPayments, onUpdate }: FinancesTa
     const fetchReferredDoctors = async () => {
       if (!sellerData.id) return;
       try {
+        await fetch('/api/seller-payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sync_commissions' }),
+        }).catch(() => {});
+
         const [allDocs, allPayments] = await Promise.all([
           supabaseService.getDoctors(),
           supabaseService.getDoctorPayments()
@@ -74,7 +80,6 @@ export function FinancesTab({ sellerData, sellerPayments, onUpdate }: FinancesTa
       } catch (error) {
         console.error('Error loading data:', error);
         toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los datos.' });
-      } finally {
       }
     }
     fetchReferredDoctors();
@@ -87,7 +92,9 @@ export function FinancesTab({ sellerData, sellerPayments, onUpdate }: FinancesTa
     const now = getCurrentDateTimeInArgentina();
     const currentPeriod = format(now, "LLLL yyyy", { locale: es });
 
-    const hasBeenPaidThisPeriod = sellerPayments.some(p => p.period.toLowerCase() === currentPeriod.toLowerCase());
+    const pendingSellerPayments = sellerPayments.filter(p => p.status === 'pending');
+    const paidSellerPayments = sellerPayments.filter(p => p.status === 'paid');
+    const hasBeenPaidThisPeriod = paidSellerPayments.some(p => p.period.toLowerCase() === currentPeriod.toLowerCase());
     const activeReferred = referredDoctors.filter(d => d.status === 'active');
 
     // Filtrar solo doctores que han pagado efectivamente
@@ -99,17 +106,21 @@ export function FinancesTab({ sellerData, sellerPayments, onUpdate }: FinancesTa
       return hasPaidPayments;
     });
 
-    let pendingCommission = 0;
-    if (!hasBeenPaidThisPeriod) {
+    // La comisión pendiente real es la suma de todos los registros de seller_payments en estado 'pending'
+    const pendingFromRecords = pendingSellerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    let pendingCommission = pendingFromRecords;
+    if (pendingCommission === 0 && !hasBeenPaidThisPeriod) {
       pendingCommission = doctorsWithPayments.reduce((sum, doc) => {
         const fee = cityFeesMap.get(doc.city) || 0;
         return sum + (fee * sellerData.commissionRate);
       }, 0);
     }
-    const doctorsForPendingCommission = hasBeenPaidThisPeriod ? [] : doctorsWithPayments;
+    const doctorsForPendingCommission = pendingSellerPayments.length > 0
+      ? pendingSellerPayments.flatMap(p => p.includedDoctors)
+      : (hasBeenPaidThisPeriod ? [] : doctorsWithPayments);
 
     let startDate: Date, endDate: Date;
-    let filteredPayments = sellerPayments;
+    let filteredPayments = paidSellerPayments;
     let filteredExpenses = sellerData.expenses || [];
 
     if (timeRange !== 'all') {
@@ -120,7 +131,7 @@ export function FinancesTab({ sellerData, sellerPayments, onUpdate }: FinancesTa
         case 'month': default: startDate = startOfMonth(now); endDate = endOfMonth(now); break;
       }
 
-      filteredPayments = sellerPayments.filter(p => {
+      filteredPayments = paidSellerPayments.filter(p => {
         const paymentDate = new Date(p.paymentDate + 'T00:00:00');
         return paymentDate >= startDate && paymentDate <= endDate;
       });

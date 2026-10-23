@@ -1022,6 +1022,9 @@ export type IncludedDoctorCommission = {
   id: string;
   name: string;
   commissionAmount: number;
+  doctorPaymentId?: string;
+  paymentDate?: string;
+  paymentAmount?: number;
 };
 
 export type SellerPayment = {

@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { SellerNotification, AdminSupportTicket, SellerPayment, Doctor } from './types';
 import { differenceInDays } from 'date-fns';
 import { useAuth } from './auth';
-import { supabase } from './supabase';
 import { getCurrentDateTimeInArgentina } from './utils';
 
 interface SellerNotificationContextType {
@@ -23,12 +22,13 @@ interface SellerNotificationContextType {
 
 const SellerNotificationContext = createContext<SellerNotificationContextType | undefined>(undefined);
 const getNotificationStorageKey = (userId: string) => `suma-seller-notifications-${userId}`;
-const MAX_NOTIFICATIONS = 25;
+const getDismissedStorageKey = (userId: string) => `suma-seller-notifications-dismissed-${userId}`;
+const MAX_NOTIFICATIONS = 30;
 
 const filterValidSellerNotifications = (list: SellerNotification[]): SellerNotification[] => {
   const now = getCurrentDateTimeInArgentina();
   return list.filter(n => {
-    if (n.createdAt && differenceInDays(now, new Date(n.createdAt)) > 14) {
+    if (n.createdAt && differenceInDays(now, new Date(n.createdAt)) > 30) {
       return false;
     }
     return true;
@@ -39,6 +39,25 @@ export function SellerNotificationProvider({ children }: { children: ReactNode }
   const { user } = useAuth();
   const [sellerNotifications, setSellerNotifications] = useState<SellerNotification[]>([]);
   const [sellerUnreadCount, setSellerUnreadCount] = useState(0);
+
+  const getDismissedSet = useCallback((userId: string): Set<string> => {
+    try {
+      const raw = localStorage.getItem(getDismissedStorageKey(userId));
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  }, []);
+
+  const addDismissedIds = useCallback((userId: string, ids: string[]) => {
+    try {
+      const current = getDismissedSet(userId);
+      ids.forEach(id => current.add(id));
+      localStorage.setItem(getDismissedStorageKey(userId), JSON.stringify(Array.from(current).slice(-200)));
+    } catch {
+      // ignore
+    }
+  }, [getDismissedSet]);
 
   useEffect(() => {
     if (user?.id && user.role === 'seller') {
@@ -64,12 +83,12 @@ export function SellerNotificationProvider({ children }: { children: ReactNode }
     }
   }, [user]);
 
-  // Limpiar notificaciones de otros usuarios cuando cambie el usuario
   useEffect(() => {
     if (user?.id && user.role === 'seller') {
       const allKeys = Object.keys(localStorage);
       const sellerNotificationKeys = allKeys.filter(key =>
         key.startsWith('suma-seller-notifications-') &&
+        !key.startsWith('suma-seller-notifications-dismissed-') &&
         key !== getNotificationStorageKey(user.id)
       );
       sellerNotificationKeys.forEach(key => localStorage.removeItem(key));
@@ -84,87 +103,118 @@ export function SellerNotificationProvider({ children }: { children: ReactNode }
     if (!user?.id || user.role !== 'seller') return;
 
     const storageKey = getNotificationStorageKey(user.id);
-    const newNotificationsMap = new Map<string, SellerNotification>();
+    const dismissed = getDismissedSet(user.id);
     const now = getCurrentDateTimeInArgentina();
 
-    const existingIds = new Set(sellerNotifications.map(n => n.id));
+    setSellerNotifications(prev => {
+      const prevMap = new Map(prev.map(n => [n.id, n]));
 
-    // 1. New Doctor Registered
-    const sellerReferredDoctors = doctors.filter(doc => doc.sellerId === user.id);
-    sellerReferredDoctors.forEach(doc => {
-      if (!doc.readBySeller) {
-        const id = `new-doctor-${doc.id}`;
-        if (!existingIds.has(id)) {
-          newNotificationsMap.set(id, {
-            id,
+      const upsert = (notif: SellerNotification) => {
+        if (dismissed.has(notif.id)) return;
+        const existing = prevMap.get(notif.id);
+        if (existing) {
+          prevMap.set(notif.id, {
+            ...existing,
+            title: notif.title,
+            description: notif.description,
+            link: notif.link,
+            read: existing.read || Boolean(notif.read),
+          });
+        } else {
+          prevMap.set(notif.id, notif);
+        }
+      };
+
+      // 1. Médicos referidos (Registrados y Verificados)
+      const sellerReferredDoctors = doctors.filter(doc => doc.sellerId === user.id);
+      sellerReferredDoctors.forEach(doc => {
+        upsert({
+          id: `new-doctor-${doc.id}`,
+          type: 'new_doctor_registered',
+          title: '¡Nuevo Médico Referido!',
+          description: `El Dr(a). ${doc.name} (${doc.specialty}) se registró con tu código.`,
+          date: doc.joinDate,
+          createdAt: now.toISOString(),
+          read: Boolean(doc.readBySeller),
+          link: '/seller/dashboard?view=referrals'
+        });
+
+        if (doc.verificationStatus === 'verified') {
+          upsert({
+            id: `verified-doctor-${doc.id}`,
             type: 'new_doctor_registered',
-            title: '¡Nuevo Referido!',
-            description: `El Dr. ${doc.name} se ha registrado con tu código.`,
+            title: '✅ Médico Referido Verificado',
+            description: `El Dr(a). ${doc.name} ya fue verificado por el administrador y está activo.`,
             date: doc.joinDate,
             createdAt: now.toISOString(),
-            read: false,
+            read: prevMap.get(`verified-doctor-${doc.id}`)?.read ?? false,
             link: '/seller/dashboard?view=referrals'
           });
         }
-      }
-    });
+      });
 
-    // 2. Payment Processed
-    const sellerPaymentsFiltered = sellerPayments.filter(payment => payment.sellerId === user.id);
-    sellerPaymentsFiltered.forEach(payment => {
-      if (!payment.readBySeller) {
-        const id = `payment-processed-${payment.id}`;
-        if (!existingIds.has(id)) {
-          newNotificationsMap.set(id, {
-            id,
+      // 2. Comisiones Recurrentes (Pendientes y Pagadas)
+      const sellerPaymentsFiltered = sellerPayments.filter(payment => payment.sellerId === user.id);
+      sellerPaymentsFiltered.forEach(payment => {
+        if (payment.status === 'pending') {
+          upsert({
+            id: `commission-pending-${payment.id}`,
             type: 'payment_processed',
-            title: '¡Has recibido un pago!',
+            title: '💸 Nueva Comisión Recurrente Acumulada',
+            description: `Tienes $${payment.amount.toFixed(2)} en comisiones pendientes del período ${payment.period}.`,
+            date: payment.paymentDate,
+            createdAt: now.toISOString(),
+            read: Boolean(payment.readBySeller),
+            link: '/seller/dashboard?view=finances'
+          });
+        } else if (payment.status === 'paid') {
+          upsert({
+            id: `payment-processed-${payment.id}`,
+            type: 'payment_processed',
+            title: '¡Has recibido un pago de SUMA!',
             description: `SUMA te ha pagado $${payment.amount.toFixed(2)} por tus comisiones de ${payment.period}.`,
             date: payment.paymentDate,
             createdAt: now.toISOString(),
-            read: false,
+            read: Boolean(payment.readBySeller),
             link: '/seller/dashboard?view=finances'
           });
         }
-      }
-    });
+      });
 
-    // 3. Support Ticket Replies
-    const sellerSupportTickets = supportTickets.filter(ticket =>
-      ticket.userRole === 'seller' && ticket.userId === user.email
-    );
-    sellerSupportTickets.forEach(ticket => {
-      if (!ticket.readBySeller) {
+      // 3. Respuestas de soporte
+      const sellerSupportTickets = supportTickets.filter(ticket =>
+        ticket.userRole === 'seller' && ticket.userId === user.email
+      );
+      sellerSupportTickets.forEach(ticket => {
         const lastMessage = ticket.messages?.slice(-1)[0];
         if (lastMessage?.sender === 'admin') {
-          const id = `support-reply-${ticket.id}-${lastMessage.id}`;
-          if (!existingIds.has(id)) {
-            newNotificationsMap.set(id, {
-              id,
-              type: 'support_reply',
-              title: 'Respuesta de Soporte',
-              description: `El equipo de SUMA ha respondido a tu ticket: "${ticket.subject}"`,
-              date: lastMessage.timestamp,
-              createdAt: now.toISOString(),
-              read: false,
-              link: '/seller/dashboard?view=support'
-            });
-          }
+          upsert({
+            id: `support-reply-${ticket.id}__${lastMessage.id}`,
+            type: 'support_reply',
+            title: 'Respuesta de Soporte',
+            description: `El equipo de SUMA ha respondido a tu ticket: "${ticket.subject}"`,
+            date: lastMessage.timestamp,
+            createdAt: now.toISOString(),
+            read: Boolean(ticket.readBySeller),
+            link: '/seller/dashboard?view=support'
+          });
         }
-      }
+      });
+
+      const merged = filterValidSellerNotifications(
+        Array.from(prevMap.values())
+          .filter(n => !dismissed.has(n.id))
+          .sort((a, b) => {
+            if (a.read !== b.read) return a.read ? 1 : -1;
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          })
+      );
+
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      setSellerUnreadCount(merged.filter(n => !n.read).length);
+      return merged;
     });
-
-    if (newNotificationsMap.size > 0) {
-      const uniqueNewNotifications = Array.from(newNotificationsMap.values());
-      const filteredExisting = filterValidSellerNotifications(sellerNotifications);
-      const updatedNotifications = filterValidSellerNotifications([...uniqueNewNotifications, ...filteredExisting])
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
-      setSellerNotifications(updatedNotifications);
-      setSellerUnreadCount(updatedNotifications.filter(n => !n.read).length);
-    }
-  }, [user, sellerNotifications]);
+  }, [user, getDismissedSet]);
 
   const markSellerNotificationAsRead = useCallback(async (id: string) => {
     if (!user?.id || user.role !== 'seller') return;
@@ -178,81 +228,103 @@ export function SellerNotificationProvider({ children }: { children: ReactNode }
     });
 
     try {
-      if (id.startsWith('new-doctor-')) {
-        await supabase.from('doctors').update({ read_by_seller: true }).eq('id', id.replace('new-doctor-', ''));
-      } else if (id.startsWith('payment-processed-')) {
-        await supabase.from('seller_payments').update({ read_by_seller: true }).eq('id', id.replace('payment-processed-', ''));
+      const doctorIds = id.startsWith('new-doctor-') ? [id.replace(/^new-doctor-/, '')] : [];
+      const sellerPaymentIds = id.startsWith('payment-processed-')
+        ? [id.replace(/^payment-processed-/, '')]
+        : id.startsWith('commission-pending-')
+          ? [id.replace(/^commission-pending-/, '')]
+          : [];
+      const ticketIds = id.startsWith('support-reply-')
+        ? [id.replace(/^support-reply-/, '').split('__')[0]]
+        : [];
+
+      if (doctorIds.length > 0 || sellerPaymentIds.length > 0 || ticketIds.length > 0) {
+        await fetch('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'seller', doctorIds, sellerPaymentIds, ticketIds }),
+        });
       }
     } catch (e) {
-      console.error("Failed to mark seller notification read in Supabase", e);
+      console.error("Failed to mark seller notification read in API", e);
     }
   }, [user]);
 
   const markSellerNotificationsAsRead = useCallback(async () => {
     if (!user?.id || user.role !== 'seller' || sellerUnreadCount === 0) return;
 
+    const unreadNotifications = sellerNotifications.filter(n => !n.read);
     const storageKey = getNotificationStorageKey(user.id);
     const updated = sellerNotifications.map(n => ({ ...n, read: true }));
     localStorage.setItem(storageKey, JSON.stringify(updated));
     setSellerNotifications(updated);
     setSellerUnreadCount(0);
 
-    const unreadNotifications = sellerNotifications.filter(n => !n.read);
     if (unreadNotifications.length === 0) return;
 
-    const doctorIds = unreadNotifications.filter(n => n.type === 'new_doctor_registered').map(n => n.id.replace('new-doctor-', ''));
-    const paymentIds = unreadNotifications.filter(n => n.type === 'payment_processed').map(n => n.id.replace('payment-processed-', ''));
-    const ticketIds = unreadNotifications.filter(n => n.type === 'support_reply').map(n => n.id.split('-')[2]);
+    const doctorIds = unreadNotifications
+      .filter(n => n.id.startsWith('new-doctor-'))
+      .map(n => n.id.replace(/^new-doctor-/, ''));
+    const sellerPaymentIds = unreadNotifications
+      .filter(n => n.id.startsWith('payment-processed-') || n.id.startsWith('commission-pending-'))
+      .map(n => n.id.replace(/^(payment-processed-|commission-pending-)/, ''));
+    const ticketIds = unreadNotifications
+      .filter(n => n.id.startsWith('support-reply-'))
+      .map(n => n.id.replace(/^support-reply-/, '').split('__')[0]);
 
     try {
-      const updates = [];
-      if (doctorIds.length > 0) {
-        updates.push(supabase.from('doctors').update({ read_by_seller: true }).in('id', doctorIds));
+      if (doctorIds.length > 0 || sellerPaymentIds.length > 0 || ticketIds.length > 0) {
+        await fetch('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'seller', doctorIds, sellerPaymentIds, ticketIds }),
+        });
       }
-      if (paymentIds.length > 0) {
-        updates.push(supabase.from('seller_payments').update({ read_by_seller: true }).in('id', paymentIds));
-      }
-      if (ticketIds.length > 0) {
-        updates.push(supabase.from('support_tickets').update({ read_by_seller: true }).in('id', ticketIds));
-      }
-      await Promise.all(updates);
     } catch (e) {
-      console.error("Failed to mark seller notifications as read in Supabase", e);
+      console.error("Failed to mark seller notifications as read in API", e);
     }
   }, [sellerNotifications, user, sellerUnreadCount]);
 
   const clearReadSellerNotifications = useCallback(() => {
     if (!user?.id || user.role !== 'seller') return;
     const storageKey = getNotificationStorageKey(user.id);
+    const readIds = sellerNotifications.filter(n => n.read).map(n => n.id);
+    addDismissedIds(user.id, readIds);
     const remaining = sellerNotifications.filter(n => !n.read);
     localStorage.setItem(storageKey, JSON.stringify(remaining));
     setSellerNotifications(remaining);
     setSellerUnreadCount(remaining.length);
-  }, [user, sellerNotifications]);
+  }, [user, sellerNotifications, addDismissedIds]);
 
   const clearAllSellerNotifications = useCallback(() => {
     if (!user?.id || user.role !== 'seller') return;
     const storageKey = getNotificationStorageKey(user.id);
+    addDismissedIds(user.id, sellerNotifications.map(n => n.id));
     localStorage.removeItem(storageKey);
     setSellerNotifications([]);
     setSellerUnreadCount(0);
-  }, [user]);
+  }, [user, sellerNotifications, addDismissedIds]);
 
-  // Actualización periódica cada 45 segundos
+  // Carga inicial y actualización periódica cada 45 segundos
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
     async function fetchAndCheck() {
       if (user?.id && user.role === 'seller') {
-        const { getSellerPayments, getSupportTickets, getDoctors } = await import('./supabaseService');
-        const [sellerPayments, supportTickets, referredDoctors] = await Promise.all([
-          getSellerPayments(),
-          getSupportTickets(),
-          getDoctors()
-        ]);
-        checkAndSetSellerNotifications(referredDoctors, supportTickets, sellerPayments);
+        try {
+          const { getSellerPayments, getSupportTickets, getDoctors } = await import('./supabaseService');
+          const [sellerPayments, supportTickets, referredDoctors] = await Promise.all([
+            getSellerPayments(),
+            getSupportTickets(),
+            getDoctors()
+          ]);
+          checkAndSetSellerNotifications(referredDoctors, supportTickets, sellerPayments);
+        } catch (err) {
+          console.warn('Error syncing seller notifications:', err);
+        }
       }
     }
     if (user?.id && user.role === 'seller') {
+      fetchAndCheck();
       interval = setInterval(fetchAndCheck, 45000);
     }
     return () => {

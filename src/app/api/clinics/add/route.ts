@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { addClinic } from '@/lib/supabaseService';
 import { sanitizeString, sanitizeEmail, sanitizePhone } from '@/lib/sanitize';
 import { logSecurityEvent } from '@/lib/auth-utils';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
     try {
@@ -21,6 +22,13 @@ export async function POST(req: NextRequest) {
         };
 
         const id = await addClinic(sanitizedData);
+
+        // Enviar correo de bienvenida a la clínica (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: sanitizedData.email,
+            name: sanitizedData.name,
+            role: 'clinic',
+        }).catch((err) => console.error('API: Error sending clinic welcome email:', err));
 
         logSecurityEvent('CLINIC_REGISTERED', { clinicId: id, email: sanitizedData.email });
         return NextResponse.json({ id });

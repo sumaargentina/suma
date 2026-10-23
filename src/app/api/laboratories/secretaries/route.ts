@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAuth, logSecurityEvent } from '@/lib/auth-utils';
 import { sanitizeString, sanitizeEmail, detectInjection } from '@/lib/sanitize';
 import { hashPassword } from '@/lib/password-utils';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,6 +153,17 @@ export async function POST(request: NextRequest) {
             await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        // Enviar correo de bienvenida a la secretaria de laboratorio (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: sanitizedEmail,
+            name: sanitizedName,
+            role: 'secretary',
+            extraData: {
+                tempPassword: password,
+                laboratoryName: user.name,
+            },
+        }).catch((err) => console.error('Error enviando correo de bienvenida a secretaria de laboratorio:', err));
 
         logSecurityEvent('LAB_SECRETARY_ADDED', {
             userId: user.id,

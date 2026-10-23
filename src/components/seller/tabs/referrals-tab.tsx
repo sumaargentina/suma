@@ -14,13 +14,12 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from '@/lib/supabaseService';
 import { useAuth } from '@/lib/auth';
-import { useSettings } from '@/lib/settings';
 import { useDynamicData } from '@/hooks/use-dynamic-data';
 import { LocationSelector } from '@/components/ui/location-selector';
 import { getCitiesByState, getCountryDisplay, normalizeCountryCode, getCoordinates } from '@/lib/geo-data';
 import { z } from 'zod';
 import { hashPassword } from '@/lib/password-utils';
-import { PlusCircle, Search, Link as LinkIcon, Copy, Mail, Phone, DollarSign, CheckCircle, XCircle, Globe } from 'lucide-react';
+import { PlusCircle, Search, Link as LinkIcon, Copy, Mail, Phone, DollarSign, CheckCircle, XCircle, Globe, Clock, ShieldCheck, Share2, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -35,6 +34,9 @@ const passwordSchema = z.string()
 const DoctorFormSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
   email: z.string().email("Por favor, ingresa un correo electrónico válido."),
+  cedula: z.string().min(5, "El documento/cédula debe tener al menos 5 caracteres."),
+  medicalLicense: z.string().min(3, "La matrícula médica es requerida para la verificación."),
+  phone: z.string().min(7, "El teléfono/WhatsApp del médico es requerido."),
   password: z.string().optional().or(z.literal('')),
   confirmPassword: z.string().optional().or(z.literal('')),
   specialty: z.string().min(1, "Debes seleccionar una especialidad."),
@@ -82,6 +84,7 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
   const [doctorsToShow, setDoctorsToShow] = useState(10);
   const [isDoctorPaymentsDialogOpen, setIsDoctorPaymentsDialogOpen] = useState(false);
   const [selectedDoctorForPayments, setSelectedDoctorForPayments] = useState<Doctor | null>(null);
+  const [newDocSpecialty, setNewDocSpecialty] = useState<string>('');
 
   // Estado de ubicación para el registro de nuevo médico (Por defecto hereda el país y estado de la vendedora)
   const [newDocCountry, setNewDocCountry] = useState<string>(sellerCountry);
@@ -107,9 +110,9 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
     const fetchPayments = async () => {
       const allPayments = await supabaseService.getDoctorPayments();
       setDoctorPayments(allPayments);
-    }
+    };
     fetchPayments();
-  }, [])
+  }, []);
 
   const filteredAndSortedDoctors = useMemo(() => {
     let doctors = [...referredDoctors]
@@ -135,6 +138,30 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
     setIsDoctorPaymentsDialogOpen(true);
   };
 
+  const handleCopyReferralLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    toast({
+      title: '¡Enlace copiado!',
+      description: 'Comparte este enlace con los médicos para que queden registrados bajo tu código de referido.',
+    });
+  };
+
+  const handleShareWhatsApp = () => {
+    const sellerName = sellerData?.name || user?.name || 'tu asesor(a) SUMA';
+    const text = `¡Hola Dr(a).! 👋 Te saluda *${sellerName}* del equipo comercial de *SUMA*.\n\nTe invito a registrarte en nuestra plataforma para gestionar tu consultorio, agenda de turnos, historia clínica y recibir pacientes.\n\n👉 Regístrate con mi enlace oficial de asesoría (Código: *${referralCode}*):\n${referralLink}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleContactDoctorWhatsApp = (doctor: Doctor) => {
+    const rawPhone = (doctor.whatsapp || doctor.phone || '').replace(/\D/g, '');
+    if (!rawPhone) return;
+    const sellerName = sellerData?.name || user?.name || 'tu asesor(a) de SUMA';
+    const msg = doctor.verificationStatus !== 'verified'
+      ? `¡Hola Dr(a). ${doctor.name}! 👋 Te escribe ${sellerName}, tu asesor(a) en SUMA. Te contacto para acompañarte en la activación y verificación de tu perfil médico.`
+      : `¡Hola Dr(a). ${doctor.name}! 👋 Te escribe ${sellerName}, tu asesor(a) en SUMA. ¿Cómo va todo con tu consultorio en la plataforma?`;
+    window.open(`https://wa.me/${rawPhone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+  };
+
   const handleSaveDoctor = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user || user.role !== 'seller') return;
@@ -143,9 +170,12 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
     const dataToValidate = {
       name: formData.get('doc-name') as string,
       email: formData.get('doc-email') as string,
+      cedula: (formData.get('doc-cedula') as string) || '',
+      medicalLicense: (formData.get('doc-medical-license') as string) || '',
+      phone: (formData.get('doc-phone') as string) || '',
       password: formData.get('doc-password') as string,
       confirmPassword: formData.get('doc-confirm-password') as string,
-      specialty: formData.get('doc-specialty') as string,
+      specialty: newDocSpecialty || (formData.get('doc-specialty') as string) || '',
       country: normalizeCountryCode(newDocCountry || sellerCountry),
       state: newDocState || '',
       city: newDocCity || (formData.get('doc-city') as string) || '',
@@ -174,7 +204,7 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
       return;
     }
 
-    const { name, specialty, country, state, city, address, password, slotDuration, consultationFee } = result.data;
+    const { name, specialty, country, state, city, address, password, slotDuration, consultationFee, cedula, medicalLicense, phone } = result.data;
     const coords = getCoordinates(country, state, city);
 
     // Encriptar contraseña
@@ -185,18 +215,31 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
     const paymentDateArgentina = getPaymentDateInArgentina(joinDate);
 
     const newDoctorData: Omit<Doctor, 'id'> = {
-      name, email: normalizedEmail, specialty,
+      name,
+      email: normalizedEmail,
+      specialty,
       country: normalizeCountryCode(country),
       state: state || '',
       city,
       address,
       password: hashedPassword,
       sellerId: user.id,
-      cedula: '', sector: '', rating: 0, reviewCount: 0,
+      cedula: cedula.trim(),
+      medicalLicense: medicalLicense.trim(),
+      phone: phone.trim(),
+      whatsapp: phone.trim(),
+      verificationStatus: 'pending',
+      sector: '',
+      rating: 0,
+      reviewCount: 0,
       profileImage: 'https://placehold.co/400x400.png',
       bannerImage: 'https://placehold.co/1200x400.png',
-      aiHint: 'doctor portrait', description: '', services: [], bankDetails: [],
-      slotDuration: slotDuration, consultationFee,
+      aiHint: 'doctor portrait',
+      description: 'Especialista comprometido con la salud y el bienestar de mis pacientes.',
+      services: [],
+      bankDetails: [],
+      slotDuration: slotDuration,
+      consultationFee,
       schedule: {
         monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
         tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
@@ -206,21 +249,33 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
         saturday: { active: false, slots: [] },
         sunday: { active: false, slots: [] },
       },
-      status: 'active', lastPaymentDate: '',
-      whatsapp: '', lat: coords.lat, lng: coords.lng,
+      status: 'active',
+      lastPaymentDate: null,
+      lat: coords.lat,
+      lng: coords.lng,
       joinDate: joinDateArgentina,
-      subscriptionStatus: 'active', nextPaymentDate: paymentDateArgentina,
-      coupons: [], expenses: [],
+      subscriptionStatus: 'active',
+      nextPaymentDate: paymentDateArgentina,
+      coupons: [],
+      expenses: [],
     };
 
     try {
       await supabaseService.addDoctor(newDoctorData);
-      toast({ title: 'Médico Registrado', description: `El Dr. ${name} ha sido añadido en ${city} (${country}) como tu referido.` });
+      toast({
+        title: 'Médico Registrado (Pendiente por Verificar)',
+        description: `El Dr(a). ${name} ha sido registrado como tu referido y recibió un correo de bienvenida. El administrador verificará su matrícula.`,
+      });
+      setNewDocSpecialty('');
       onUpdate();
       setIsDoctorDialogOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding doctor:", error);
-      toast({ variant: 'destructive', title: 'Error al registrar', description: 'No se pudo crear el médico en la base de datos.' });
+      toast({
+        variant: 'destructive',
+        title: 'Error al registrar',
+        description: error?.message || 'No se pudo crear el médico en la base de datos.',
+      });
     }
   };
 
@@ -231,16 +286,26 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2"><LinkIcon className="text-primary" /> Tu Enlace de Referido</CardTitle>
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold">
-                <Globe className="w-3.5 h-3.5 mr-1.5" /> Territorio: {sellerCountryInfo.flag} {sellerCountryInfo.name} {sellerData?.city ? `• ${sellerData.city}` : ''}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="font-mono text-xs">
+                  Código: {referralCode}
+                </Badge>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold">
+                  <Globe className="w-3.5 h-3.5 mr-1.5" /> Territorio: {sellerCountryInfo.flag} {sellerCountryInfo.name} {sellerData?.city ? `• ${sellerData.city}` : ''}
+                </Badge>
+              </div>
             </div>
-            <CardDescription>Comparte este enlace con los médicos para que se registren bajo tu código.</CardDescription>
+            <CardDescription>
+              Comparte este enlace con los médicos para que se registren directamente bajo tu código de referido. Ganarás el <strong>{Math.round((sellerData?.commissionRate ?? 0.2) * 100)}% de comisión recurrente</strong> por cada pago de suscripción que realicen tus médicos referidos.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row items-stretch gap-2">
             <Input value={referralLink} readOnly className="text-sm bg-background flex-1" />
-            <Button onClick={() => navigator.clipboard.writeText(referralLink)} className="w-full sm:w-auto">
+            <Button onClick={handleCopyReferralLink} variant="outline" className="w-full sm:w-auto">
               <Copy className="mr-2 h-4 w-4" />Copiar Enlace
+            </Button>
+            <Button onClick={handleShareWhatsApp} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Share2 className="mr-2 h-4 w-4" />Compartir por WhatsApp
             </Button>
           </CardContent>
         </Card>
@@ -248,7 +313,7 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <CardTitle>Mis Médicos Referidos</CardTitle>
+                <CardTitle>Mis Médicos Referidos ({referredDoctors.length})</CardTitle>
                 <CardDescription>Busca, filtra y registra los doctores que se han unido con tu enlace.</CardDescription>
               </div>
               <Button onClick={() => setIsDoctorDialogOpen(true)} className="w-full sm:w-auto">
@@ -262,20 +327,61 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
             </div>
           </CardHeader>
           <CardContent>
-            <div className="hidden md:table">
-              <Table><TableHeader><TableRow><TableHead>Médico</TableHead><TableHead>Contacto</TableHead><TableHead>Especialidad</TableHead><TableHead>Ubicación</TableHead><TableHead>Fecha de Registro</TableHead><TableHead className="text-center">Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+            <div className="hidden md:table w-full">
+              <Table><TableHeader><TableRow><TableHead>Médico</TableHead><TableHead>Contacto</TableHead><TableHead>Especialidad / Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Fecha de Registro</TableHead><TableHead className="text-center">Verificación / Estado</TableHead><TableHead className="text-right">Pagos</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {filteredAndSortedDoctors.length > 0 ? filteredAndSortedDoctors.map((doctor) => {
                     const docCountryInfo = getCountryDisplay(doctor.country);
                     return (
                     <TableRow key={doctor.id}>
                       <TableCell className="font-medium">{doctor.name}</TableCell>
-                      <TableCell><div className="flex flex-col gap-1 text-xs"><span key={`${doctor.id}-email`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.email}</span></span><span key={`${doctor.id}-phone`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.whatsapp}</span></span></div></TableCell>
-                      <TableCell>{doctor.specialty}</TableCell>
+                      <TableCell><div className="flex flex-col gap-1 text-xs"><span key={`${doctor.id}-email`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.email}</span></span><span key={`${doctor.id}-phone`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{doctor.whatsapp || doctor.phone || '-'}</span></span></div></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span>{doctor.specialty}</span>
+                          <span className="text-xs text-muted-foreground">Matrícula: {doctor.medicalLicense || 'Pendiente'}</span>
+                        </div>
+                      </TableCell>
                       <TableCell>{docCountryInfo.flag} {doctor.city}{doctor.state ? `, ${doctor.state}` : ''}</TableCell>
-                      <TableCell>{format(new Date(doctor.joinDate + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es })}</TableCell>
-                      <TableCell className="text-center"><Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn(doctor.status === 'active' && 'bg-green-600 text-white')}>{doctor.status === 'active' ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}{doctor.status === 'active' ? 'Activo' : 'Inactivo'}</Badge></TableCell>
-                      <TableCell className="text-right"><Button variant="outline" size="icon" onClick={() => handleViewDoctorPayments(doctor)}><DollarSign className="h-4 w-4" /><span className="sr-only">Ver Pagos</span></Button></TableCell>
+                      <TableCell>{doctor.joinDate ? format(new Date(doctor.joinDate + 'T00:00:00'), "d 'de' LLLL, yyyy", { locale: es }) : '-'}</TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <Badge className={cn(
+                            "text-[11px] gap-1",
+                            doctor.verificationStatus === 'verified'
+                              ? 'bg-blue-600 text-white'
+                              : doctor.verificationStatus === 'rejected'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-amber-500 text-white'
+                          )}>
+                            {doctor.verificationStatus === 'verified' ? <ShieldCheck className="h-3 w-3" /> : doctor.verificationStatus === 'rejected' ? <XCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                            {doctor.verificationStatus === 'verified' ? 'Verificado' : doctor.verificationStatus === 'rejected' ? 'Rechazado' : 'Por Verificar'}
+                          </Badge>
+                          <Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn("text-[10px]", doctor.status === 'active' && 'bg-green-600 text-white')}>
+                            {doctor.status === 'active' ? 'Cuenta Activa' : 'Inactivo'}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {(doctor.whatsapp || doctor.phone) && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                              onClick={() => handleContactDoctorWhatsApp(doctor)}
+                              title="Escribir por WhatsApp al médico"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                              <span className="sr-only">WhatsApp</span>
+                            </Button>
+                          )}
+                          <Button variant="outline" size="icon" onClick={() => handleViewDoctorPayments(doctor)} title="Ver pagos de suscripción">
+                            <DollarSign className="h-4 w-4" />
+                            <span className="sr-only">Ver Pagos</span>
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   )}) : (<TableRow><TableCell colSpan={7} className="h-24 text-center">No se encontraron médicos con los filtros actuales.</TableCell></TableRow>)}
                 </TableBody>
@@ -286,9 +392,45 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
                 const docCountryInfo = getCountryDisplay(doctor.country);
                 return (
                 <div key={doctor.id} className="p-4 border rounded-lg space-y-4">
-                  <div className="flex justify-between items-start gap-2"><div><p className="font-bold">{doctor.name}</p><p className="text-sm text-muted-foreground">{doctor.specialty}</p></div><Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn(doctor.status === 'active' && 'bg-green-600 text-white')}>{doctor.status === 'active' ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}{doctor.status === 'active' ? 'Activo' : 'Inactivo'}</Badge></div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm"><div key={`${doctor.id}-location`}><p className="font-semibold text-xs text-muted-foreground mb-1">Ubicación</p><p>{docCountryInfo.flag} {doctor.city}</p></div><div key={`${doctor.id}-date`}><p className="font-semibold text-xs text-muted-foreground mb-1">Fecha Registro</p><p>{format(new Date(doctor.joinDate + 'T00:00:00'), "d MMM, yyyy", { locale: es })}</p></div><div key={`${doctor.id}-contact`} className="col-span-2"><p className="font-semibold text-xs text-muted-foreground mb-1">Contacto</p><div className="flex flex-col gap-1.5 text-xs"><span key={`${doctor.id}-email-mobile`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span>{doctor.email}</span></span><span key={`${doctor.id}-phone-mobile`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span>{doctor.whatsapp}</span></span></div></div></div>
-                  <Separator /><Button variant="outline" size="sm" className="w-full" onClick={() => handleViewDoctorPayments(doctor)}><DollarSign className="mr-2 h-4 w-4" /> Ver Historial de Pagos</Button>
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <p className="font-bold">{doctor.name}</p>
+                      <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
+                      <p className="text-xs text-muted-foreground">Matrícula: {doctor.medicalLicense || 'Pendiente'}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge className={cn(
+                        "text-[11px] gap-1",
+                        doctor.verificationStatus === 'verified'
+                          ? 'bg-blue-600 text-white'
+                          : doctor.verificationStatus === 'rejected'
+                            ? 'bg-red-600 text-white'
+                            : 'bg-amber-500 text-white'
+                      )}>
+                        {doctor.verificationStatus === 'verified' ? 'Verificado' : doctor.verificationStatus === 'rejected' ? 'Rechazado' : 'Por Verificar'}
+                      </Badge>
+                      <Badge variant={doctor.status === 'active' ? 'default' : 'destructive'} className={cn(doctor.status === 'active' && 'bg-green-600 text-white')}>
+                        {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm"><div key={`${doctor.id}-location`}><p className="font-semibold text-xs text-muted-foreground mb-1">Ubicación</p><p>{docCountryInfo.flag} {doctor.city}</p></div><div key={`${doctor.id}-date`}><p className="font-semibold text-xs text-muted-foreground mb-1">Fecha Registro</p><p>{doctor.joinDate ? format(new Date(doctor.joinDate + 'T00:00:00'), "d MMM, yyyy", { locale: es }) : '-'}</p></div><div key={`${doctor.id}-contact`} className="col-span-2"><p className="font-semibold text-xs text-muted-foreground mb-1">Contacto</p><div className="flex flex-col gap-1.5 text-xs"><span key={`${doctor.id}-email-mobile`} className="flex items-center gap-1.5"><Mail className="h-3 w-3 flex-shrink-0" /> <span>{doctor.email}</span></span><span key={`${doctor.id}-phone-mobile`} className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0" /> <span>{doctor.whatsapp || doctor.phone || '-'}</span></span></div></div></div>
+                  <Separator />
+                  <div className="flex gap-2">
+                    {(doctor.whatsapp || doctor.phone) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                        onClick={() => handleContactDoctorWhatsApp(doctor)}
+                      >
+                        <MessageCircle className="mr-1.5 h-4 w-4" /> WhatsApp
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => handleViewDoctorPayments(doctor)}>
+                      <DollarSign className="mr-1.5 h-4 w-4" /> Pagos
+                    </Button>
+                  </div>
                 </div>
               )}) : (<div className="h-24 text-center flex items-center justify-center text-muted-foreground">No se encontraron médicos con los filtros actuales.</div>)}
             </div>
@@ -299,16 +441,16 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
       <Dialog open={isDoctorDialogOpen} onOpenChange={setIsDoctorDialogOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">Registrar Nuevo Médico</DialogTitle>
+            <DialogTitle className="text-xl">Registrar Nuevo Médico Referido</DialogTitle>
             <DialogDescription>
-              Completa la información del perfil del médico. Quedará registrado como tu referido.
+              Completa la información del perfil del médico. Quedará registrado bajo tu código de referido en estatus <strong>Pendiente por Verificar</strong> hasta que el administrador valide su matrícula.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveDoctor}>
             <div className="space-y-6 py-4">
               {/* Información Personal */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-primary border-b pb-2">Información Personal</h3>
+                <h3 className="text-lg font-semibold text-primary border-b pb-2">Información Personal y Credenciales</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="doc-name">Nombre Completo</Label>
@@ -329,6 +471,34 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
                       required
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="doc-cedula">Documento / Cédula / DNI</Label>
+                    <Input
+                      id="doc-cedula"
+                      name="doc-cedula"
+                      placeholder="Ej: 12345678"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="doc-medical-license">Número de Matrícula Profesional</Label>
+                    <Input
+                      id="doc-medical-license"
+                      name="doc-medical-license"
+                      placeholder="Ej: MP-12345"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="doc-phone">Teléfono / WhatsApp</Label>
+                    <Input
+                      id="doc-phone"
+                      name="doc-phone"
+                      type="tel"
+                      placeholder="Ej: +54 9 11 1234 5678 / +58 412 1234567"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -337,7 +507,7 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
                 <h3 className="text-lg font-semibold text-primary border-b pb-2">Seguridad</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="doc-password">Contraseña</Label>
+                    <Label htmlFor="doc-password">Contraseña Provisional</Label>
                     <Input
                       id="doc-password"
                       name="doc-password"
@@ -367,7 +537,7 @@ export function ReferralsTab({ referredDoctors, referralCode, sellerData, onUpda
                 <h3 className="text-lg font-semibold text-primary border-b pb-2">Información Profesional y Ubicación</h3>
                 <div className="space-y-2">
                   <Label htmlFor="doc-specialty">Especialidad</Label>
-                  <Select name="doc-specialty">
+                  <Select value={newDocSpecialty} onValueChange={setNewDocSpecialty} name="doc-specialty">
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona una especialidad..." />
                     </SelectTrigger>

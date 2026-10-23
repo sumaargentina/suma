@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import * as supabaseService from '@/lib/supabaseService';
 import type { Doctor } from '@/lib/types';
-import { Trash2, Copy, Check, Share2, ExternalLink, Link2, AlertCircle, Loader2 } from 'lucide-react';
+import { Trash2, Copy, Check, Share2, ExternalLink, Link2, AlertCircle, Loader2, Clock, ShieldCheck, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { uploadPublicImage } from '@/lib/supabaseService';
@@ -528,7 +528,25 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
             </div>
 
             <div className="space-y-1 md:space-y-2">
-              <Label htmlFor="medicalLicense" className="text-xs md:text-sm">Número de Matrícula / Colegio Profesional</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="medicalLicense" className="text-xs md:text-sm">Número de Matrícula / Colegio Profesional</Label>
+                {doctorData.verificationStatus === 'verified' ? (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-[11px] py-0.5">
+                    <ShieldCheck className="h-3 w-3" />
+                    Verificado
+                  </Badge>
+                ) : doctorData.verificationStatus === 'rejected' ? (
+                  <Badge variant="destructive" className="gap-1 text-[11px] py-0.5">
+                    <XCircle className="h-3 w-3" />
+                    Rechazado / Observado
+                  </Badge>
+                ) : (
+                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white gap-1 text-[11px] py-0.5">
+                    <Clock className="h-3 w-3" />
+                    Por Verificar
+                  </Badge>
+                )}
+              </div>
               <div className="relative">
                 <Input
                   id="medicalLicense"
@@ -551,8 +569,10 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   {licenseError}
                 </p>
+              ) : doctorData.verificationStatus === 'verified' ? (
+                <p className="text-xs text-emerald-700 font-medium">✅ Matrícula verificada oficialmente por la administración de SUMA.</p>
               ) : (
-                <p className="text-xs text-muted-foreground">Este número será verificado por el administrador</p>
+                <p className="text-xs text-amber-700">⏳ Tu matrícula está pendiente por verificar por el administrador. Te notificaremos por correo al ser aprobada.</p>
               )}
             </div>
             <div className="space-y-1 md:space-y-2">

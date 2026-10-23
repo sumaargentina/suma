@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getRateLimitKey } from '@/app/api/_rate-limit';
 import { sanitizeString, sanitizeEmail, sanitizePhone, detectInjection } from '@/lib/sanitize';
 import { logSecurityEvent } from '@/lib/auth-utils';
+import { sendRoleWelcomeEmail, sendSellerNewReferralEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
     try {
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
 
         const dataWithDefaults: Record<string, unknown> = {
             ...toSnakeCase(sanitizedData),
+            verification_status: sanitizedData.verificationStatus || sanitizedData.verification_status || 'pending',
             read_by_admin: false,
             read_by_seller: false,
         };
@@ -114,6 +116,44 @@ export async function POST(request: NextRequest) {
                 { error: clientMessage, code: errorCode, details: errorMessage },
                 { status: 500 }
             );
+        }
+
+        // Enviar correo de bienvenida al médico (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: sanitizedData.email,
+            name: sanitizedData.name,
+            role: 'doctor',
+            extraData: {
+                specialty: sanitizedData.specialty,
+                medicalLicense: sanitizedData.medicalLicense || (dataWithDefaults.medical_license as string),
+                verificationStatus: String(dataWithDefaults.verification_status || 'pending'),
+            },
+        }).catch((err) => console.error('API: Error sending doctor welcome email:', err));
+
+        // Si el médico fue referido por una vendedora, notificar a la vendedora por correo
+        const referredSellerId = (dataWithDefaults.seller_id as string) || sanitizedData.sellerId;
+        if (referredSellerId) {
+            Promise.resolve(
+                supabaseAdmin
+                    .from('sellers')
+                    .select('name, email')
+                    .eq('id', referredSellerId)
+                    .maybeSingle()
+            )
+                .then(({ data: sellerInfo }) => {
+                    if (sellerInfo?.email) {
+                        sendSellerNewReferralEmail({
+                            sellerEmail: sellerInfo.email,
+                            sellerName: sellerInfo.name,
+                            doctorName: sanitizedData.name,
+                            doctorEmail: sanitizedData.email,
+                            doctorPhone: sanitizedData.phone || sanitizedData.whatsapp,
+                            specialty: sanitizedData.specialty,
+                            city: sanitizedData.city,
+                        }).catch((err) => console.error('API: Error sending seller referral email:', err));
+                    }
+                })
+                .catch(() => {});
         }
 
         logSecurityEvent('DOCTOR_REGISTERED', { doctorId: data.id, email: sanitizedData.email });

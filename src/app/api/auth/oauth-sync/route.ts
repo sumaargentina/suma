@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { SignJWT } from 'jose';
+import { sendRoleWelcomeEmail, sendSellerNewReferralEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ const JWT_SECRET = new TextEncoder().encode(
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { email: rawEmail, name: rawName, avatar, id: authUserId, intendedRole } = body;
+        const { email: rawEmail, name: rawName, avatar, id: authUserId, intendedRole, sellerId } = body;
 
         const email = (rawEmail || '').toLowerCase().trim();
         const name = rawName || email.split('@')[0] || 'Usuario';
@@ -116,7 +117,10 @@ export async function POST(request: NextRequest) {
                         rating: 5.0,
                         review_count: 0,
                         status: 'active',
-                        verification_status: 'verified',
+                        verification_status: 'pending',
+                        seller_id: sellerId || null,
+                        read_by_admin: false,
+                        read_by_seller: false,
                         onboarding_completed: false,
                         join_date: new Date().toISOString().split('T')[0],
                         created_at: new Date().toISOString()
@@ -127,6 +131,37 @@ export async function POST(request: NextRequest) {
                 if (insertDocError || !newDoctor) {
                     console.error('❌ Error creando nuevo médico desde Google OAuth:', insertDocError);
                     return NextResponse.json({ error: 'Error al registrar médico' }, { status: 500 });
+                }
+
+                // Enviar correo de bienvenida al nuevo médico indicando estatus pendiente de verificación
+                sendRoleWelcomeEmail({
+                    email,
+                    name: newDoctor.name || userName,
+                    role: 'doctor',
+                    extraData: {
+                        verificationStatus: 'pending',
+                    },
+                }).catch((err) => console.error('Error enviando correo de bienvenida OAuth doctor:', err));
+
+                if (sellerId) {
+                    Promise.resolve(
+                        supabaseAdmin
+                            .from('sellers')
+                            .select('name, email')
+                            .eq('id', sellerId)
+                            .maybeSingle()
+                    )
+                        .then(({ data: sellerInfo }) => {
+                            if (sellerInfo?.email) {
+                                sendSellerNewReferralEmail({
+                                    sellerEmail: sellerInfo.email,
+                                    sellerName: sellerInfo.name,
+                                    doctorName: newDoctor.name || userName,
+                                    doctorEmail: email,
+                                }).catch((err) => console.error('Error enviando correo a vendedora OAuth:', err));
+                            }
+                        })
+                        .catch(() => {});
                 }
 
                 userRole = 'doctor';
@@ -190,6 +225,13 @@ export async function POST(request: NextRequest) {
                             console.error('❌ Error creando nuevo paciente desde Google OAuth:', insertError);
                             return NextResponse.json({ error: 'Error al registrar paciente' }, { status: 500 });
                         }
+
+                        // Enviar correo de bienvenida al nuevo paciente registrado con Google
+                        sendRoleWelcomeEmail({
+                            email,
+                            name: newPatient.name || userName,
+                            role: 'patient',
+                        }).catch((err) => console.error('Error enviando correo de bienvenida OAuth paciente:', err));
 
                         userRole = 'patient';
                         userId = newPatient.id;

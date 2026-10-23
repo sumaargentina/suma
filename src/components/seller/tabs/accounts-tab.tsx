@@ -16,10 +16,10 @@ import { PlusCircle, Pencil, Trash2, Coins } from 'lucide-react';
 import { z } from 'zod';
 
 const BankDetailFormSchema = z.object({
-  bank: z.string().min(3, "El nombre del banco es requerido."),
+  bank: z.string().min(2, "El nombre del banco o plataforma es requerido."),
   accountHolder: z.string().min(3, "El nombre del titular es requerido."),
-  idNumber: z.string().min(5, "El C.I./R.I.F. es requerido."),
-  accountNumber: z.string().min(20, "El número de cuenta debe tener 20 dígitos.").max(20, "El número de cuenta debe tener 20 dígitos."),
+  idNumber: z.string().min(4, "El C.I./R.I.F. o DNI es requerido."),
+  accountNumber: z.string().min(4, "El número de cuenta, CBU/Alias, teléfono o correo es requerido."),
   description: z.string().nullable().optional(),
 });
 

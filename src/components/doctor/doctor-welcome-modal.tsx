@@ -379,7 +379,7 @@ export function DoctorWelcomeModal({ isOpen, onClose, onComplete }: DoctorWelcom
         schedule: defaultSchedule,
         addresses: [defaultAddressEntry],
         onboardingCompleted: true,
-        verificationStatus: 'verified',
+        verificationStatus: user?.verificationStatus === 'verified' ? 'verified' : 'pending',
       };
 
       // 1. Guardar en API server-side (usa supabaseAdmin para persistir en BD sin bloqueo RLS)
@@ -401,7 +401,7 @@ export function DoctorWelcomeModal({ isOpen, onClose, onComplete }: DoctorWelcom
 
       toast({
         title: '¡Perfil completado con éxito!',
-        description: 'Tu cuenta de especialista en SUMA está lista para recibir citas.',
+        description: 'Tus datos fueron guardados. Tu cuenta se encuentra pendiente de verificación por el equipo de SUMA.',
       });
 
       if (onComplete) {
@@ -681,9 +681,9 @@ export function DoctorWelcomeModal({ isOpen, onClose, onComplete }: DoctorWelcom
               </div>
 
               <div>
-                <h3 className="text-base font-bold text-slate-800">¡Tu consultorio digital está listo!</h3>
+                <h3 className="text-base font-bold text-slate-800">¡Tu consultorio digital está casi listo!</h3>
                 <p className="text-xs text-slate-500 mt-0.5 max-w-md mx-auto">
-                  Revisa tus datos antes de activar tu perfil para empezar a recibir citas.
+                  Revisa tus datos antes de guardar. Nuestro equipo administrativo verificará tu matrícula y te notificará por correo electrónico.
                 </p>
               </div>
 

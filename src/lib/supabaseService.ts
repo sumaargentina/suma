@@ -114,7 +114,20 @@ export const getDoctorsLite = async (): Promise<Partial<Doctor>[]> => {
 };
 
 export const getDoctor = (id: string) => getDocumentData<Doctor>('doctors', id);
-export const getSellers = () => getCollectionData<Seller>('sellers');
+export const getSellers = async (): Promise<Seller[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/sellers');
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.error('Error fetching sellers via API:', error);
+            return [];
+        }
+    }
+    return getCollectionData<Seller>('sellers');
+};
 
 export const getSeller = async (id: string): Promise<Seller | null> => {
     // Si estamos en el cliente, usar la API para evitar problemas de RLS
@@ -237,8 +250,34 @@ export const getPatientAppointments = async (patientId: string): Promise<Appoint
     return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as Appointment[];
 };
 
-export const getDoctorPayments = () => getCollectionData<DoctorPayment>('doctor_payments');
-export const getSellerPayments = () => getCollectionData<SellerPayment>('seller_payments');
+export const getDoctorPayments = async (): Promise<DoctorPayment[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/doctor-payments');
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.error('Error fetching doctor payments via API:', error);
+            return [];
+        }
+    }
+    return getCollectionData<DoctorPayment>('doctor_payments');
+};
+export const getSellerPayments = async (): Promise<SellerPayment[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/seller-payments');
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.error('Error fetching seller payments via API:', error);
+            return [];
+        }
+    }
+    return getCollectionData<SellerPayment>('seller_payments');
+};
 export const getMarketingMaterials = () => getCollectionData<MarketingMaterial>('marketing_materials');
 
 // Clinic Payment Functions
@@ -614,6 +653,19 @@ export const cleanupDoctorData = async (id: string): Promise<void> => {
 // =====================================================
 
 export const addSeller = async (sellerData: Omit<Seller, 'id'>) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/sellers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sellerData),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al registrar vendedora');
+        }
+        return await res.json();
+    }
+
     const snakeCaseData = toSnakeCase(sellerData as unknown as Record<string, unknown>);
     if (typeof snakeCaseData.password === 'string' && !snakeCaseData.password.startsWith('$2')) {
         const { hashPassword } = await import('./password-utils');
@@ -633,6 +685,19 @@ export const addSeller = async (sellerData: Omit<Seller, 'id'>) => {
 export const getSellerById = getSeller;
 
 export const updateSeller = async (id: string, data: Partial<Seller>) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/sellers?id=${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al actualizar vendedora');
+        }
+        return;
+    }
+
     const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
 
     const { error } = await supabaseAdmin
@@ -644,6 +709,17 @@ export const updateSeller = async (id: string, data: Partial<Seller>) => {
 };
 
 export const deleteSeller = async (id: string) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/sellers?id=${id}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al eliminar vendedora');
+        }
+        return;
+    }
+
     const { error } = await supabaseAdmin
         .from('sellers')
         .delete()
@@ -1880,14 +1956,26 @@ export const updateSettings = async (data: Partial<AppSettings>) => {
 // =====================================================
 
 export const addSellerPayment = async (paymentData: Omit<SellerPayment, 'id'>) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/seller-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paymentData),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al registrar comisión de vendedora');
+        }
+        return await res.json();
+    }
+
     const dataWithDefaults = {
         ...toSnakeCase(paymentData as unknown as Record<string, unknown>),
         status: 'pending',
         read_by_seller: false,
     };
-    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { data, error } = await client
+    const { data, error } = await supabaseAdmin
         .from('seller_payments')
         .insert([dataWithDefaults])
         .select()
@@ -1898,10 +1986,22 @@ export const addSellerPayment = async (paymentData: Omit<SellerPayment, 'id'>) =
 };
 
 export const updateSellerPayment = async (id: string, data: Partial<SellerPayment>) => {
-    const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
-    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/seller-payments?id=${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al actualizar pago de vendedora');
+        }
+        return;
+    }
 
-    const { error } = await client
+    const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
+
+    const { error } = await supabaseAdmin
         .from('seller_payments')
         .update(snakeCaseData)
         .eq('id', id);
@@ -1910,14 +2010,26 @@ export const updateSellerPayment = async (id: string, data: Partial<SellerPaymen
 };
 
 export const addDoctorPayment = async (paymentData: Omit<DoctorPayment, 'id'>) => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/doctor-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paymentData),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al reportar pago de médico');
+        }
+        return await res.json();
+    }
+
     const dataWithDefaults = {
         ...toSnakeCase(paymentData as unknown as Record<string, unknown>),
         read_by_admin: false,
         read_by_doctor: false,
     };
-    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
 
-    const { data, error } = await client
+    const { data, error } = await supabaseAdmin
         .from('doctor_payments')
         .insert([dataWithDefaults])
         .select()
@@ -1928,8 +2040,20 @@ export const addDoctorPayment = async (paymentData: Omit<DoctorPayment, 'id'>) =
 };
 
 export const updateDoctorPaymentStatus = async (id: string, status: DoctorPayment['status']) => {
-    const client = typeof window !== 'undefined' ? supabase : supabaseAdmin;
-    const { error } = await client
+    if (typeof window !== 'undefined') {
+        const res = await fetch(`/api/doctor-payments?id=${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Error al actualizar estatus del pago');
+        }
+        return;
+    }
+
+    const { error } = await supabaseAdmin
         .from('doctor_payments')
         .update({ status, read_by_doctor: false })
         .eq('id', id);
@@ -1942,11 +2066,20 @@ export const updateDoctorPaymentStatus = async (id: string, status: DoctorPaymen
 // =====================================================
 
 export const batchUpdateNotificationsAsRead = async (ticketIds: string[], paymentIds: string[], doctorIds: string[]) => {
+    if (typeof window !== 'undefined') {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'admin', ticketIds, paymentIds, doctorIds }),
+        });
+        return;
+    }
+
     const promises = [];
 
     if (ticketIds.length > 0) {
         promises.push(
-            supabase
+            supabaseAdmin
                 .from('support_tickets')
                 .update({ read_by_admin: true })
                 .in('id', ticketIds)
@@ -1955,7 +2088,7 @@ export const batchUpdateNotificationsAsRead = async (ticketIds: string[], paymen
 
     if (paymentIds.length > 0) {
         promises.push(
-            supabase
+            supabaseAdmin
                 .from('doctor_payments')
                 .update({ read_by_admin: true })
                 .in('id', paymentIds)
@@ -1964,7 +2097,7 @@ export const batchUpdateNotificationsAsRead = async (ticketIds: string[], paymen
 
     if (doctorIds.length > 0) {
         promises.push(
-            supabase
+            supabaseAdmin
                 .from('doctors')
                 .update({ read_by_admin: true })
                 .in('id', doctorIds)
@@ -1975,11 +2108,20 @@ export const batchUpdateNotificationsAsRead = async (ticketIds: string[], paymen
 };
 
 export const batchUpdateDoctorNotificationsAsRead = async (paymentIds: string[], ticketIds: string[]) => {
+    if (typeof window !== 'undefined') {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'doctor', paymentIds, ticketIds }),
+        });
+        return;
+    }
+
     const promises = [];
 
     if (paymentIds.length > 0) {
         promises.push(
-            supabase
+            supabaseAdmin
                 .from('doctor_payments')
                 .update({ read_by_doctor: true })
                 .in('id', paymentIds)
@@ -1988,7 +2130,7 @@ export const batchUpdateDoctorNotificationsAsRead = async (paymentIds: string[],
 
     if (ticketIds.length > 0) {
         promises.push(
-            supabase
+            supabaseAdmin
                 .from('support_tickets')
                 .update({ read_by_doctor: true })
                 .in('id', ticketIds)
@@ -2001,7 +2143,16 @@ export const batchUpdateDoctorNotificationsAsRead = async (paymentIds: string[],
 export const batchUpdateDoctorAppointmentsAsRead = async (appointmentIds: string[]) => {
     if (appointmentIds.length === 0) return;
 
-    const { error } = await supabase
+    if (typeof window !== 'undefined') {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'doctor', appointmentIds }),
+        });
+        return;
+    }
+
+    const { error } = await supabaseAdmin
         .from('appointments')
         .update({ read_by_doctor: true })
         .in('id', appointmentIds);
@@ -2012,7 +2163,16 @@ export const batchUpdateDoctorAppointmentsAsRead = async (appointmentIds: string
 export const batchUpdatePatientAppointmentsAsRead = async (appointmentIds: string[]) => {
     if (appointmentIds.length === 0) return;
 
-    const { error } = await supabase
+    if (typeof window !== 'undefined') {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'patient', appointmentIds }),
+        });
+        return;
+    }
+
+    const { error } = await supabaseAdmin
         .from('appointments')
         .update({ read_by_patient: true })
         .in('id', appointmentIds);

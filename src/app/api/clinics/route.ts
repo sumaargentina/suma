@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 // Force dynamic to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -128,6 +129,13 @@ export async function POST(request: Request) {
             console.error('Supabase error creating clinic:', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        // Enviar correo de bienvenida a la clínica (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: targetEmail,
+            name,
+            role: 'clinic',
+        }).catch((err) => console.error('Error sending clinic welcome email:', err));
 
         return NextResponse.json({ success: true, id: data.id, clinic: data }, { status: 201 });
     } catch (error: any) {

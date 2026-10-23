@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { sendDoctorVerifiedEmail, sendSellerDoctorVerifiedEmail } from '@/lib/email';
 
 // Convert camelCase to snake_case
 const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
@@ -62,6 +63,26 @@ export async function PATCH(req: Request) {
         }
 
         const snakeCaseData = toSnakeCase(body);
+        const isVerifying = snakeCaseData.verification_status === 'verified';
+
+        let previousDoctor: {
+            id: string;
+            name: string;
+            email: string;
+            specialty?: string;
+            medical_license?: string;
+            verification_status?: string;
+            seller_id?: string | null;
+        } | null = null;
+
+        if (isVerifying) {
+            const { data: currentDoc } = await supabaseAdmin
+                .from('doctors')
+                .select('id, name, email, specialty, medical_license, verification_status, seller_id')
+                .eq('id', id)
+                .maybeSingle();
+            previousDoctor = currentDoc;
+        }
 
         const { error } = await supabaseAdmin
             .from('doctors')
@@ -73,7 +94,43 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true });
+        let verificationEmailSent = false;
+        if (isVerifying && previousDoctor && previousDoctor.verification_status !== 'verified' && previousDoctor.email) {
+            try {
+                const emailRes = await sendDoctorVerifiedEmail({
+                    email: previousDoctor.email,
+                    name: previousDoctor.name,
+                    specialty: (snakeCaseData.specialty as string) || previousDoctor.specialty,
+                    medicalLicense: (snakeCaseData.medical_license as string) || previousDoctor.medical_license,
+                });
+                verificationEmailSent = Boolean(emailRes.success);
+            } catch (emailErr) {
+                console.error('Error sending doctor verified email:', emailErr);
+            }
+
+            if (previousDoctor.seller_id) {
+                Promise.resolve(
+                    supabaseAdmin
+                        .from('sellers')
+                        .select('name, email')
+                        .eq('id', previousDoctor.seller_id)
+                        .maybeSingle()
+                )
+                    .then(({ data: sellerInfo }) => {
+                        if (sellerInfo?.email && previousDoctor) {
+                            sendSellerDoctorVerifiedEmail({
+                                sellerEmail: sellerInfo.email,
+                                sellerName: sellerInfo.name,
+                                doctorName: previousDoctor.name,
+                                specialty: (snakeCaseData.specialty as string) || previousDoctor.specialty,
+                            }).catch((err) => console.error('Error sending seller doctor verified email:', err));
+                        }
+                    })
+                    .catch(() => {});
+            }
+        }
+
+        return NextResponse.json({ success: true, verificationEmailSent });
     } catch (error: any) {
         console.error('Error in PATCH /api/doctors:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -87,8 +87,9 @@ export function DoctorsTab() {
   const [historyLogs, setHistoryLogs] = useState<InactivationLog[]>([]);
   const [historyDoctor, setHistoryDoctor] = useState<Doctor | null>(null);
 
-  // Paginación
+  // Paginación y filtro de verificación
   const [currentPage, setCurrentPage] = useState(1);
+  const [verificationFilter, setVerificationFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const ITEMS_PER_PAGE = 20;
 
   const fetchData = useCallback(async () => {
@@ -185,7 +186,13 @@ export function DoctorsTab() {
   const handleVerificationStatusChange = async (doctor: Doctor, status: 'pending' | 'verified' | 'rejected') => {
     try {
       await supabaseService.updateDoctor(doctor.id, { verificationStatus: status });
-      toast({ title: "Verificación Actualizada", description: `La matrícula del Dr. ${doctor.name} ha sido marcada como ${status === 'verified' ? 'verificada' : status === 'rejected' ? 'rechazada' : 'pendiente'}.` });
+      toast({
+        title: status === 'verified' ? '✅ Médico Verificado' : 'Verificación Actualizada',
+        description:
+          status === 'verified'
+            ? `El Dr(a). ${doctor.name} ha sido verificado exitosamente y se le ha enviado un correo de confirmación.`
+            : `La matrícula del Dr(a). ${doctor.name} ha sido marcada como ${status === 'rejected' ? 'rechazada' : 'pendiente'}.`,
+      });
       fetchData();
     } catch (error) {
       console.error('Error updating verification status:', error);
@@ -325,8 +332,18 @@ export function DoctorsTab() {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  // Filtrar médicos basado en el término de búsqueda
+  // Contadores por estatus de verificación
+  const pendingVerificationCount = doctors.filter(d => !d.verificationStatus || d.verificationStatus === 'pending').length;
+  const verifiedCount = doctors.filter(d => d.verificationStatus === 'verified').length;
+  const rejectedCount = doctors.filter(d => d.verificationStatus === 'rejected').length;
+
+  // Filtrar médicos basado en el término de búsqueda y estatus de verificación
   const filteredDoctors = doctors.filter(doctor => {
+    const docVerifStatus = doctor.verificationStatus || 'pending';
+    if (verificationFilter !== 'all' && docVerifStatus !== verificationFilter) {
+      return false;
+    }
+
     const searchLower = searchTerm.toLowerCase();
     const assignedSeller = sellers.find(s => s.id === doctor.sellerId);
     return (
@@ -381,19 +398,77 @@ export function DoctorsTab() {
           </Button>
         </CardHeader>
         <CardContent>
-          {/* Buscador */}
-          <div className="mb-6">
+          {/* Buscador y Filtros de Verificación */}
+          <div className="mb-6 space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar médicos por nombre, email, especialidad, ciudad o vendedora..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-10"
               />
             </div>
-            {searchTerm && (
-              <p className="text-sm text-muted-foreground mt-2">
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={verificationFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => { setVerificationFilter('all'); setCurrentPage(1); }}
+                className="h-8 text-xs"
+              >
+                Todos ({doctors.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={verificationFilter === 'pending' ? 'default' : 'outline'}
+                onClick={() => { setVerificationFilter('pending'); setCurrentPage(1); }}
+                className={cn(
+                  "h-8 text-xs gap-1.5",
+                  verificationFilter === 'pending'
+                    ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500"
+                    : "text-amber-700 border-amber-300 bg-amber-50/60 hover:bg-amber-100"
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Pendientes por Verificar ({pendingVerificationCount})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={verificationFilter === 'verified' ? 'default' : 'outline'}
+                onClick={() => { setVerificationFilter('verified'); setCurrentPage(1); }}
+                className={cn(
+                  "h-8 text-xs gap-1.5",
+                  verificationFilter === 'verified'
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "text-blue-700 border-blue-200 hover:bg-blue-50"
+                )}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Verificados ({verifiedCount})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={verificationFilter === 'rejected' ? 'default' : 'outline'}
+                onClick={() => { setVerificationFilter('rejected'); setCurrentPage(1); }}
+                className={cn(
+                  "h-8 text-xs gap-1.5",
+                  verificationFilter === 'rejected'
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "text-red-700 border-red-200 hover:bg-red-50"
+                )}
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                Rechazados ({rejectedCount})
+              </Button>
+            </div>
+
+            {(searchTerm || verificationFilter !== 'all') && (
+              <p className="text-sm text-muted-foreground">
                 Mostrando {filteredDoctors.length} de {doctors.length} médicos
               </p>
             )}
@@ -514,10 +589,43 @@ export function DoctorsTab() {
                   <div>
                     <p className="font-semibold">{doctor.name}</p>
                     <p className="text-sm text-muted-foreground">{doctor.specialty} - {doctor.city}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Matrícula: {doctor.medicalLicense || 'No indicada'}</p>
                   </div>
-                  <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
-                    {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Badge onClick={() => handleToggleDoctorStatus(doctor)} className={cn("cursor-pointer", doctor.status === 'active' ? 'bg-green-600' : 'bg-red-600', 'text-white')}>
+                      {doctor.status === 'active' ? 'Activo' : 'Inactivo'}
+                    </Badge>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Badge
+                          className={cn("cursor-pointer w-fit flex items-center gap-1",
+                            doctor.verificationStatus === 'verified' ? 'bg-blue-600 hover:bg-blue-700' :
+                              doctor.verificationStatus === 'rejected' ? 'bg-red-600 hover:bg-red-700' :
+                                'bg-yellow-500 hover:bg-yellow-600'
+                          )}
+                        >
+                          {doctor.verificationStatus === 'verified' ? <ShieldCheck className="h-3 w-3" /> :
+                            doctor.verificationStatus === 'rejected' ? <XCircle className="h-3 w-3" /> :
+                              <Clock className="h-3 w-3" />
+                          }
+                          {doctor.verificationStatus === 'verified' ? 'Verificado' : doctor.verificationStatus === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                        </Badge>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Estado de Matrícula</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'verified')}>
+                          <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Aprobar (Verificar)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'rejected')}>
+                          <XCircle className="mr-2 h-4 w-4 text-red-500" /> Rechazar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleVerificationStatusChange(doctor, 'pending')}>
+                          <Clock className="mr-2 h-4 w-4 text-yellow-500" /> Pendiente
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
                 <Separator />
                 <div className="flex justify-end gap-2">

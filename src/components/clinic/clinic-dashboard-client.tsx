@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useClinicNotifications } from '@/lib/clinic-notifications';
+import { NotificationBellPopover } from '@/components/header';
 import {
     LayoutDashboard,
     CalendarDays,
@@ -58,6 +60,17 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(currentTab);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const {
+        clinicNotifications,
+        clinicUnreadCount,
+        markClinicNotificationsAsRead,
+        markClinicNotificationAsRead,
+        clearReadClinicNotifications,
+    } = useClinicNotifications();
+
+    useEffect(() => {
+        setActiveTab(currentTab);
+    }, [currentTab]);
 
     // Redirect if not clinic or secretary
     useEffect(() => {
@@ -118,11 +131,18 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
             {/* Desktop Sidebar */}
             <div className="hidden border-r bg-muted/40 md:block">
                 <div className="flex h-full max-h-screen flex-col gap-2">
-                    <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+                    <div className="flex h-14 items-center justify-between border-b px-4 lg:h-[60px] lg:px-6">
                         <div className="flex items-center gap-2 font-semibold">
                             <Building2 className="h-6 w-6" />
                             <span className="truncate">Panel Clínica</span>
                         </div>
+                        <NotificationBellPopover
+                            items={clinicNotifications}
+                            unreadCount={clinicUnreadCount}
+                            onMarkAllAsRead={markClinicNotificationsAsRead}
+                            onMarkOneAsRead={markClinicNotificationAsRead}
+                            onClearRead={clearReadClinicNotifications}
+                        />
                     </div>
                     <div className="flex-1 overflow-auto">
                         <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
@@ -198,6 +218,13 @@ export function ClinicDashboardClient({ currentTab = 'overview' }: { currentTab?
                     <div className="w-full flex-1">
                         <span className="font-semibold text-lg capitalize">{menuItems.find(i => i.value === activeTab)?.label}</span>
                     </div>
+                    <NotificationBellPopover
+                        items={clinicNotifications}
+                        unreadCount={clinicUnreadCount}
+                        onMarkAllAsRead={markClinicNotificationsAsRead}
+                        onMarkOneAsRead={markClinicNotificationAsRead}
+                        onClearRead={clearReadClinicNotifications}
+                    />
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-muted/10">
                     {renderContent()}

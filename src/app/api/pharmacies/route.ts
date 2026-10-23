@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { normalizeCountryCode, isSameCountry } from '@/lib/geo-data';
 import bcrypt from 'bcryptjs';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -187,6 +188,14 @@ export async function POST(request: NextRequest) {
             console.error('Error insertando farmacia:', error);
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        // Enviar correo de bienvenida a la farmacia (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: lowerEmail,
+            name: name.trim(),
+            role: 'pharmacy',
+            extraData: (!password || !password.trim()) ? { tempPassword: effectivePassword } : {},
+        }).catch((err) => console.error('Error enviando correo de bienvenida a farmacia:', err));
 
         // Si es una solicitud pública, crear notificación para el Super Admin
         if (isPendingRequest) {

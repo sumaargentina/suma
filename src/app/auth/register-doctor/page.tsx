@@ -232,21 +232,29 @@ export default function RegisterDoctorPage() {
     const refCode = params.get('ref');
     if (!refCode) return;
 
-    getSellers().then(sellers => {
-      const matchedSeller = sellers.find(s => s.referralCode?.toLowerCase() === refCode.trim().toLowerCase());
-      if (matchedSeller) {
-        setReferredBySellerId(matchedSeller.id);
-        setReferredBySellerName(matchedSeller.name);
-        const sCountry = normalizeCountryCode(matchedSeller.country || 'VE');
-        setFormData(prev => ({
-          ...prev,
-          country: sCountry,
-          state: matchedSeller.state || prev.state,
-          city: matchedSeller.city || prev.city,
-          countryCode: sCountry === 'AR' ? '+54' : sCountry === 'CO' ? '+57' : '+58',
-        }));
-      }
-    }).catch(() => {});
+    fetch(`/api/sellers?referralCode=${encodeURIComponent(refCode.trim())}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(matchedSeller => {
+        if (matchedSeller && matchedSeller.id) {
+          setReferredBySellerId(matchedSeller.id);
+          setReferredBySellerName(matchedSeller.name);
+          try {
+            sessionStorage.setItem('suma_referred_by_seller_id', matchedSeller.id);
+            localStorage.setItem('suma_referred_by_seller_id', matchedSeller.id);
+          } catch {
+            // Ignore storage errors
+          }
+          const sCountry = normalizeCountryCode(matchedSeller.country || 'VE');
+          setFormData(prev => ({
+            ...prev,
+            country: sCountry,
+            state: matchedSeller.state || prev.state,
+            city: matchedSeller.city || prev.city,
+            countryCode: sCountry === 'AR' ? '+54' : sCountry === 'CO' ? '+57' : '+58',
+          }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -416,6 +424,12 @@ export default function RegisterDoctorPage() {
           <CardDescription>
             Únete a nuestra plataforma y empieza a recibir pacientes.
           </CardDescription>
+          {referredBySellerName && (
+            <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-teal-50 border border-teal-200 px-3.5 py-1.5 text-xs font-medium text-teal-800">
+              <Stethoscope className="h-3.5 w-3.5 text-teal-600" />
+              <span>Invitado(a) por tu asesor(a) SUMA: <strong>{referredBySellerName}</strong></span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="space-y-4 mb-6">

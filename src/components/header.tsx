@@ -76,6 +76,259 @@ import { useSettings } from "@/lib/settings";
 import { resolveDoctorCapabilities } from "@/lib/professions-catalog";
 
 
+interface UnifiedNotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  date?: string;
+  read: boolean;
+  link: string;
+}
+
+export function NotificationBellPopover({
+  items,
+  unreadCount,
+  onMarkOneAsRead,
+  onMarkAllAsRead,
+  onClearRead,
+  getIcon,
+  formatDate,
+}: {
+  items: UnifiedNotificationItem[];
+  unreadCount: number;
+  onMarkOneAsRead: (id: string) => void;
+  onMarkAllAsRead: () => void;
+  onClearRead: () => void;
+  getIcon?: (type: any) => React.ReactNode;
+  formatDate?: (dateStr?: string) => string;
+}) {
+  const [filter, setFilter] = useState<'all' | 'pending' | 'reviewed'>('all');
+  const readCount = items.filter(n => n.read).length;
+  const pendingCount = items.filter(n => !n.read).length;
+
+  const defaultFormatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return formatDistanceToNow(d, { locale: es, addSuffix: true });
+    } catch {
+      return '';
+    }
+  };
+
+  const defaultGetIcon = (type: string) => {
+    switch (type) {
+      case 'payment':
+      case 'payment_processed':
+      case 'payment_verification':
+        return <DollarSign className="h-4 w-4 text-amber-500" />;
+      case 'patient_confirmed':
+      case 'payment_approved':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'patient_cancelled':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'new_message':
+        return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'support_ticket':
+      case 'support_reply':
+        return <LifeBuoy className="h-4 w-4 text-orange-500" />;
+      default:
+        return <BellRing className="h-4 w-4 text-primary" />;
+    }
+  };
+
+  const renderIcon = getIcon || defaultGetIcon;
+  const renderDate = formatDate || defaultFormatDate;
+
+  const filteredItems = items.filter(n => {
+    if (filter === 'pending') return !n.read;
+    if (filter === 'reviewed') return n.read;
+    return true;
+  });
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative ml-1" title="Centro de Notificaciones">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold shadow-xs">
+              {unreadCount}
+            </span>
+          )}
+          <span className="sr-only">Ver notificaciones</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 sm:w-96 p-3">
+        {/* Cabecera de resumen */}
+        <div className="flex flex-col gap-2 pb-2.5 mb-2 border-b">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-sm flex items-center gap-1.5">
+              <Bell className="h-4 w-4 text-primary" />
+              Notificaciones
+            </h4>
+            <div className="flex items-center gap-1">
+              {pendingCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] px-2 text-primary hover:text-primary/80 font-medium"
+                  onClick={onMarkAllAsRead}
+                >
+                  <CheckCheck className="h-3.5 w-3.5 mr-1" />
+                  Marcar todas
+                </Button>
+              )}
+              {readCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500"
+                  onClick={onClearRead}
+                  title="Limpiar las ya revisadas"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Limpiar revisadas
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Indicadores de cuántas faltan y cuántas ya se revisaron */}
+          <div className="flex items-center gap-2 text-[11px]">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold",
+                pendingCount > 0
+                  ? "bg-amber-100 text-amber-800 border border-amber-200"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", pendingCount > 0 ? "bg-amber-500 animate-pulse" : "bg-slate-400")} />
+              {pendingCount} {pendingCount === 1 ? 'falta por revisar' : 'faltan por revisar'}
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCheck className="h-3 w-3" />
+              {readCount} {readCount === 1 ? 'revisada' : 'revisadas'}
+            </span>
+          </div>
+
+          {/* Pestañas de filtro rápido */}
+          {items.length > 0 && (
+            <div className="grid grid-cols-3 gap-1 bg-muted/60 p-1 rounded-lg text-[11px]">
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className={cn(
+                  "py-1 rounded-md font-medium transition-colors",
+                  filter === 'all' ? "bg-background shadow-2xs text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Todas ({items.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('pending')}
+                className={cn(
+                  "py-1 rounded-md font-medium transition-colors",
+                  filter === 'pending' ? "bg-background shadow-2xs text-amber-700 font-semibold" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Faltan ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('reviewed')}
+                className={cn(
+                  "py-1 rounded-md font-medium transition-colors",
+                  filter === 'reviewed' ? "bg-background shadow-2xs text-emerald-700 font-semibold" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Revisadas ({readCount})
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Lista de notificaciones */}
+        {filteredItems.length > 0 ? (
+          <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+            {filteredItems.map(n => (
+              <div
+                key={n.id}
+                className={cn(
+                  "p-2.5 rounded-lg flex items-start gap-2.5 transition-colors border",
+                  n.read
+                    ? "bg-slate-50/60 hover:bg-muted/50 border-slate-200/70 opacity-85"
+                    : "bg-blue-50/75 hover:bg-blue-50 border-blue-200 border-l-4 border-l-blue-600 shadow-2xs"
+                )}
+              >
+                <div className="mt-0.5 shrink-0">
+                  {renderIcon(n.type)}
+                </div>
+                <Link
+                  href={n.link}
+                  onClick={() => onMarkOneAsRead(n.id)}
+                  className="flex-1 min-w-0"
+                >
+                  <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                    <p className={cn("text-xs truncate", n.read ? "font-medium text-slate-700" : "font-bold text-slate-900")}>
+                      {n.title}
+                    </p>
+                    {n.read ? (
+                      <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                        <CheckCheck className="h-2.5 w-2.5" /> Revisada
+                      </span>
+                    ) : (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-full">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-600" /> Falta revisar
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
+                  <p className="text-[10px] text-muted-foreground/80 mt-1">{renderDate(n.date)}</p>
+                </Link>
+                {!n.read && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-blue-600 hover:text-emerald-600 hover:bg-emerald-50"
+                    title="Marcar como ya revisada"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onMarkOneAsRead(n.id);
+                    }}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
+            <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
+            <p className="text-xs font-medium">
+              {filter === 'pending'
+                ? '¡No faltan notificaciones por revisar!'
+                : filter === 'reviewed'
+                  ? 'Aún no hay notificaciones marcadas como revisadas.'
+                  : 'Estás al día'}
+            </p>
+            <p className="text-[11px] text-muted-foreground/70">
+              {filter === 'all' ? 'No tienes notificaciones registradas.' : 'Cambia el filtro superior para ver el resto.'}
+            </p>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function Header() {
   const { user, logout, activeWorkspace } = useAuth();
   const { professionsCatalog } = useSettings();
@@ -329,73 +582,15 @@ export function Header() {
             </div>
           )}
           {user && isAdmin && (
-            <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative ml-1">
-                  <Bell className="h-5 w-5" />
-                  {adminUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{adminUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de admin</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {adminUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                        {adminUnreadCount} nuevas
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {adminUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markAdminNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {adminNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadAdminNotifications()} title="Limpiar leídas">
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {adminNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {adminNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markAdminNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {getAdminNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={adminNotifications}
+              unreadCount={adminUnreadCount}
+              onMarkOneAsRead={markAdminNotificationAsRead}
+              onMarkAllAsRead={markAdminNotificationsAsRead}
+              onClearRead={clearReadAdminNotifications}
+              getIcon={getAdminNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isDoctor && (
@@ -405,288 +600,51 @@ export function Header() {
           )}
 
           {user && isDoctor && (
-            <Popover onOpenChange={(open) => { if (open && doctorUnreadCount > 0) markDoctorNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {doctorUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{doctorUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de doctor</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {doctorUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                        {doctorUnreadCount} nuevas
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {doctorUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markDoctorNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {doctorNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadDoctorNotifications()} title="Limpiar leídas">
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {doctorNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {doctorNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markDoctorNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {getDoctorNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={doctorNotifications}
+              unreadCount={doctorUnreadCount}
+              onMarkOneAsRead={markDoctorNotificationAsRead}
+              onMarkAllAsRead={markDoctorNotificationsAsRead}
+              onClearRead={clearReadDoctorNotifications}
+              getIcon={getDoctorNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isSeller && (
-            <Popover onOpenChange={(open) => { if (open && sellerUnreadCount > 0) markSellerNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {sellerUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{sellerUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de vendedora</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {sellerUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                        {sellerUnreadCount} nuevas
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {sellerUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markSellerNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {sellerNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadSellerNotifications()} title="Limpiar leídas">
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {sellerNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {sellerNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markSellerNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {getSellerNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={sellerNotifications}
+              unreadCount={sellerUnreadCount}
+              onMarkOneAsRead={markSellerNotificationAsRead}
+              onMarkAllAsRead={markSellerNotificationsAsRead}
+              onClearRead={clearReadSellerNotifications}
+              getIcon={getSellerNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isClinicOrSecretary && (
-            <Popover onOpenChange={(open) => { if (open && clinicUnreadCount > 0) markClinicNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {clinicUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{clinicUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de clínica</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {clinicUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                        {clinicUnreadCount} nuevas
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {clinicUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markClinicNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {clinicNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadClinicNotifications()} title="Limpiar leídas">
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {clinicNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {clinicNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markClinicNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {getClinicNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={clinicNotifications}
+              unreadCount={clinicUnreadCount}
+              onMarkOneAsRead={markClinicNotificationAsRead}
+              onMarkAllAsRead={markClinicNotificationsAsRead}
+              onClearRead={clearReadClinicNotifications}
+              getIcon={getClinicNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
-          {user && isPatient && (
-            <Popover onOpenChange={(open) => {
-              if (open && unreadCount > 0) {
-                setTimeout(() => markAllAsRead(), 500);
-              }
-            }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 md:w-96 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {unreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">
-                        {unreadCount} nuevas
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {unreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground" onClick={() => markAllAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {notifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadNotifications()} title="Limpiar leídas">
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {notifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {notifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-primary/5 hover:bg-primary/10 border-l-2 border-primary"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {getPatientNotificationIcon(n.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+          {user && (isPatient || user.role === 'pharmacy' || user.role === 'laboratory') && (
+            <NotificationBellPopover
+              items={notifications}
+              unreadCount={unreadCount}
+              onMarkOneAsRead={markNotificationAsRead}
+              onMarkAllAsRead={markAllAsRead}
+              onClearRead={clearReadNotifications}
+              getIcon={getPatientNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user ? (
@@ -826,338 +784,63 @@ export function Header() {
             <BcvRateWidget compact />
           )}
           {user && isAdmin && (
-            <Popover onOpenChange={(open) => { if (open && adminUnreadCount > 0) markAdminNotificationsAsRead() }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {adminUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{adminUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de admin</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {adminUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{adminUnreadCount} nuevas</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {adminUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markAdminNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {adminNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadAdminNotifications()}>
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {adminNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {adminNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markAdminNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">{getAdminNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={adminNotifications}
+              unreadCount={adminUnreadCount}
+              onMarkOneAsRead={markAdminNotificationAsRead}
+              onMarkAllAsRead={markAdminNotificationsAsRead}
+              onClearRead={clearReadAdminNotifications}
+              getIcon={getAdminNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isDoctor && (
-            <Popover onOpenChange={(open) => { if (open && doctorUnreadCount > 0) markDoctorNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {doctorUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{doctorUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de doctor</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {doctorUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{doctorUnreadCount} nuevas</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {doctorUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markDoctorNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {doctorNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadDoctorNotifications()}>
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {doctorNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {doctorNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markDoctorNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">{getDoctorNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={doctorNotifications}
+              unreadCount={doctorUnreadCount}
+              onMarkOneAsRead={markDoctorNotificationAsRead}
+              onMarkAllAsRead={markDoctorNotificationsAsRead}
+              onClearRead={clearReadDoctorNotifications}
+              getIcon={getDoctorNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isSeller && (
-            <Popover onOpenChange={(open) => { if (open && sellerUnreadCount > 0) markSellerNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {sellerUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{sellerUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de vendedora</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {sellerUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{sellerUnreadCount} nuevas</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {sellerUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markSellerNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {sellerNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadSellerNotifications()}>
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {sellerNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {sellerNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markSellerNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">{getSellerNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={sellerNotifications}
+              unreadCount={sellerUnreadCount}
+              onMarkOneAsRead={markSellerNotificationAsRead}
+              onMarkAllAsRead={markSellerNotificationsAsRead}
+              onClearRead={clearReadSellerNotifications}
+              getIcon={getSellerNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           {user && isClinicOrSecretary && (
-            <Popover onOpenChange={(open) => { if (open && clinicUnreadCount > 0) markClinicNotificationsAsRead(); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {clinicUnreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{clinicUnreadCount}</span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones de clínica</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {clinicUnreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{clinicUnreadCount} nuevas</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {clinicUnreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markClinicNotificationsAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {clinicNotifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadClinicNotifications()}>
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {clinicNotifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {clinicNotifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markClinicNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-blue-50/70 hover:bg-blue-50 border-l-2 border-blue-500"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">{getClinicNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <NotificationBellPopover
+              items={clinicNotifications}
+              unreadCount={clinicUnreadCount}
+              onMarkOneAsRead={markClinicNotificationAsRead}
+              onMarkAllAsRead={markClinicNotificationsAsRead}
+              onClearRead={clearReadClinicNotifications}
+              getIcon={getClinicNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
-          {user && isPatient && (
-            <Popover onOpenChange={(open) => {
-              if (open && unreadCount > 0) {
-                setTimeout(() => markAllAsRead(), 500);
-              }
-            }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                    </span>
-                  )}
-                  <span className="sr-only">Ver notificaciones</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-3">
-                <div className="flex justify-between items-center mb-2 px-1 pb-2 border-b">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-sm">Notificaciones</h4>
-                    {unreadCount > 0 && (
-                      <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full">{unreadCount} nuevas</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {unreadCount > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={() => markAllAsRead()}>
-                        Leer todas
-                      </Button>
-                    )}
-                    {notifications.length > 0 && (
-                      <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground hover:text-red-500" onClick={() => clearReadNotifications()}>
-                        Limpiar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {notifications.length > 0 ? (
-                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-                    {notifications.map(n => (
-                      <Link
-                        href={n.link}
-                        key={n.id}
-                        onClick={() => markNotificationAsRead(n.id)}
-                        className={cn(
-                          "p-2.5 rounded-lg flex items-start gap-3 transition-colors",
-                          n.read ? "hover:bg-muted/50 opacity-80" : "bg-primary/5 hover:bg-primary/10 border-l-2 border-primary"
-                        )}
-                      >
-                        <div className="mt-0.5 shrink-0">{getPatientNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs truncate">{n.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{n.description}</p>
-                          <p className="text-[10px] text-muted-foreground/80 mt-1">{formatNotificationDate(n.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
-                    <CheckCircle className="h-7 w-7 text-emerald-500/70 mb-1.5" />
-                    <p className="text-xs font-medium">Estás al día</p>
-                    <p className="text-[11px] text-muted-foreground/70">No tienes notificaciones pendientes.</p>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+          {user && (isPatient || user.role === 'pharmacy' || user.role === 'laboratory') && (
+            <NotificationBellPopover
+              items={notifications}
+              unreadCount={unreadCount}
+              onMarkOneAsRead={markNotificationAsRead}
+              onMarkAllAsRead={markAllAsRead}
+              onClearRead={clearReadNotifications}
+              getIcon={getPatientNotificationIcon}
+              formatDate={formatNotificationDate}
+            />
           )}
 
           <Sheet>

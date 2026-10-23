@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { normalizeCountryCode, isSameCountry } from '@/lib/geo-data';
 import bcrypt from 'bcryptjs';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -213,6 +214,13 @@ export async function POST(request: NextRequest) {
             console.error('Error inserting laboratory:', error);
             throw error;
         }
+
+        // Enviar correo de bienvenida al laboratorio (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: targetEmail,
+            name: name.trim(),
+            role: 'laboratory',
+        }).catch((err) => console.error('Error enviando correo de bienvenida a laboratorio:', err));
 
         if (isPublicRegistration) {
             try {

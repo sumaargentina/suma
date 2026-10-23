@@ -22,11 +22,16 @@ function CallbackHandler() {
                 const storedRole = typeof window !== 'undefined'
                     ? (sessionStorage.getItem('suma_intended_role') || localStorage.getItem('suma_intended_role'))
                     : null;
+                const storedSellerId = typeof window !== 'undefined'
+                    ? (sessionStorage.getItem('suma_referred_by_seller_id') || localStorage.getItem('suma_referred_by_seller_id'))
+                    : null;
                 const intendedRole = roleParam || storedRole || (nextParam && nextParam.startsWith('/doctor/') ? 'doctor' : undefined);
 
                 if (typeof window !== 'undefined') {
                     sessionStorage.removeItem('suma_intended_role');
                     localStorage.removeItem('suma_intended_role');
+                    sessionStorage.removeItem('suma_referred_by_seller_id');
+                    localStorage.removeItem('suma_referred_by_seller_id');
                 }
 
                 let googleUser = null;
@@ -68,6 +73,7 @@ function CallbackHandler() {
                         avatar: googleUser.user_metadata?.avatar_url || googleUser.user_metadata?.picture || null,
                         id: googleUser.id,
                         intendedRole,
+                        sellerId: storedSellerId || null,
                     }),
                 });
 

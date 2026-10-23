@@ -9,7 +9,7 @@ import { createWalkInAppointmentAction, sendMessageAction } from '@/app/actions'
 import { EXPENSE_CATEGORIES, DOCUMENT_TYPES, DocumentType, Doctor, Appointment, AdminSupportTicket, DoctorPayment, Expense, Service, BankDetail, Coupon } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus } from 'lucide-react';
+import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus, Clock, ShieldCheck, XCircle } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
 import { useDoctorNotifications } from '@/lib/doctor-notifications';
 import { useChatNotifications } from '@/lib/chat-notifications';
@@ -671,8 +671,84 @@ ID Transacción: ${transactionId}`;
             <WorkspaceSelectorModal />
             <main className="flex-1 bg-muted/40">
                 <div className="container py-6 md:py-12 px-2 md:px-0">
-                    <h1 className="text-lg md:text-3xl font-bold font-headline mb-1 md:mb-2">Panel del Médico</h1>
-                    <p className="text-xs md:text-base text-muted-foreground mb-4 md:mb-8">Bienvenido de nuevo, Dr@:&nbsp;{capitalizeWords(user.name)}.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1 md:mb-2">
+                        <h1 className="text-lg md:text-3xl font-bold font-headline">Panel del Médico</h1>
+                        {doctorData.verificationStatus === 'verified' ? (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 px-3 py-1 text-xs font-semibold shadow-xs">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                Médico Verificado
+                            </Badge>
+                        ) : doctorData.verificationStatus === 'rejected' ? (
+                            <Badge variant="destructive" className="gap-1.5 px-3 py-1 text-xs font-semibold shadow-xs">
+                                <XCircle className="h-3.5 w-3.5" />
+                                Verificación Observada / Rechazada
+                            </Badge>
+                        ) : (
+                            <Badge className="bg-amber-500 hover:bg-amber-600 text-white gap-1.5 px-3 py-1 text-xs font-semibold shadow-xs">
+                                <Clock className="h-3.5 w-3.5" />
+                                Estatus: Por Verificar
+                            </Badge>
+                        )}
+                    </div>
+                    <p className="text-xs md:text-base text-muted-foreground mb-4 md:mb-6">Bienvenido de nuevo, Dr@:&nbsp;{capitalizeWords(user.name)}.</p>
+
+                    {doctorData.verificationStatus !== 'verified' && (
+                        <div
+                            className={cn(
+                                "mb-4 md:mb-6 rounded-xl border p-4 shadow-xs transition-all",
+                                doctorData.verificationStatus === 'rejected'
+                                    ? "bg-red-50/90 border-red-200 text-red-900"
+                                    : "bg-amber-50/90 border-amber-200 text-amber-900"
+                            )}
+                        >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start gap-3">
+                                    <div
+                                        className={cn(
+                                            "p-2 rounded-lg shrink-0 mt-0.5",
+                                            doctorData.verificationStatus === 'rejected'
+                                                ? "bg-red-100 text-red-600"
+                                                : "bg-amber-100 text-amber-600"
+                                        )}
+                                    >
+                                        {doctorData.verificationStatus === 'rejected' ? (
+                                            <XCircle className="h-5 w-5" />
+                                        ) : (
+                                            <Clock className="h-5 w-5" />
+                                        )}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-sm md:text-base flex items-center gap-2">
+                                            {doctorData.verificationStatus === 'rejected'
+                                                ? 'Tu verificación profesional requiere atención'
+                                                : 'Tu cuenta se encuentra en estatus: Por Verificar'}
+                                        </h3>
+                                        <p className="text-xs md:text-sm leading-relaxed opacity-90">
+                                            {doctorData.verificationStatus === 'rejected'
+                                                ? 'Nuestro equipo administrativo encontró una observación al validar tu matrícula o datos profesionales. Por favor revisa tu Número de Matrícula en la pestaña "Mi Perfil" o comunícate con Soporte.'
+                                                : 'Nuestro equipo administrativo está verificando tus credenciales y número de matrícula profesional. Mientras tanto puedes configurar tu perfil, horarios y consultorios. Recibirás un correo electrónico de confirmación apenas tu cuenta sea verificada.'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {currentTab !== 'profile' && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.location.assign('/doctor/dashboard?view=profile')}
+                                        className={cn(
+                                            "shrink-0 text-xs font-semibold",
+                                            doctorData.verificationStatus === 'rejected'
+                                                ? "border-red-300 bg-white text-red-700 hover:bg-red-50"
+                                                : "border-amber-300 bg-white text-amber-800 hover:bg-amber-100/60"
+                                        )}
+                                    >
+                                        Revisar Mi Perfil
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     <div className="mt-3 md:mt-6">
                         {/* Tabs y contenido */}
                         {currentTab === "appointments" && (

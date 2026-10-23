@@ -20,12 +20,13 @@ interface AdminNotificationContextType {
 
 const AdminNotificationContext = createContext<AdminNotificationContextType | undefined>(undefined);
 const getNotificationStorageKey = (userId: string) => `suma-admin-notifications-${userId}`;
-const MAX_NOTIFICATIONS = 25;
+const getDismissedStorageKey = (userId: string) => `suma-admin-notifications-dismissed-${userId}`;
+const MAX_NOTIFICATIONS = 35;
 
 const filterValidAdminNotifications = (list: AdminNotification[]): AdminNotification[] => {
   const now = new Date();
   return list.filter(n => {
-    if (n.date && differenceInDays(now, new Date(n.date)) > 14) {
+    if (n.date && differenceInDays(now, new Date(n.date)) > 30) {
       return false;
     }
     return true;
@@ -37,6 +38,25 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  const getDismissedSet = useCallback((userId: string): Set<string> => {
+    try {
+      const raw = localStorage.getItem(getDismissedStorageKey(userId));
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  }, []);
+
+  const addDismissedIds = useCallback((userId: string, ids: string[]) => {
+    try {
+      const current = getDismissedSet(userId);
+      ids.forEach(id => current.add(id));
+      localStorage.setItem(getDismissedStorageKey(userId), JSON.stringify(Array.from(current).slice(-200)));
+    } catch {
+      // ignore
+    }
+  }, [getDismissedSet]);
 
   useEffect(() => {
     if (user?.id && user.role === 'admin') {
@@ -64,33 +84,49 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
     }
   }, [user]);
 
-  const checkAndSetAdminNotifications = useCallback((notifications: AdminNotification[]) => {
+  const checkAndSetAdminNotifications = useCallback((incoming: AdminNotification[]) => {
     if (!user?.id || user.role !== 'admin') return;
     const storageKey = getNotificationStorageKey(user.id);
-    const existingIds = new Set(adminNotifications.map(n => n.id));
-    const now = new Date();
-    const newNotificationsMap = new Map<string, AdminNotification>();
+    const dismissed = getDismissedSet(user.id);
 
-    notifications.forEach(n => {
-      if (!existingIds.has(n.id)) {
-        newNotificationsMap.set(n.id, {
-          ...n,
-          read: false,
-          date: n.date || now.toISOString(),
-        });
-      }
+    setAdminNotifications(prev => {
+      const prevMap = new Map(prev.map(item => [item.id, item]));
+      const nowIso = new Date().toISOString();
+
+      incoming.forEach(n => {
+        if (dismissed.has(n.id)) return;
+        const existing = prevMap.get(n.id);
+        if (existing) {
+          prevMap.set(n.id, {
+            ...existing,
+            title: n.title,
+            description: n.description,
+            link: n.link,
+            read: existing.read || Boolean(n.read),
+          });
+        } else {
+          prevMap.set(n.id, {
+            ...n,
+            read: Boolean(n.read),
+            date: n.date || nowIso,
+          });
+        }
+      });
+
+      const merged = filterValidAdminNotifications(
+        Array.from(prevMap.values())
+          .filter(n => !dismissed.has(n.id))
+          .sort((a, b) => {
+            if (a.read !== b.read) return a.read ? 1 : -1;
+            return new Date(b.date).getTime() - new Date(a.date).getTime();
+          })
+      );
+
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      setAdminUnreadCount(merged.filter(n => !n.read).length);
+      return merged;
     });
-
-    if (newNotificationsMap.size > 0) {
-      const uniqueNewNotifications = Array.from(newNotificationsMap.values());
-      const filteredExisting = filterValidAdminNotifications(adminNotifications);
-      const updatedNotifications = filterValidAdminNotifications([...uniqueNewNotifications, ...filteredExisting])
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
-      setAdminNotifications(updatedNotifications);
-      setAdminUnreadCount(updatedNotifications.filter(n => !n.read).length);
-    }
-  }, [user, adminNotifications]);
+  }, [user, getDismissedSet]);
 
   const refreshAdminNotifications = useCallback(async () => {
     if (user?.role !== 'admin') return;
@@ -103,38 +139,38 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
       ]);
 
       const paymentNotifications: AdminNotification[] = payments
-        .filter(p => p.status === 'Pending' && !p.readByAdmin)
+        .slice(0, 15)
         .map(p => ({
           id: `payment-${p.id}`,
           type: 'payment',
-          title: 'Pago Pendiente de Aprobación',
-          description: `El Dr. ${p.doctorName} ha reportado un pago.`,
+          title: p.status === 'Pending' ? 'Pago Pendiente de Aprobación' : `Pago de Médico (${p.status === 'Paid' ? 'Aprobado' : 'Rechazado'})`,
+          description: `El Dr(a). ${p.doctorName} reportó un pago de $${(p.amount || 0).toFixed(2)}.`,
           date: p.date,
-          read: false,
+          read: Boolean(p.readByAdmin) || p.status !== 'Pending',
           link: `/admin/dashboard?view=finances`
         }));
 
       const ticketNotifications: AdminNotification[] = tickets
-        .filter(t => !t.readByAdmin)
+        .slice(0, 15)
         .map(t => ({
           id: `ticket-${t.id}`,
           type: 'support_ticket',
-          title: 'Nuevo Ticket de Soporte',
-          description: `De: ${t.userName}`,
+          title: t.status === 'abierto' ? 'Ticket de Soporte Abierto' : 'Ticket de Soporte',
+          description: `De: ${t.userName} — "${t.subject}"`,
           date: t.date,
-          read: false,
+          read: Boolean(t.readByAdmin),
           link: `/admin/dashboard?view=support`
         }));
 
       const doctorNotifications: AdminNotification[] = doctors
-        .filter(d => !d.readByAdmin)
+        .slice(0, 15)
         .map(d => ({
           id: `doctor-${d.id}`,
           type: 'new_doctor',
-          title: 'Nuevo Médico Registrado',
-          description: `El Dr. ${d.name} se ha unido a la plataforma.`,
+          title: d.verificationStatus === 'pending' ? 'Médico Pendiente por Verificar' : 'Nuevo Médico Registrado',
+          description: `Dr(a). ${d.name} (${d.specialty}) — ${d.verificationStatus === 'verified' ? 'Verificado' : 'Por verificar'}.`,
           date: d.joinDate,
-          read: false,
+          read: Boolean(d.readByAdmin) && d.verificationStatus === 'verified',
           link: `/admin/dashboard?view=doctors`
         }));
 
@@ -145,7 +181,7 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
     }
   }, [user, checkAndSetAdminNotifications]);
 
-  // Marcar una notificación como leída
+  // Marcar una notificación como revisada
   const markAdminNotificationAsRead = useCallback(async (id: string) => {
     if (!user?.id || user.role !== 'admin') return;
 
@@ -157,60 +193,64 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
       return updated;
     });
 
-    const ticketIds = id.startsWith('ticket-') ? [id.replace('ticket-', '')] : [];
-    const paymentIds = id.startsWith('payment-') ? [id.replace('payment-', '')] : [];
-    const doctorIds = id.startsWith('doctor-') ? [id.replace('doctor-', '')] : [];
+    const ticketIds = id.startsWith('ticket-') ? [id.replace(/^ticket-/, '')] : [];
+    const paymentIds = id.startsWith('payment-') ? [id.replace(/^payment-/, '')] : [];
+    const doctorIds = id.startsWith('doctor-') ? [id.replace(/^doctor-/, '')] : [];
 
     if (ticketIds.length > 0 || paymentIds.length > 0 || doctorIds.length > 0) {
       await batchUpdateNotificationsAsRead(ticketIds, paymentIds, doctorIds).catch(console.error);
     }
   }, [user]);
 
-  // Marcar todas como leídas
+  // Marcar todas como revisadas
   const markAdminNotificationsAsRead = useCallback(async () => {
     if (!user?.id || user.role !== 'admin' || adminUnreadCount === 0) return;
 
+    const unreadList = adminNotifications.filter(n => !n.read);
     const storageKey = getNotificationStorageKey(user.id);
     const updated = adminNotifications.map(n => ({ ...n, read: true }));
     localStorage.setItem(storageKey, JSON.stringify(updated));
     setAdminNotifications(updated);
     setAdminUnreadCount(0);
 
-    const unreadTicketIds = adminNotifications
-      .filter(n => n.type === 'support_ticket' && !n.read)
-      .map(n => n.id.replace('ticket-', ''));
+    const unreadTicketIds = unreadList
+      .filter(n => n.type === 'support_ticket')
+      .map(n => n.id.replace(/^ticket-/, ''));
 
-    const unreadPaymentIds = adminNotifications
-      .filter(n => n.type === 'payment' && !n.read)
-      .map(n => n.id.replace('payment-', ''));
+    const unreadPaymentIds = unreadList
+      .filter(n => n.type === 'payment')
+      .map(n => n.id.replace(/^payment-/, ''));
 
-    const unreadDoctorIds = adminNotifications
-      .filter(n => n.type === 'new_doctor' && !n.read)
-      .map(n => n.id.replace('doctor-', ''));
+    const unreadDoctorIds = unreadList
+      .filter(n => n.type === 'new_doctor')
+      .map(n => n.id.replace(/^doctor-/, ''));
 
     if (unreadTicketIds.length > 0 || unreadPaymentIds.length > 0 || unreadDoctorIds.length > 0) {
       await batchUpdateNotificationsAsRead(unreadTicketIds, unreadPaymentIds, unreadDoctorIds).catch(console.error);
     }
   }, [adminNotifications, user, adminUnreadCount]);
 
-  // Limpiar leídas
+  // Limpiar revisadas
   const clearReadAdminNotifications = useCallback(() => {
     if (!user?.id || user.role !== 'admin') return;
     const storageKey = getNotificationStorageKey(user.id);
+    const readIds = adminNotifications.filter(n => n.read).map(n => n.id);
+    addDismissedIds(user.id, readIds);
     const remaining = adminNotifications.filter(n => !n.read);
     localStorage.setItem(storageKey, JSON.stringify(remaining));
     setAdminNotifications(remaining);
     setAdminUnreadCount(remaining.length);
-  }, [user, adminNotifications]);
+  }, [user, adminNotifications, addDismissedIds]);
 
   // Limpiar todas
   const clearAllAdminNotifications = useCallback(() => {
     if (!user?.id || user.role !== 'admin') return;
     const storageKey = getNotificationStorageKey(user.id);
+    addDismissedIds(user.id, adminNotifications.map(n => n.id));
     localStorage.removeItem(storageKey);
     setAdminNotifications([]);
     setAdminUnreadCount(0);
-  }, [user]);
+  }, [user, adminNotifications, addDismissedIds]);
 
   // Realtime para Admin
   useEffect(() => {
@@ -232,8 +272,8 @@ export function AdminNotificationProvider({ children }: { children: ReactNode })
           checkAndSetAdminNotifications([{
             id: `doctor-${doc.id}`,
             type: 'new_doctor',
-            title: 'Nuevo Médico Registrado',
-            description: `El Dr. ${doc.name || 'Médico'} se ha unido a la plataforma.`,
+            title: 'Médico Pendiente por Verificar',
+            description: `El Dr(a). ${doc.name || 'Médico'} se ha registrado y requiere verificación.`,
             date: new Date().toISOString(),
             read: false,
             link: `/admin/dashboard?view=doctors`

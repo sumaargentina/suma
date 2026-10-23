@@ -8,7 +8,7 @@ import type { Patient, Doctor, Seller, Clinic, DoctorWorkspace, ActiveWorkspace,
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentDateInArgentina, getPaymentDateInArgentina } from './utils';
 import { hashPassword, verifyPassword, isPasswordHashed } from './password-utils';
-import { clearUserNotifications } from './clear-notifications';
+import { clearOtherUsersNotifications } from './clear-notifications';
 import { logAuditEvent, AuditActions } from './audit-service';
 import { normalizeCountryCode } from './geo-data';
 
@@ -48,6 +48,7 @@ export interface User extends Patient {
   hasMedicalRecord?: boolean | null;
   hasPrescription?: boolean | null;
   medicalLicense?: string;
+  verificationStatus?: 'pending' | 'verified' | 'rejected';
   onboardingCompleted?: boolean;
   isChain?: boolean;
   chainName?: string | null;
@@ -165,6 +166,7 @@ const buildUserFromData = (userData: any): User => {
       hasMedicalRecord: doctorData.hasMedicalRecord ?? (doctorData as any).has_medical_record ?? null,
       hasPrescription: doctorData.hasPrescription ?? (doctorData as any).has_prescription ?? null,
       medicalLicense: doctorData.medicalLicense || '',
+      verificationStatus: doctorData.verificationStatus || (doctorData as any).verification_status || 'pending',
       country: normalizeCountryCode(doctorData.country || 'VE'),
       state: doctorData.state || undefined,
       city: doctorData.city || null,
@@ -601,7 +603,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     if (loggedInUser && ['patient', 'doctor', 'seller'].includes(loggedInUser.role)) {
-      clearUserNotifications(loggedInUser.id, loggedInUser.role as 'patient' | 'doctor' | 'seller');
+      clearOtherUsersNotifications(loggedInUser.id, loggedInUser.role as 'patient' | 'doctor' | 'seller');
     }
 
     toast({ title: '¡Bienvenido!', description: `Hola ${loggedInUser.name}` });
@@ -799,6 +801,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscriptionStatus: 'active', nextPaymentDate: paymentDateArgentina,
       coupons: [], expenses: [],
       medicalLicense: medicalLicense,
+      verificationStatus: 'pending',
     };
 
     const newDoctorId = await supabaseService.addDoctor(newDoctorData);
@@ -940,10 +943,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         result: 'success',
         message: `Logout de ${user.name}`
       });
-    }
-
-    if (user && ['patient', 'doctor', 'seller'].includes(user.role)) {
-      clearUserNotifications(user.id, user.role as 'patient' | 'doctor' | 'seller');
     }
 
     // 🔐 Limpiar cookie HTTP-only de autenticación

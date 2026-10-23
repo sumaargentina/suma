@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import type { Appointment, ClinicNotification } from './types';
 import { differenceInDays } from 'date-fns';
 import { useAuth } from './auth';
-import { batchUpdateDoctorAppointmentsAsRead, getClinicAppointments } from './supabaseService';
+import { batchUpdateDoctorAppointmentsAsRead, getClinicAppointments, getSupportTickets } from './supabaseService';
 import { getCurrentDateTimeInArgentina } from './utils';
 import { supabase } from './supabase';
 
@@ -20,13 +20,13 @@ interface ClinicNotificationContextType {
 
 const ClinicNotificationContext = createContext<ClinicNotificationContextType | undefined>(undefined);
 const getNotificationStorageKey = (userId: string) => `suma-clinic-notifications-${userId}`;
-const MAX_NOTIFICATIONS = 25;
+const getDismissedStorageKey = (userId: string) => `suma-clinic-notifications-dismissed-${userId}`;
+const MAX_NOTIFICATIONS = 30;
 
-// Filtrar notificaciones obsoletas (más de 14 días) y limitar a MAX_NOTIFICATIONS
 const filterValidClinicNotifications = (list: ClinicNotification[]): ClinicNotification[] => {
   const now = getCurrentDateTimeInArgentina();
   return list.filter(n => {
-    if (n.createdAt && differenceInDays(now, new Date(n.createdAt)) > 14) {
+    if (n.createdAt && differenceInDays(now, new Date(n.createdAt)) > 30) {
       return false;
     }
     return true;
@@ -39,9 +39,27 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
   const [clinicUnreadCount, setClinicUnreadCount] = useState(0);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Helper para identificar rol de clínica o secretaria
   const isClinicUser = user?.role === 'clinic' || user?.role === 'secretary';
   const effectiveClinicId = user?.role === 'secretary' ? ((user as any).clinicId || user.id) : (user?.role === 'clinic' ? user.id : null);
+
+  const getDismissedSet = useCallback((userId: string): Set<string> => {
+    try {
+      const raw = localStorage.getItem(getDismissedStorageKey(userId));
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  }, []);
+
+  const addDismissedIds = useCallback((userId: string, ids: string[]) => {
+    try {
+      const current = getDismissedSet(userId);
+      ids.forEach(id => current.add(id));
+      localStorage.setItem(getDismissedStorageKey(userId), JSON.stringify(Array.from(current).slice(-200)));
+    } catch {
+      // ignore
+    }
+  }, [getDismissedSet]);
 
   useEffect(() => {
     if (user?.id && isClinicUser) {
@@ -69,12 +87,12 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
     }
   }, [user, isClinicUser]);
 
-  // Limpiar notificaciones de otros usuarios cuando cambie el usuario
   useEffect(() => {
     if (user?.id && isClinicUser) {
       const allKeys = Object.keys(localStorage);
       const clinicNotificationKeys = allKeys.filter(key =>
         key.startsWith('suma-clinic-notifications-') &&
+        !key.startsWith('suma-clinic-notifications-dismissed-') &&
         key !== getNotificationStorageKey(user.id)
       );
       clinicNotificationKeys.forEach(key => localStorage.removeItem(key));
@@ -83,101 +101,125 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
 
   const addNotification = useCallback((notification: ClinicNotification) => {
     if (!user?.id || !isClinicUser) return;
-
     const storageKey = getNotificationStorageKey(user.id);
+    const dismissed = getDismissedSet(user.id);
+    if (dismissed.has(notification.id)) return;
 
     setClinicNotifications(prev => {
       if (prev.some(n => n.id === notification.id)) {
         return prev;
       }
-      const updated = filterValidClinicNotifications([notification, ...prev]).sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      const updated = filterValidClinicNotifications([notification, ...prev]).sort((a, b) => {
+        if (a.read !== b.read) return a.read ? 1 : -1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      setClinicUnreadCount(updated.filter(n => !n.read).length);
       return updated;
     });
-
-    setClinicUnreadCount(prev => prev + 1);
-  }, [user, isClinicUser]);
+  }, [user, isClinicUser, getDismissedSet]);
 
   const checkAndSetClinicNotifications = useCallback((
-    appointments: Appointment[]
+    appointments: Appointment[],
+    supportTickets: any[] = []
   ) => {
     if (!user?.id || !isClinicUser) return;
 
     const storageKey = getNotificationStorageKey(user.id);
-    const newNotificationsMap = new Map<string, ClinicNotification>();
+    const dismissed = getDismissedSet(user.id);
     const now = getCurrentDateTimeInArgentina();
 
-    const existingIds = new Set(clinicNotifications.map(n => n.id));
+    setClinicNotifications(prev => {
+      const prevMap = new Map(prev.map(n => [n.id, n]));
 
-    // --- Generar notificaciones ---
-    appointments.forEach(appt => {
-      // 1. Nueva Cita
-      if (appt.readByDoctor === false) {
-        const id = `new-appt-${appt.id}`;
-        if (!existingIds.has(id)) {
-          newNotificationsMap.set(id, {
-            id,
-            type: 'new_appointment',
-            title: '¡Nueva Cita en Clínica!',
-            description: `Paciente: ${appt.patientName}. Fecha: ${appt.date} ${appt.time || ''}.`,
-            date: appt.date,
-            createdAt: now.toISOString(),
-            read: false,
-            link: `/clinic/dashboard?tab=agenda`
+      const upsert = (notif: ClinicNotification) => {
+        if (dismissed.has(notif.id)) return;
+        const existing = prevMap.get(notif.id);
+        if (existing) {
+          prevMap.set(notif.id, {
+            ...existing,
+            title: notif.title,
+            description: notif.description,
+            link: notif.link,
+            read: existing.read || Boolean(notif.read),
           });
+        } else {
+          prevMap.set(notif.id, notif);
         }
-      }
+      };
 
-      // 2. Verificación de pago por transferencia
-      if (appt.paymentMethod === 'transferencia' && appt.paymentStatus === 'Pendiente') {
-        const id = `verify-${appt.id}`;
-        if (!existingIds.has(id)) {
-          newNotificationsMap.set(id, {
-            id,
+      appointments.forEach(appt => {
+        upsert({
+          id: `new-appt-${appt.id}`,
+          type: 'new_appointment',
+          title: 'Cita en Clínica',
+          description: `Paciente: ${appt.patientName}. Fecha: ${appt.date} ${appt.time || ''}.`,
+          date: appt.date,
+          createdAt: now.toISOString(),
+          read: appt.readByDoctor === true,
+          link: `/clinic/dashboard?view=agenda`
+        });
+
+        if (appt.paymentMethod === 'transferencia' && appt.paymentStatus === 'Pendiente') {
+          upsert({
+            id: `verify-${appt.id}`,
             type: 'payment_verification',
             title: 'Verificación de Pago',
-            description: `Pago pendiente para la cita de ${appt.patientName}.`,
+            description: `Pago pendiente de revisión para la cita de ${appt.patientName}.`,
             date: appt.date,
             createdAt: now.toISOString(),
             read: false,
-            link: `/clinic/dashboard?tab=agenda`
+            link: `/clinic/dashboard?view=agenda`
           });
         }
-      }
 
-      // 3. Cambios de estado (confirmada o cancelada)
-      if (appt.patientConfirmationStatus === 'Confirmada' || appt.patientConfirmationStatus === 'Cancelada') {
-        const id = `confirm-${appt.id}-${appt.patientConfirmationStatus}`;
-        if (!existingIds.has(id)) {
-          newNotificationsMap.set(id, {
-            id,
+        if (appt.patientConfirmationStatus === 'Confirmada' || appt.patientConfirmationStatus === 'Cancelada') {
+          upsert({
+            id: `confirm-${appt.id}-${appt.patientConfirmationStatus}`,
             type: appt.patientConfirmationStatus === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
             title: `Cita ${appt.patientConfirmationStatus}`,
             description: `${appt.patientName} ha ${appt.patientConfirmationStatus.toLowerCase()} su cita.`,
             date: `${appt.date}T${appt.time || '00:00'}`,
             createdAt: now.toISOString(),
-            read: false,
-            link: `/clinic/dashboard?tab=agenda`
+            read: appt.readByDoctor === true,
+            link: `/clinic/dashboard?view=agenda`
           });
         }
-      }
+      });
+
+      supportTickets
+        .filter(t => t.userRole === 'clinic' && (t.userId === user.email || t.userId === effectiveClinicId))
+        .forEach(ticket => {
+          const lastMessage = ticket.messages?.slice(-1)[0];
+          if (lastMessage?.sender === 'admin') {
+            upsert({
+              id: `support-clinic-${ticket.id}__${lastMessage.id}`,
+              type: 'support_reply',
+              title: 'Respuesta de Soporte SUMA',
+              description: `El equipo de SUMA ha respondido a tu ticket: "${ticket.subject}"`,
+              date: lastMessage.timestamp,
+              createdAt: now.toISOString(),
+              read: Boolean(ticket.readByClinic),
+              link: `/clinic/dashboard?view=support`
+            });
+          }
+        });
+
+      const merged = filterValidClinicNotifications(
+        Array.from(prevMap.values())
+          .filter(n => !dismissed.has(n.id))
+          .sort((a, b) => {
+            if (a.read !== b.read) return a.read ? 1 : -1;
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          })
+      );
+
+      localStorage.setItem(storageKey, JSON.stringify(merged));
+      setClinicUnreadCount(merged.filter(n => !n.read).length);
+      return merged;
     });
+  }, [user, isClinicUser, effectiveClinicId, getDismissedSet]);
 
-    if (newNotificationsMap.size > 0) {
-      const uniqueNewNotifications = Array.from(newNotificationsMap.values());
-      const filteredExisting = filterValidClinicNotifications(clinicNotifications);
-      const updatedNotifications = filterValidClinicNotifications([...uniqueNewNotifications, ...filteredExisting])
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      localStorage.setItem(storageKey, JSON.stringify(updatedNotifications));
-      setClinicNotifications(updatedNotifications);
-      setClinicUnreadCount(updatedNotifications.filter(n => !n.read).length);
-    }
-  }, [clinicNotifications, user, isClinicUser]);
-
-  // Marcar una sola notificación como leída
   const markClinicNotificationAsRead = useCallback(async (id: string) => {
     if (!user?.id || !isClinicUser) return;
 
@@ -190,55 +232,73 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
     });
 
     if (id.startsWith('new-appt-')) {
-      const apptId = id.replace('new-appt-', '');
+      const apptId = id.replace(/^new-appt-/, '');
       batchUpdateDoctorAppointmentsAsRead([apptId]).catch(console.error);
+    } else if (id.startsWith('support-clinic-')) {
+      const ticketId = id.replace(/^support-clinic-/, '').split('__')[0];
+      fetch('/api/notifications/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'clinic', ticketIds: [ticketId] }),
+      }).catch(console.error);
     }
   }, [user, isClinicUser]);
 
-  // Marcar todas como leídas
   const markClinicNotificationsAsRead = useCallback(async () => {
     if (!user?.id || !isClinicUser || clinicUnreadCount === 0) return;
 
+    const unreadNotifications = clinicNotifications.filter(n => !n.read);
     const storageKey = getNotificationStorageKey(user.id);
     const updated = clinicNotifications.map(n => ({ ...n, read: true }));
     localStorage.setItem(storageKey, JSON.stringify(updated));
     setClinicNotifications(updated);
     setClinicUnreadCount(0);
 
-    const unreadNotifications = clinicNotifications.filter(n => !n.read);
     const appointmentIdsToUpdate = unreadNotifications
-      .filter(n => n.type === 'new_appointment')
-      .map(n => n.id.replace('new-appt-', ''));
+      .filter(n => n.id.startsWith('new-appt-'))
+      .map(n => n.id.replace(/^new-appt-/, ''));
 
-    if (appointmentIdsToUpdate.length > 0) {
-      try {
-        await batchUpdateDoctorAppointmentsAsRead(appointmentIdsToUpdate);
-      } catch (error) {
-        console.error("Error updating backend read status", error);
+    const ticketIdsToUpdate = unreadNotifications
+      .filter(n => n.id.startsWith('support-clinic-'))
+      .map(n => n.id.replace(/^support-clinic-/, '').split('__')[0]);
+
+    try {
+      if (appointmentIdsToUpdate.length > 0 || ticketIdsToUpdate.length > 0) {
+        await fetch('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'clinic',
+            appointmentIds: appointmentIdsToUpdate,
+            ticketIds: ticketIdsToUpdate,
+          }),
+        });
       }
+    } catch (error) {
+      console.error("Error updating backend read status", error);
     }
   }, [clinicNotifications, user, clinicUnreadCount, isClinicUser]);
 
-  // Limpiar notificaciones leídas
   const clearReadClinicNotifications = useCallback(() => {
     if (!user?.id || !isClinicUser) return;
     const storageKey = getNotificationStorageKey(user.id);
+    const readIds = clinicNotifications.filter(n => n.read).map(n => n.id);
+    addDismissedIds(user.id, readIds);
     const remaining = clinicNotifications.filter(n => !n.read);
     localStorage.setItem(storageKey, JSON.stringify(remaining));
     setClinicNotifications(remaining);
     setClinicUnreadCount(remaining.length);
-  }, [user, isClinicUser, clinicNotifications]);
+  }, [user, isClinicUser, clinicNotifications, addDismissedIds]);
 
-  // Limpiar todas las notificaciones
   const clearAllClinicNotifications = useCallback(() => {
     if (!user?.id || !isClinicUser) return;
     const storageKey = getNotificationStorageKey(user.id);
+    addDismissedIds(user.id, clinicNotifications.map(n => n.id));
     localStorage.removeItem(storageKey);
     setClinicNotifications([]);
     setClinicUnreadCount(0);
-  }, [user, isClinicUser]);
+  }, [user, isClinicUser, clinicNotifications, addDismissedIds]);
 
-  // --- Supabase Realtime para Clínicas y Secretarias ---
   useEffect(() => {
     if (!user?.id || !isClinicUser || !effectiveClinicId) {
       if (subscriptionRef.current) {
@@ -262,7 +322,7 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
         },
         (payload) => {
           const appt = payload.new as Record<string, unknown>;
-          const notification: ClinicNotification = {
+          addNotification({
             id: `new-appt-${appt.id}`,
             type: 'new_appointment',
             title: '¡Nueva Cita en Clínica!',
@@ -270,52 +330,23 @@ export function ClinicNotificationProvider({ children }: { children: ReactNode }
             date: (appt.date as string) || now.toISOString(),
             createdAt: now.toISOString(),
             read: false,
-            link: `/clinic/dashboard?tab=agenda`
-          };
-          addNotification(notification);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'appointments',
-          filter: `clinic_id=eq.${effectiveClinicId}`
-        },
-        (payload) => {
-          const appt = payload.new as Record<string, unknown>;
-          const oldAppt = payload.old as Record<string, unknown>;
-
-          if (appt.patient_confirmation_status !== oldAppt.patient_confirmation_status) {
-            const status = appt.patient_confirmation_status as string;
-            if (status === 'Confirmada' || status === 'Cancelada') {
-              const notification: ClinicNotification = {
-                id: `confirm-${appt.id}-${status}`,
-                type: status === 'Confirmada' ? 'patient_confirmed' : 'patient_cancelled',
-                title: `Cita ${status}`,
-                description: `${appt.patient_name || 'El paciente'} ha ${status.toLowerCase()} su cita.`,
-                date: `${appt.date}T${appt.time || '00:00'}` || now.toISOString(),
-                createdAt: now.toISOString(),
-                read: false,
-                link: `/clinic/dashboard?tab=agenda`
-              };
-              addNotification(notification);
-            }
-          }
+            link: `/clinic/dashboard?view=agenda`
+          });
         }
       )
       .subscribe();
 
     subscriptionRef.current = channel;
 
-    // Polling backup cada 45 segundos
     const fetchInitial = async () => {
       try {
-        const appointments = await getClinicAppointments(effectiveClinicId);
-        checkAndSetClinicNotifications(appointments);
+        const [appointments, tickets] = await Promise.all([
+          getClinicAppointments(effectiveClinicId),
+          getSupportTickets(),
+        ]);
+        checkAndSetClinicNotifications(appointments || [], tickets || []);
       } catch (error) {
-        console.error("Error fetching clinic appointments for notifications", error);
+        console.error("Error fetching clinic notifications", error);
       }
     };
 

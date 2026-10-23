@@ -1,4 +1,3 @@
-
 "use client";
 import { z } from 'zod';
 import { useState, useCallback, useEffect, useMemo } from "react";
@@ -14,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 import * as supabaseService from '@/lib/supabaseService';
-import { Loader2, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Loader2, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Copy, Trash2, Pencil, RefreshCw, UserPlus, Landmark, Share2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { hashPassword } from '@/lib/password-utils';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
@@ -22,21 +21,39 @@ import { LocationSelector, LocationData } from '@/components/ui/location-selecto
 const SellerFormSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
   email: z.string().email("Correo electrónico inválido."),
-  commissionRate: z.number().min(0).max(1),
+  phone: z.string().optional().or(z.literal('')),
+  commissionRate: z.number().min(0, "La comisión no puede ser negativa.").max(1, "Usa formato decimal (ej. 0.2 para 20%)."),
   password: z.string().optional().or(z.literal('')),
   confirmPassword: z.string().optional().or(z.literal('')),
+}).superRefine(({ password, confirmPassword }, ctx) => {
+  if (password && password.trim().length > 0) {
+    if (password.trim().length < 6) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La contraseña debe tener al menos 6 caracteres.",
+        path: ["password"],
+      });
+    }
+    if (password !== confirmPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Las contraseñas no coinciden.",
+        path: ["confirmPassword"],
+      });
+    }
+  }
 });
 
 export function SellersTab() {
-  // HOOKS: todos juntos al inicio, en orden
   const { toast } = useToast();
-  // const { settings } = useSettings(); // Comentado porque no se usa actualmente
   const [activeTab, setActiveTab] = useState("pendientes");
   const [sellers, setSellers] = useState<Seller[]>([]);
-  const [, setDoctors] = useState<Doctor[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [, setDoctorPayments] = useState<DoctorPayment[]>([]);
   const [sellerPayments, setSellerPayments] = useState<SellerPayment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncingCommissions, setIsSyncingCommissions] = useState(false);
+  const [isSavingSeller, setIsSavingSeller] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSellerDialogOpen, setIsSellerDialogOpen] = useState(false);
   const [editingSeller, setEditingSeller] = useState<Seller | null>(null);
@@ -66,6 +83,7 @@ export function SellersTab() {
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+
   // Agrupar pagos pendientes por vendedora
   const pendingPaymentsBySeller = useMemo(() => {
     const grouped: Record<string, SellerPayment[]> = {};
@@ -75,6 +93,7 @@ export function SellersTab() {
     });
     return grouped;
   }, [sellerPayments]);
+
   // Agrupar historial de pagos por vendedora
   const paidPaymentsBySeller = useMemo(() => {
     const grouped: Record<string, SellerPayment[]> = {};
@@ -88,6 +107,13 @@ export function SellersTab() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Sincronizar silenciosamente comisiones de pagos de médicos ya aprobados
+      await fetch('/api/seller-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync_commissions' }),
+      }).catch(() => {});
+
       const [sells, docs, docPayments, sellerPaymentsData] = await Promise.all([
         supabaseService.getSellers(),
         supabaseService.getDoctors(),
@@ -108,6 +134,29 @@ export function SellersTab() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleManualSyncCommissions = async () => {
+    setIsSyncingCommissions(true);
+    try {
+      const res = await fetch('/api/seller-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync_commissions' }),
+      });
+      const data = await res.json();
+      await fetchData();
+      toast({
+        title: 'Comisiones Sincronizadas',
+        description: data.createdOrUpdated > 0
+          ? `Se actualizaron ${data.createdOrUpdated} registro(s) de comisión pendiente.`
+          : 'Todas las comisiones por pagos de médicos están al día.',
+      });
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron sincronizar las comisiones.' });
+    } finally {
+      setIsSyncingCommissions(false);
+    }
+  };
 
   // Filtrar vendedoras basado en el término de búsqueda
   const filteredSellers = sellers.filter(seller => {
@@ -136,12 +185,11 @@ export function SellersTab() {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // Calcular comisión pendiente para cada vendedora
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     try {
       await supabaseService.deleteSeller(itemToDelete.id);
-      toast({ title: "Vendedora Eliminada" });
+      toast({ title: "Vendedora Eliminada", description: `${itemToDelete.name} ha sido eliminada del sistema.` });
       fetchData();
     } catch {
       toast({ variant: 'destructive', title: 'Error al eliminar', description: 'No se pudo completar la operación.' });
@@ -155,31 +203,32 @@ export function SellersTab() {
     setIsProcessingPayment(true);
     try {
       if (!pendingPaymentData) return;
-      // Buscar todos los pagos pendientes de la vendedora
       const pendientes = sellerPayments.filter(
         p => p.sellerId === pendingPaymentData.seller.id && p.status === "pending"
       );
       if (pendientes.length === 0) throw new Error("No hay pagos pendientes para esta vendedora.");
-      // Subir comprobante una sola vez (si existe)
+
       let proofUrl = pendientes[0].paymentProofUrl;
       if (paymentProofFile) {
         proofUrl = await supabaseService.uploadPaymentProof(paymentProofFile, `seller-payments/${pendingPaymentData.seller.id}/${Date.now()}-${paymentProofFile.name}`);
       }
-      // Actualizar todos a 'paid'
+
       await Promise.all(
         pendientes.map(p =>
           supabaseService.updateSellerPayment(p.id, {
             status: "paid",
             paymentProofUrl: proofUrl,
-            transactionId: pendingPaymentData.transactionId || p.transactionId
+            transactionId: pendingPaymentData.transactionId || p.transactionId,
+            paymentDate: new Date().toISOString().split('T')[0],
           })
         )
       );
       toast({
         title: "Pago registrado",
-        description: "Los pagos han sido marcados como pagados.",
+        description: "Las comisiones han sido marcadas como pagadas.",
       });
       setIsPendingPaymentDialogOpen(false);
+      setPaymentProofFile(null);
       await fetchData();
     } catch (error: unknown) {
       let message = "No se pudo registrar el pago. Intenta de nuevo.";
@@ -200,8 +249,9 @@ export function SellersTab() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const dataToValidate = {
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
+      name: (formData.get('name') as string || '').trim(),
+      email: (formData.get('email') as string || '').trim(),
+      phone: (formData.get('phone') as string || '').trim(),
       commissionRate: parseFloat(formData.get('commissionRate') as string),
       password: formData.get('password') as string,
       confirmPassword: formData.get('confirmPassword') as string,
@@ -213,69 +263,121 @@ export function SellersTab() {
       return;
     }
 
-    if (editingSeller) {
-      const normalizedEmail = result.data.email.toLowerCase();
+    setIsSavingSeller(true);
+    try {
+      if (editingSeller) {
+        const normalizedEmail = result.data.email.toLowerCase();
 
-      // Validar si el email cambió y si ya está en uso por otro usuario
-      if (normalizedEmail !== editingSeller.email.toLowerCase()) {
-        const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
-        if (existingUser && existingUser.id !== editingSeller.id) {
-          toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+        if (normalizedEmail !== editingSeller.email.toLowerCase()) {
+          const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
+          if (existingUser && existingUser.id !== editingSeller.id) {
+            toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+            setIsSavingSeller(false);
+            return;
+          }
+        }
+
+        const updatePayload: Partial<Seller> = {
+          name: result.data.name,
+          email: normalizedEmail,
+          phone: result.data.phone || null,
+          commissionRate: result.data.commissionRate,
+          country: sellerLocationData.country,
+          state: sellerLocationData.state,
+          city: sellerLocationData.city,
+          sector: sellerLocationData.sector,
+          address: sellerLocationData.address,
+        };
+
+        if (result.data.password && result.data.password.trim()) {
+          updatePayload.password = await hashPassword(result.data.password.trim());
+        }
+
+        await supabaseService.updateSeller(editingSeller.id, updatePayload);
+        toast({ title: "Vendedora Actualizada", description: "Los datos de la vendedora han sido guardados." });
+      } else {
+        if (!result.data.password) {
+          toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para las nuevas vendedoras.' });
+          setIsSavingSeller(false);
           return;
         }
+        const normalizedEmail = result.data.email.toLowerCase();
+        const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
+        if (existingUser) {
+          toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
+          setIsSavingSeller(false);
+          return;
+        }
+
+        const cleanPrefix = result.data.name.replace(/[^a-zA-Z]/g, '').substring(0, 4).toUpperCase() || 'SUMA';
+        const referralCode = `${cleanPrefix}${Math.floor(100 + Math.random() * 900)}`;
+
+        const hashedPassword = await hashPassword(result.data.password);
+
+        const newSellerData: Omit<Seller, 'id'> = {
+          name: result.data.name,
+          email: normalizedEmail,
+          password: hashedPassword,
+          commissionRate: result.data.commissionRate,
+          referralCode: referralCode,
+          phone: result.data.phone || null,
+          country: sellerLocationData.country,
+          state: sellerLocationData.state,
+          city: sellerLocationData.city,
+          sector: sellerLocationData.sector,
+          address: sellerLocationData.address,
+          profileImage: 'https://placehold.co/400x400.png',
+          bankDetails: [],
+          expenses: [],
+        };
+        await supabaseService.addSeller(newSellerData);
+
+        // Enviar correo de bienvenida al vendedor (no bloqueante)
+        fetch('/api/send-welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            name: result.data.name,
+            role: 'seller',
+            extraData: { tempPassword: result.data.password },
+          }),
+        }).catch(() => {});
+
+        toast({
+          title: "Vendedora Registrada",
+          description: `${result.data.name} ha sido añadida (Código: ${referralCode}) y notificada por correo.`,
+        });
       }
 
-      await supabaseService.updateSeller(editingSeller.id, {
-        name: result.data.name,
-        email: normalizedEmail,
-        commissionRate: result.data.commissionRate,
-        country: sellerLocationData.country,
-        state: sellerLocationData.state,
-        city: sellerLocationData.city,
-        sector: sellerLocationData.sector,
-        address: sellerLocationData.address,
+      await fetchData();
+      setIsSellerDialogOpen(false);
+      setEditingSeller(null);
+    } catch (err: any) {
+      console.error('Error guardando vendedora:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Error al guardar',
+        description: err?.message || 'No se pudo guardar la información de la vendedora.',
       });
-      toast({ title: "Vendedora Actualizada", description: "Los datos han sido guardados." });
-    } else {
-      if (!result.data.password) {
-        toast({ variant: 'destructive', title: 'Contraseña Requerida', description: 'Debe establecer una contraseña para las nuevas vendedoras.' });
-        return;
-      }
-      const normalizedEmail = result.data.email.toLowerCase();
-      const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
-      if (existingUser) {
-        toast({ variant: 'destructive', title: 'Correo ya registrado', description: 'Este correo electrónico ya está en uso por otro usuario.' });
-        return;
-      }
-
-      const referralCode = `${result.data.name.substring(0, 4).toUpperCase()}${Math.floor(100 + Math.random() * 900)}`;
-
-      // Encriptar contraseña
-      const hashedPassword = await hashPassword(result.data.password);
-
-      const newSellerData: Omit<Seller, 'id'> = {
-        name: result.data.name,
-        email: normalizedEmail,
-        password: hashedPassword,
-        commissionRate: result.data.commissionRate,
-        referralCode: referralCode,
-        phone: null,
-        country: sellerLocationData.country,
-        state: sellerLocationData.state,
-        city: sellerLocationData.city,
-        sector: sellerLocationData.sector,
-        address: sellerLocationData.address,
-        profileImage: 'https://placehold.co/400x400.png',
-        bankDetails: [],
-        expenses: [],
-      };
-      await supabaseService.addSeller(newSellerData);
-      toast({ title: "Vendedora Registrada", description: `${result.data.name} ha sido añadida.` });
+    } finally {
+      setIsSavingSeller(false);
     }
+  };
 
-    fetchData();
-    setIsSellerDialogOpen(false);
-    setEditingSeller(null);
+  const handleCopyReferralLink = (referralCode: string, sellerName: string) => {
+    const link = `${window.location.origin}/auth/register-doctor?ref=${referralCode}`;
+    navigator.clipboard.writeText(link);
+    toast({
+      title: 'Enlace de referido copiado',
+      description: `Se copió el enlace para referir médicos de ${sellerName} (${referralCode}).`,
+    });
+  };
+
+  const handleShareReferralWhatsApp = (referralCode: string, sellerName: string) => {
+    const link = `${window.location.origin}/auth/register-doctor?ref=${referralCode}`;
+    const text = `¡Hola Dr(a).! 👋 Te invito a registrarte en *SUMA*, nuestra plataforma integral de gestión médica y agenda de pacientes. Regístrate con el código de asesoría de *${sellerName}* (${referralCode}) aquí: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   };
 
   if (isLoading) {
@@ -285,29 +387,43 @@ export function SellersTab() {
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
       <TabsList className="mb-4">
-        <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
-        <TabsTrigger value="historial">Historial</TabsTrigger>
+        <TabsTrigger value="pendientes">Vendedoras y Comisiones ({sellers.length})</TabsTrigger>
+        <TabsTrigger value="historial">Historial de Pagos</TabsTrigger>
       </TabsList>
       {/* TAB PENDIENTES */}
       <TabsContent value="pendientes">
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle>Pagos Pendientes a Vendedoras</CardTitle>
+              <CardTitle>Gestión de Vendedoras y Comisiones por Médicos Referidos</CardTitle>
+              <CardDescription>
+                Registra vendedoras, copia sus enlaces de referido para médicos y gestiona el pago de sus comisiones.
+              </CardDescription>
             </div>
-            <Button onClick={() => {
-              setEditingSeller(null);
-              setSellerLocationData({
-                country: 'VE',
-                state: 'Monagas',
-                city: 'Maturín',
-                sector: '',
-                address: '',
-              });
-              setIsSellerDialogOpen(true);
-            }}>
-              Registrar vendedora
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleManualSyncCommissions}
+                disabled={isSyncingCommissions}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingCommissions ? 'animate-spin' : ''}`} />
+                Sincronizar Comisiones
+              </Button>
+              <Button onClick={() => {
+                setEditingSeller(null);
+                setSellerLocationData({
+                  country: 'VE',
+                  state: 'Monagas',
+                  city: 'Maturín',
+                  sector: '',
+                  address: '',
+                });
+                setIsSellerDialogOpen(true);
+              }}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Registrar vendedora
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {/* Buscador */}
@@ -332,97 +448,159 @@ export function SellersTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vendedora</TableHead>
-                  <TableHead>Total Pendiente</TableHead>
-                  <TableHead># Médicos</TableHead>
-                  <TableHead>Estatus</TableHead>
-                  <TableHead>Detalle</TableHead>
-                  <TableHead>Acción</TableHead>
-                  <TableHead>Editar</TableHead>
-                  <TableHead>Historial</TableHead>
+                  <TableHead>Código / Comisión</TableHead>
+                  <TableHead>Médicos Referidos</TableHead>
+                  <TableHead>Comisión Pendiente</TableHead>
+                  <TableHead>Estatus de Pago</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedSellers.map(seller => {
+                {paginatedSellers.length > 0 ? paginatedSellers.map(seller => {
                   const pendientes = pendingPaymentsBySeller[seller.id] || [];
                   const total = pendientes.reduce((sum, p) => sum + (p.amount || 0), 0);
-                  const doctors = Array.from(new Set(pendientes.flatMap(p => p.includedDoctors.map(d => d.name))));
                   const tienePendientes = pendientes.length > 0;
+                  const referredDocs = doctors.filter(d => d.sellerId === seller.id);
+                  const verifiedReferredCount = referredDocs.filter(d => d.verificationStatus === 'verified').length;
+
                   return (
                     <TableRow key={seller.id}>
-                      <TableCell>{seller.name}</TableCell>
-                      <TableCell>${total.toFixed(2)}</TableCell>
-                      <TableCell>{doctors.length}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{seller.name}</span>
+                          <span className="text-xs text-muted-foreground">{seller.email}</span>
+                          {seller.phone && <span className="text-xs text-muted-foreground">{seller.phone}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {seller.referralCode || 'SIN-COD'}
+                            </Badge>
+                            {seller.referralCode && (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  title="Copiar enlace de referido para médicos"
+                                  onClick={() => handleCopyReferralLink(seller.referralCode, seller.name)}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                  title="Compartir enlace por WhatsApp"
+                                  onClick={() => handleShareReferralWhatsApp(seller.referralCode, seller.name)}
+                                >
+                                  <Share2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            Comisión recurrente: <strong>{Math.round((seller.commissionRate ?? 0.2) * 100)}%</strong>
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{referredDocs.length} médico(s)</span>
+                          <span className="text-xs text-muted-foreground">
+                            {verifiedReferredCount} verificado(s)
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono font-semibold">
+                        ${total.toFixed(2)}
+                      </TableCell>
                       <TableCell>
                         {tienePendientes ? (
-                          <span style={{ color: 'orange', fontWeight: 'bold' }}>Pendiente</span>
+                          <Badge className="bg-amber-500 hover:bg-amber-600 text-white">
+                            Pago Pendiente
+                          </Badge>
                         ) : (
-                          <span style={{ color: 'green' }}>Sin pagos pendientes</span>
+                          <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50">
+                            Al día
+                          </Badge>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setPendingPaymentData({
-                            seller,
-                            pendingAmount: total,
-                            includedDoctors: pendientes.flatMap(p => p.includedDoctors),
-                            period: pendientes.map(p => p.period).join(", "),
-                            transactionId: ""
-                          });
-                          setIsPendingPaymentDialogOpen(true);
-                        }} disabled={!tienePendientes}>
-                          Ver Detalle
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" onClick={() => {
-                          if (!tienePendientes) return;
-                          setPendingPaymentData({
-                            seller,
-                            pendingAmount: total,
-                            includedDoctors: pendientes.flatMap(p => p.includedDoctors),
-                            period: pendientes.map(p => p.period).join(", "),
-                            transactionId: ""
-                          });
-                          setIsPendingPaymentDialogOpen(true);
-                        }} disabled={!tienePendientes}>
-                          {isProcessingPayment && seller.id === pendingPaymentData?.seller.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Procesando...
-                            </>
-                          ) : (
-                            "Marcar como Pagado"
-                          )}
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setEditingSeller(seller);
-                          setSellerLocationData({
-                            country: seller.country || 'VE',
-                            state: seller.state || '',
-                            city: seller.city || '',
-                            sector: seller.sector || '',
-                            address: seller.address || '',
-                          });
-                          setIsSellerDialogOpen(true);
-                        }}>
-                          Editar
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setSelectedSellerForHistory(seller);
-                          const history = sellerPayments.filter(p => p.sellerId === seller.id);
-                          setSellerPaymentHistory(history);
-                          setIsPaymentHistoryDialogOpen(true);
-                        }}>
-                          Historial
-                        </Button>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant={tienePendientes ? "default" : "outline"}
+                            onClick={() => {
+                              setPendingPaymentData({
+                                seller,
+                                pendingAmount: total,
+                                includedDoctors: pendientes.flatMap(p => p.includedDoctors),
+                                period: pendientes.map(p => p.period).join(", "),
+                                transactionId: ""
+                              });
+                              setIsPendingPaymentDialogOpen(true);
+                            }}
+                            disabled={!tienePendientes}
+                          >
+                            {tienePendientes ? "Pagar / Detalle" : "Sin Pendientes"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedSellerForHistory(seller);
+                              const history = sellerPayments.filter(p => p.sellerId === seller.id && p.status === 'paid');
+                              setSellerPaymentHistory(history);
+                              setIsPaymentHistoryDialogOpen(true);
+                            }}
+                          >
+                            Historial
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            title="Editar vendedora"
+                            onClick={() => {
+                              setEditingSeller(seller);
+                              setSellerLocationData({
+                                country: seller.country || 'VE',
+                                state: seller.state || '',
+                                city: seller.city || '',
+                                sector: seller.sector || '',
+                                address: seller.address || '',
+                              });
+                              setIsSellerDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            title="Eliminar vendedora"
+                            onClick={() => {
+                              setItemToDelete(seller);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
-                })}
+                }) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      No hay vendedoras registradas. Haz clic en "Registrar vendedora" para añadir la primera.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
 
@@ -482,7 +660,7 @@ export function SellersTab() {
       <TabsContent value="historial">
         <Card>
           <CardHeader>
-            <CardTitle>Historial de Pagos</CardTitle>
+            <CardTitle>Historial de Pagos a Vendedoras</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -496,7 +674,7 @@ export function SellersTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sellers.map(seller => {
+                {sellers.flatMap(seller => {
                   const pagados = paidPaymentsBySeller[seller.id] || [];
                   return pagados.map((pago, idx) => (
                     <TableRow key={pago.id + "-" + idx}>
@@ -528,9 +706,9 @@ export function SellersTab() {
       </TabsContent>
       {/* Diálogo de Detalle y Pago */}
       <Dialog open={isPendingPaymentDialogOpen} onOpenChange={setIsPendingPaymentDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detalle de Pago - {pendingPaymentData?.seller.name}</DialogTitle>
+            <DialogTitle>Detalle de Comisión Recurrente - {pendingPaymentData?.seller.name}</DialogTitle>
             <DialogDescription>
               Período(s): {pendingPaymentData?.period}
             </DialogDescription>
@@ -539,12 +717,69 @@ export function SellersTab() {
             <div className="space-y-4">
               <div className="bg-muted/50 p-4 rounded-lg">
                 <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold">Total:</span>
+                  <span className="text-lg font-semibold">Total Comisión:</span>
                   <span className="text-2xl font-bold text-amber-600">${(pendingPaymentData.pendingAmount || 0).toFixed(2)}</span>
                 </div>
               </div>
+
+              {/* Cuentas Bancarias de la Vendedora */}
+              <div className="rounded-lg border bg-slate-50/70 p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm flex items-center gap-2 text-slate-800">
+                    <Landmark className="h-4 w-4 text-primary" />
+                    Datos Bancarios de {pendingPaymentData.seller.name}
+                  </h4>
+                  {pendingPaymentData.seller.phone && (
+                    <span className="text-xs text-muted-foreground">Tel: {pendingPaymentData.seller.phone}</span>
+                  )}
+                </div>
+                {Array.isArray(pendingPaymentData.seller.bankDetails) && pendingPaymentData.seller.bankDetails.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-2">
+                    {pendingPaymentData.seller.bankDetails.map((acc) => (
+                      <div key={acc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md border bg-white p-3 text-xs">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-slate-900">
+                            {acc.bank} <Badge variant="secondary" className="ml-1 text-[10px]">{acc.accountType}</Badge>
+                          </div>
+                          <div className="text-slate-600">
+                            Titular: <strong>{acc.accountHolder}</strong> • Doc/Cédula/CUIT: <strong>{acc.idNumber}</strong>
+                          </div>
+                          <div className="font-mono text-slate-800">
+                            Cuenta / CBU / Alias: <strong>{acc.accountNumber}</strong>
+                          </div>
+                          {acc.description && (
+                            <div className="text-muted-foreground italic">{acc.description}</div>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 h-8 text-xs"
+                          onClick={() => {
+                            const copyStr = `Banco: ${acc.bank}\nTipo: ${acc.accountType}\nTitular: ${acc.accountHolder}\nDocumento: ${acc.idNumber}\nCuenta/CBU/Alias: ${acc.accountNumber}`;
+                            navigator.clipboard.writeText(copyStr);
+                            toast({
+                              title: 'Datos bancarios copiados',
+                              description: `Se copiaron los datos de ${acc.bank} al portapapeles.`,
+                            });
+                          }}
+                        >
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                          Copiar Cuenta
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2.5">
+                    Esta vendedora aún no ha registrado cuentas bancarias en la pestaña "Cuentas" de su portal.
+                  </p>
+                )}
+              </div>
+
               <div>
-                <h4 className="font-semibold mb-2">Desglose por Médico:</h4>
+                <h4 className="font-semibold mb-2">Desglose por Pago de Médico Referido:</h4>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -562,12 +797,11 @@ export function SellersTab() {
                   </TableBody>
                 </Table>
               </div>
-              {/* Si está en pendientes, mostrar formulario para marcar como pagado */}
               {activeTab === "pendientes" && (
-                <div className="space-y-4">
-                  <h4 className="font-semibold">Procesar Pago:</h4>
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="font-semibold">Registrar Pago a la Vendedora:</h4>
                   <div>
-                    <Label htmlFor="paymentProof">Comprobante de Pago</Label>
+                    <Label htmlFor="paymentProof">Comprobante de Pago (Imagen o PDF)</Label>
                     <Input
                       id="paymentProof"
                       type="file"
@@ -576,18 +810,20 @@ export function SellersTab() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="transactionId">ID de Transacción</Label>
+                    <Label htmlFor="transactionId">ID o Referencia de Transacción</Label>
                     <Input
                       id="transactionId"
                       type="text"
+                      placeholder="Ej: REF-987654"
                       onChange={(e) => setPendingPaymentData(prev => prev ? { ...prev, transactionId: e.target.value } : prev)}
                     />
                   </div>
                   <Button
                     onClick={handleMarkAsPaid}
                     disabled={!paymentProofFile || isProcessingPayment}
+                    className="w-full"
                   >
-                    {isProcessingPayment ? "Procesando..." : "Marcar como Pagado"}
+                    {isProcessingPayment ? "Procesando..." : "Confirmar y Marcar como Pagado"}
                   </Button>
                 </div>
               )}
@@ -646,7 +882,7 @@ export function SellersTab() {
                       </div>
                       {payment.paymentProofUrl && (
                         <div>
-                          <a href={payment.paymentProofUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0070f3' }}>Ver comprobante</a>
+                          <a href={payment.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline text-sm">Ver comprobante</a>
                         </div>
                       )}
                     </div>
@@ -655,7 +891,7 @@ export function SellersTab() {
               ))}
             </div>
           ) : (
-            <p>No hay pagos registrados para esta vendedora.</p>
+            <p className="text-sm text-muted-foreground py-4">No hay pagos registrados para esta vendedora.</p>
           )}
         </DialogContent>
       </Dialog>
@@ -665,32 +901,45 @@ export function SellersTab() {
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSeller ? 'Editar Vendedora' : 'Registrar Nueva Vendedora'}</DialogTitle>
+            <DialogDescription>
+              {editingSeller
+                ? 'Modifica los datos de la vendedora y su tasa de comisión por médicos referidos.'
+                : 'Crea una cuenta de vendedora. Se generará automáticamente su código de referido y recibirá un correo con sus credenciales.'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveSeller}>
             <div className="space-y-4 py-4">
               <div>
                 <Label htmlFor="name">Nombre Completo</Label>
-                <Input id="name" name="name" defaultValue={editingSeller?.name} required />
+                <Input id="name" name="name" defaultValue={editingSeller?.name} placeholder="Ej: María Gómez" required />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="email">Correo Electrónico</Label>
+                  <Input id="email" name="email" type="email" defaultValue={editingSeller?.email} placeholder="vendedora@ejemplo.com" required />
+                </div>
+                <div>
+                  <Label htmlFor="phone">Teléfono / WhatsApp</Label>
+                  <Input id="phone" name="phone" type="tel" defaultValue={editingSeller?.phone || ''} placeholder="+58 412 1234567" />
+                </div>
               </div>
               <div>
-                <Label htmlFor="email">Correo Electrónico</Label>
-                <Input id="email" name="email" type="email" defaultValue={editingSeller?.email} required />
+                <Label htmlFor="commissionRate">Tasa de Comisión por Médico Referido (ej. 0.20 para 20%)</Label>
+                <Input id="commissionRate" name="commissionRate" type="number" step="0.01" min="0" max="1" defaultValue={editingSeller?.commissionRate ?? 0.2} required />
               </div>
-              <div>
-                <Label htmlFor="commissionRate">Tasa de Comisión (ej. 0.2 para 20%)</Label>
-                <Input id="commissionRate" name="commissionRate" type="number" step="0.01" defaultValue={editingSeller?.commissionRate || 0.2} required />
-              </div>
-              <div>
-                <Label htmlFor="password">Nueva Contraseña</Label>
-                <Input id="password" name="password" type="password" placeholder={editingSeller ? 'Dejar en blanco para no cambiar' : 'Requerido'} />
-              </div>
-              <div>
-                <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
-                <Input id="confirmPassword" name="confirmPassword" type="password" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="password">{editingSeller ? 'Nueva Contraseña (Opcional)' : 'Contraseña'}</Label>
+                  <Input id="password" name="password" type="password" placeholder={editingSeller ? 'Dejar en blanco para no cambiar' : 'Mínimo 6 caracteres'} required={!editingSeller} />
+                </div>
+                <div>
+                  <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+                  <Input id="confirmPassword" name="confirmPassword" type="password" placeholder="Repetir contraseña" required={!editingSeller} />
+                </div>
               </div>
 
               <div className="border-t pt-3">
-                <h4 className="text-sm font-semibold mb-2 text-slate-800">Ubicación Geográfica y Residencia</h4>
+                <h4 className="text-sm font-semibold mb-2 text-slate-800">Ubicación Geográfica y Territorio</h4>
                 <LocationSelector
                   country={sellerLocationData.country}
                   state={sellerLocationData.state}
@@ -703,9 +952,12 @@ export function SellersTab() {
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Cancelar</Button>
+                <Button type="button" variant="outline" disabled={isSavingSeller}>Cancelar</Button>
               </DialogClose>
-              <Button type="submit">Guardar</Button>
+              <Button type="submit" disabled={isSavingSeller}>
+                {isSavingSeller && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Guardar
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

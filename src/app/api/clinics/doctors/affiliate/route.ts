@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { hashPassword } from '@/lib/password-utils';
 import { getCurrentDateInArgentina, getPaymentDateInArgentina } from '@/lib/utils';
 import { sanitizeString, sanitizeEmail } from '@/lib/sanitize';
+import { sendRoleWelcomeEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,6 +180,9 @@ export async function POST(req: NextRequest) {
             profile_image: profileImage || 'https://placehold.co/400x400.png',
             banner_image: bannerImage || 'https://placehold.co/1200x400.png',
             status: 'active',
+            verification_status: 'pending',
+            read_by_admin: false,
+            read_by_seller: false,
             is_clinic_employee: true,
             clinic_id: clinicId,
             join_date: joinDateArgentina,
@@ -211,6 +215,19 @@ export async function POST(req: NextRequest) {
             console.error('Error creating new doctor:', insertError);
             return NextResponse.json({ error: 'Error al registrar médico: ' + (insertError?.message || 'Desconocido') }, { status: 500 });
         }
+
+        // Enviar correo de bienvenida al nuevo médico (no bloqueante)
+        sendRoleWelcomeEmail({
+            email: normalizedEmail,
+            name: createdDoctor.name,
+            role: 'doctor',
+            extraData: {
+                specialty: createdDoctor.specialty,
+                verificationStatus: 'pending',
+                tempPassword: password,
+                clinicName: clinic.name,
+            },
+        }).catch((err) => console.error('Error enviando correo de bienvenida a médico afiliado:', err));
 
         // Create both workspaces: Private and Clinic
         await supabaseAdmin
