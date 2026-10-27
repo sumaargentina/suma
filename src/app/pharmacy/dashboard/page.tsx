@@ -44,7 +44,8 @@ import { es } from 'date-fns/locale';
 import { uploadPublicImage } from '@/lib/supabaseService';
 import { PharmacyCard } from '@/components/pharmacy/pharmacy-card';
 import { PharmacyB2BModule } from '@/components/pharmacy/pharmacy-b2b-module';
-import { Handshake, Crown } from 'lucide-react';
+import { HealthCampaignsManager } from '@/components/medical/health-campaigns-manager';
+import { Handshake, Crown, HeartHandshake } from 'lucide-react';
 
 interface PatientData {
   id: string;
@@ -103,9 +104,14 @@ export default function PharmacyDashboardPage() {
   const [isDispensing, setIsDispensing] = useState(false);
 
   // Tabs & Historial
-  const [activeTab, setActiveTab] = useState<'search' | 'b2b' | 'history' | 'location'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'b2b' | 'campaigns' | 'history' | 'location'>('search');
   const [historyRecords, setHistoryRecords] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Modal Plan Pro Alianza B2B
+  const [isProPlanModalOpen, setIsProPlanModalOpen] = useState(false);
+  const [requestingProPlan, setRequestingProPlan] = useState(false);
+  const [hasRequestedProPlan, setHasRequestedProPlan] = useState(false);
 
   // Tab Ubicación y Datos de Sede
   const [locationForm, setLocationForm] = useState({
@@ -447,6 +453,11 @@ export default function PharmacyDashboardPage() {
           
           {/* Logo y Nombre de Sede */}
           <div className="flex items-center gap-3">
+            <img
+              src="/images/logo_suma.png"
+              alt="SUMA Logo"
+              className="h-9 w-auto object-contain hidden sm:block mr-1"
+            />
             <div className="h-10 w-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
               <Pill className="h-5 w-5" />
             </div>
@@ -475,8 +486,17 @@ export default function PharmacyDashboardPage() {
             </div>
           </div>
 
-          {/* Botón Salir */}
+          {/* Botones Plan Pro y Salir */}
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setIsProPlanModalOpen(true)}
+              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs shadow-sm"
+            >
+              <Crown className="h-3.5 w-3.5 mr-1.5" />
+              Plan Pro Alianza B2B
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -524,6 +544,21 @@ export default function PharmacyDashboardPage() {
           >
             <Handshake className="h-3.5 w-3.5 mr-1.5" />
             Catálogo Excel, Promociones y Patrocinio Médicos
+          </Button>
+
+          <Button
+            type="button"
+            variant={activeTab === 'campaigns' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('campaigns')}
+            className={`rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'campaigns'
+                ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <HeartHandshake className="h-3.5 w-3.5 mr-1.5" />
+            Jornadas de Salud
           </Button>
 
           <Button
@@ -584,6 +619,15 @@ export default function PharmacyDashboardPage() {
               longitude: locationForm.longitude ? parseFloat(locationForm.longitude) : undefined,
             }}
             onPharmacyUpdated={loadPharmacyData}
+          />
+        )}
+
+        {activeTab === 'campaigns' && user?.id && (
+          <HealthCampaignsManager
+            organizerId={user.id}
+            organizerRole="pharmacy"
+            organizerName={locationForm.chainName || locationForm.name || user.name || 'Farmacia Aliada'}
+            organizerLogo={locationForm.logoUrl || undefined}
           />
         )}
 
@@ -1474,6 +1518,127 @@ export default function PharmacyDashboardPage() {
             >
               {isDispensing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Confirmar y Bloquear Récipe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Plan Pro Alianza B2B (exclusivo para farmacias que han iniciado sesión) */}
+      <Dialog open={isProPlanModalOpen} onOpenChange={setIsProPlanModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <Badge className="bg-amber-500 text-slate-950 font-extrabold px-3 py-1">
+                <Crown className="h-3.5 w-3.5 mr-1 inline" />
+                Plan Pro Alianza B2B
+              </Badge>
+              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+                🎁 ¡1er Mes 100% Gratis!
+              </Badge>
+            </div>
+            <DialogTitle className="text-2xl font-extrabold text-slate-900">
+              Potencia tu Farmacia con el Plan Pro Alianza B2B
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-600">
+              Aparece recomendada directamente dentro de los récipes de los médicos especialistas de tu ciudad y publica tu catálogo promocional.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="bg-gradient-to-br from-teal-950 via-teal-900 to-slate-900 text-white p-5 rounded-2xl border border-teal-500/30">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-amber-300 font-bold block">
+                    Beneficio de Activación SUMA
+                  </span>
+                  <h4 className="text-xl font-extrabold mt-0.5">
+                    1er Mes 100% Gratis • Luego $200 USD / mes (a tasa BCV)
+                  </h4>
+                  <p className="text-xs text-teal-100/90 mt-1">
+                    Incluye soporte para convenios corporativos (% de descuento y meses de cortesía con Administración).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <h4 className="text-sm font-bold text-slate-900">
+                ¿Qué incluye el Plan Pro Alianza B2B?
+              </h4>
+              <ul className="space-y-2.5 text-sm">
+                {[
+                  "Todo lo incluido en tu Cuenta Gratuita de Dispensación y Directorio",
+                  "Match y Negociación B2B directa con médicos por ciudad o a nivel nacional",
+                  "Aparición destacada como 'Farmacia Recomendada por tu Médico' dentro del récipe digital",
+                  "Carga de catálogo de medicamentos (Excel masivo + Carga manual con imágenes WebP y stock)",
+                  "Tarjeta comercial con Logo, Banner Publicitario y productos en promoción",
+                  "Activación de Cupones de Descuento y botón de pedidos directos por WhatsApp",
+                  "Estadísticas en tiempo real (ROI): vistas en récipes, clics en tu farmacia y conversiones",
+                ].map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-2.5">
+                    <div className="bg-teal-600 rounded-full p-1 mt-0.5 shrink-0">
+                      <Check className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-slate-700 font-medium">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-3 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsProPlanModalOpen(false)}
+            >
+              Cerrar
+            </Button>
+            <Button
+              type="button"
+              disabled={requestingProPlan}
+              onClick={async () => {
+                if (!user?.id) return;
+                try {
+                  setRequestingProPlan(true);
+                  const res = await fetch('/api/pharmacies', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      id: user.id,
+                      requestedPlan: 'b2b',
+                    }),
+                  });
+                  if (!res.ok) {
+                    throw new Error('No se pudo registrar la solicitud del Plan Pro.');
+                  }
+                  setHasRequestedProPlan(true);
+                  setIsProPlanModalOpen(false);
+                  setActiveTab('b2b');
+                  toast({
+                    title: '👑 ¡Solicitud de Plan Pro Alianza B2B Enviada!',
+                    description: 'Hemos registrado tu solicitud con tu 1er Mes Gratis.Ya puedes explorar y configurar tu módulo B2B.',
+                  });
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Error',
+                    description: err.message || 'No se pudo procesar la solicitud.',
+                  });
+                } finally {
+                  setRequestingProPlan(false);
+                }
+              }}
+              className="bg-gradient-to-r from-amber-500 to-teal-600 hover:from-amber-600 hover:to-teal-700 text-white font-extrabold"
+            >
+              {requestingProPlan ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Crown className="h-4 w-4 mr-2" />
+              )}
+              {hasRequestedProPlan
+                ? 'Ir a Mi Módulo Plan Pro Alianza B2B'
+                : 'Solicitar Plan Pro Alianza B2B (1er Mes Gratis)'}
             </Button>
           </DialogFooter>
         </DialogContent>

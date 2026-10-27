@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
@@ -244,11 +245,24 @@ function RegisterPharmacyContent() {
         <div>
           <Link
             href="/landing-farmacia"
-            className="inline-flex items-center gap-2 text-teal-300 hover:text-white text-sm mb-8 transition-colors"
+            className="inline-flex items-center gap-2 text-teal-300 hover:text-white text-sm mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Volver a Planes de Farmacia
+            Volver a Farmacia
           </Link>
+
+          <div className="mb-6">
+            <Link href="/" className="bg-white px-4 py-2 rounded-2xl shadow-md inline-flex items-center">
+              <Image
+                src="/images/logo_suma.png"
+                alt="SUMA Logo"
+                width={150}
+                height={52}
+                className="h-10 w-auto object-contain"
+                priority
+              />
+            </Link>
+          </div>
 
           <div className="flex items-center gap-2.5 mb-4">
             <div className="p-2.5 rounded-xl bg-teal-500/20 border border-teal-400/30">
@@ -256,61 +270,32 @@ function RegisterPharmacyContent() {
             </div>
             <div>
               <span className="font-bold text-2xl block leading-none">SUMA Farmacias</span>
-              <span className="text-xs text-teal-300">Solicitud Oficial de Afiliación</span>
+              <span className="text-xs text-teal-300">Solicitud de Cuenta Gratuita</span>
             </div>
           </div>
 
           <h2 className="text-2xl lg:text-3xl font-bold mb-4 leading-tight">
-            Afilia tu Farmacia a la Red de Récipes Digitales SUMA
+            Afilia tu Farmacia Gratis a la Red de Récipes Digitales SUMA
           </h2>
           <p className="text-teal-100/85 text-sm leading-relaxed mb-6">
             Por seguridad médica y regulatoria, todas las farmacias son verificadas y activadas por la Administración de SUMA validando los datos oficiales de la empresa.
           </p>
 
-          {/* Selector de modalidad en el sidebar */}
+          {/* Resumen de cuenta gratuita en el sidebar */}
           <div className="space-y-3 bg-slate-900/70 p-5 rounded-2xl border border-teal-500/30">
-            <Label className="text-xs uppercase tracking-wider text-teal-300 font-bold">
-              Modalidad Solicitada
-            </Label>
-
-            <button
-              type="button"
-              onClick={() => setRequestedPlan("free")}
-              className={`w-full text-left p-3.5 rounded-xl border transition-all ${
-                requestedPlan === "free"
-                  ? "bg-teal-600/30 border-teal-400 text-white shadow-md"
-                  : "bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm">Plan Base (Récipes y Directorio)</span>
-                <Badge className="bg-teal-500 text-slate-950 font-bold">$0 Gratis</Badge>
-              </div>
-              <p className="text-xs text-teal-100/80 mt-1">
-                Ver récipes médicos por cédula del paciente y aparecer en el directorio de tu ciudad.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setRequestedPlan("b2b")}
-              className={`w-full text-left p-3.5 rounded-xl border transition-all ${
-                requestedPlan === "b2b"
-                  ? "bg-amber-500/20 border-amber-400 text-white shadow-md"
-                  : "bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                  Plan Alianza Comercial B2B
-                </span>
-                <Badge className="bg-amber-400 text-slate-950 font-bold">${b2bBasePrice}/mes</Badge>
-              </div>
-              <p className="text-xs text-teal-100/80 mt-1">
-                Match y recomendación por médicos en el récipe, catálogo Excel/WebP, banners y cupones (Eq. {pricing.currencySymbol} {b2bPriceInBs}/mes a {pricing.rateLabel}).
-              </p>
-            </button>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-white">Cuenta Gratuita de Farmacia</span>
+              <Badge className="bg-teal-500 text-slate-950 font-bold">$0 Gratis</Badge>
+            </div>
+            <p className="text-xs text-teal-100/85 leading-relaxed">
+              Incluye visor de récipes médicos por cédula del paciente, presencia en el directorio SUMA de tu ciudad y participación en Jornadas de Salud.
+            </p>
+            <div className="pt-2 border-t border-teal-500/20 text-[11px] text-amber-300 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Una vez inicies sesión en tu portal podrás ver y solicitar el <strong>Plan Pro Alianza B2B</strong>.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -325,25 +310,31 @@ function RegisterPharmacyContent() {
         <Card className="max-w-3xl mx-auto shadow-lg border-slate-200">
           <CardHeader className="border-b bg-white rounded-t-xl">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-2xl font-bold text-slate-900">
-                  Solicitud de Creación de Cuenta — Farmacia
-                </CardTitle>
-                <CardDescription>
-                  Completa los datos oficiales y legales de la empresa para la activación por el Administrador.
-                </CardDescription>
+              <div className="flex items-center gap-3">
+                <Link href="/">
+                  <Image
+                    src="/images/logo_suma.png"
+                    alt="SUMA Logo"
+                    width={130}
+                    height={46}
+                    className="h-10 w-auto object-contain"
+                    priority
+                  />
+                </Link>
+                <div>
+                  <CardTitle className="text-2xl font-bold text-slate-900">
+                    Solicitud de Cuenta Gratuita — Farmacia
+                  </CardTitle>
+                  <CardDescription>
+                    Completa los datos oficiales y legales de la empresa para la activación por el Administrador.
+                  </CardDescription>
+                </div>
               </div>
               <Badge
                 variant="outline"
-                className={
-                  requestedPlan === "b2b"
-                    ? "border-amber-500 bg-amber-50 text-amber-900 font-bold"
-                    : "border-teal-600 bg-teal-50 text-teal-800 font-bold"
-                }
+                className="border-teal-600 bg-teal-50 text-teal-800 font-bold"
               >
-                {requestedPlan === "b2b"
-                  ? `Interés: Plan Alianza B2B ($${b2bBasePrice}/mes - ${pricing.flag})`
-                  : "Modalidad: Plan Base Gratuito ($0)"}
+                Cuenta Gratuita ($0)
               </Badge>
             </div>
           </CardHeader>

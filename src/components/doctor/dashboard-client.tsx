@@ -46,6 +46,7 @@ import { Skeleton } from '../ui/skeleton';
 import { PaymentIntegrationsTab } from './dashboard/tabs/payment-integrations-tab';
 import { InsurancesTab } from './dashboard/tabs/insurances-tab';
 import { DoctorPharmacyAlliancesTab } from './doctor-pharmacy-alliances-tab';
+import { HealthCampaignsManager } from '@/components/medical/health-campaigns-manager';
 import { WorkspaceSelectorModal } from '@/components/doctor/workspace-selector-modal';
 import { DoctorWelcomeModal } from '@/components/doctor/doctor-welcome-modal';
 import { format } from 'date-fns';
@@ -122,12 +123,17 @@ function capitalizeWords(str: string) {
 }
 
 export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
-    const { user, loading, changePassword, activeWorkspace } = useAuth();
+    const { user, loading, changePassword, activeWorkspace, workspaces, setShowWorkspaceModal } = useAuth();
     const searchParams = useSearchParams();
     const ticketIdParam = searchParams.get('ticketId');
     const chatPatientIdParam = searchParams.get('chatPatientId');
     const appointmentIdParam = searchParams.get('appointmentId');
-    const isClinicDoctor = user?.role === 'doctor' && (user?.isClinicEmployee || activeWorkspace?.workspaceType === 'clinic' || activeWorkspace?.workspaceType === 'public_hospital' || (activeWorkspace && !activeWorkspace.canManageFinances));
+    const isClinicDoctor = user?.role === 'doctor' && (
+        activeWorkspace
+            ? (activeWorkspace.workspaceType === 'clinic' || activeWorkspace.workspaceType === 'public_hospital' || !activeWorkspace.canManageFinances)
+            : Boolean(user?.isClinicEmployee)
+    );
+    const pendingWorkspaceInvitations = (workspaces || []).filter(w => w.status === 'pending_invitation');
 
     const { toast } = useToast();
 
@@ -749,6 +755,28 @@ ID Transacción: ${transactionId}`;
                             </div>
                         </div>
                     )}
+                    {pendingWorkspaceInvitations.length > 0 && (
+                        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/95 p-4 text-blue-950 shadow-sm">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                    <h3 className="font-bold text-sm md:text-base flex items-center gap-2">
+                                        🏥 Invitación a Espacio de Trabajo pendiente de validación ({pendingWorkspaceInvitations.length})
+                                    </h3>
+                                    <p className="text-xs md:text-sm text-blue-800">
+                                        {pendingWorkspaceInvitations.map(w => w.customName || w.clinicName || 'Una institución').join(', ')} te ha registrado en su equipo médico dentro de SUMA. Valida tu integración para habilitar ese espacio de trabajo.
+                                    </p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => setShowWorkspaceModal(true)}
+                                    className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+                                >
+                                    Revisar y Validar Invitación
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     <div className="mt-3 md:mt-6">
                         {/* Tabs y contenido */}
                         {currentTab === "appointments" && (
@@ -801,6 +829,15 @@ ID Transacción: ${transactionId}`;
                         )}
                         {currentTab === "pharmacies" && doctorData && (
                             <DoctorPharmacyAlliancesTab doctor={doctorData} onDoctorUpdated={fetchData} />
+                        )}
+                        {currentTab === "health-campaigns" && doctorData && (
+                            <HealthCampaignsManager
+                                organizerId={doctorData.id}
+                                organizerRole="doctor"
+                                organizerName={doctorData.name}
+                                organizerLogo={doctorData.profileImage}
+                                defaultDoctorSpecialty={doctorData.specialty}
+                            />
                         )}
                         {currentTab === "bank-details" && (
                             !isClinicDoctor ? (

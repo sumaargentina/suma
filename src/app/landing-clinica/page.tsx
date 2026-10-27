@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, Building2, Users, Calendar, BarChart3, ShieldCheck, Zap, Globe } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Check, Building2, Users, Calendar, BarChart3, ShieldCheck, Zap, Globe, ArrowLeft, Gift } from "lucide-react";
 
 export default function ClinicLandingPage() {
     // 1, 3, 6, 12 months
@@ -38,25 +39,46 @@ export default function ClinicLandingPage() {
     return (
         <div className="flex flex-col min-h-screen">
             {/* Hero Section */}
-            <section className="bg-slate-900 text-white py-24">
-                <div className="container mx-auto px-4 text-center">
-                    <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">
-                        Transforma la Gestión de tu <span className="text-green-500">Clínica</span>
-                    </h1>
-                    <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto mb-10">
-                        Centraliza operaciones, optimiza la agenda y mejora la experiencia de tus pacientes con nuestra plataforma todo en uno.
-                    </p>
-                    <div className="flex justify-center gap-4">
-                        <Link href="#planes">
-                            <Button size="lg" className="bg-green-600 hover:bg-green-700 text-white px-8 text-lg h-14">
-                                Ver Planes
-                            </Button>
+            <section className="bg-slate-900 text-white py-20 md:py-24">
+                <div className="container mx-auto px-4">
+                    <div className="flex items-center justify-between mb-10">
+                        <Link
+                            href="/"
+                            className="inline-flex items-center text-sm text-slate-300 hover:text-white transition-colors"
+                        >
+                            <ArrowLeft className="h-4 w-4 mr-1.5" />
+                            Volver al Portal Inicial
                         </Link>
-                        <Link href="/demo">
-                            <Button size="lg" variant="outline" className="text-white border-slate-600 hover:bg-slate-800 px-8 text-lg h-14">
-                                Solicitar Demo
-                            </Button>
+                        <Link href="/" className="bg-white px-4 py-2 rounded-2xl shadow-md flex items-center">
+                            <Image
+                                src="/images/logo_suma.png"
+                                alt="SUMA Logo"
+                                width={150}
+                                height={52}
+                                className="h-10 w-auto object-contain"
+                                priority
+                            />
                         </Link>
+                    </div>
+
+                    <div className="text-center max-w-3xl mx-auto">
+                        <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-400/30 text-green-300 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-6">
+                            <Gift className="h-4 w-4 text-green-400" />
+                            ¡Primer Mes 100% Gratis Incluido!
+                        </div>
+                        <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">
+                            Transforma la Gestión de tu <span className="text-green-500">Clínica</span>
+                        </h1>
+                        <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto mb-10">
+                            Centraliza operaciones, optimiza la agenda y mejora la experiencia de tus pacientes con nuestra plataforma todo en uno. Disfruta de tu primer mes gratis y luego continúa con el plan elegido.
+                        </p>
+                        <div className="flex justify-center">
+                            <Link href="#planes">
+                                <Button size="lg" className="bg-green-600 hover:bg-green-700 text-white px-10 text-lg h-14 rounded-full font-bold shadow-xl">
+                                    Ver Planes
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -110,9 +132,13 @@ export default function ClinicLandingPage() {
             <section id="planes" className="py-24 bg-slate-50">
                 <div className="container mx-auto px-4">
                     <div className="text-center mb-12">
+                        <div className="inline-flex items-center gap-2 bg-green-100 border border-green-300 text-green-800 px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider mb-4">
+                            <Gift className="h-4 w-4 text-green-700" />
+                            1er Mes 100% Gratis • Luego inicia tu plan
+                        </div>
                         <h2 className="text-3xl font-bold mb-4 text-slate-900">Elige tu Ciclo de Pago</h2>
                         <p className="text-slate-600 max-w-2xl mx-auto mb-8">
-                            Flexibilidad total. Elige cuántos meses quieres pagar por adelantado.
+                            Recibes tu <strong>primer mes totalmente gratis</strong> para poner en marcha tu clínica, y al finalizar el primer mes continúa el ciclo que elijas a continuación.
                         </p>
 
                         {/* Selector de País */}
@@ -185,6 +211,15 @@ export default function ClinicLandingPage() {
                             </CardHeader>
 
                             <CardContent className="pt-6">
+                                <div className="mb-6 bg-green-50 border border-green-200 rounded-xl p-3.5 text-center">
+                                    <span className="text-xs font-extrabold uppercase tracking-wider text-green-800 block">
+                                        🎁 1er Mes: $0 USD (100% GRATIS)
+                                    </span>
+                                    <span className="text-xs text-green-700 mt-0.5 block">
+                                        Luego continúa tu plan seleccionado de {months === 1 ? '1 mes' : `${months} meses`}:
+                                    </span>
+                                </div>
+
                                 <div className="text-center mb-8">
                                     <div className="flex items-center justify-center gap-1">
                                         <span className="text-5xl font-extrabold text-slate-900">
@@ -248,11 +283,11 @@ export default function ClinicLandingPage() {
 
                                 <Link href={`/auth/register-clinic?months=${months}`} className="w-full block">
                                     <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold h-12 text-lg shadow-lg hover:shadow-green-500/25 transition-all">
-                                        Comenzar con {months === 1 ? '1 Mes' : `${months} Meses`}
+                                        Comenzar 1er Mes Gratis + Plan {months === 1 ? '1 Mes' : `${months} Meses`}
                                     </Button>
                                 </Link>
                                 <p className="text-center text-xs text-muted-foreground mt-4">
-                                    Prueba gratuita de 14 días. Garantía de devolución.
+                                    1er mes 100% gratis incluido al registrarte.
                                 </p>
                             </CardContent>
                         </Card>

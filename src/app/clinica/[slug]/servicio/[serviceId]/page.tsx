@@ -124,9 +124,11 @@ export default function ServiceBookingPage() {
     };
 
 
+    const isHospitalGratuito = clinic?.plan === 'hospital_gratuito';
+
     // Calculate total price
     const totalPrice = useMemo(() => {
-        if (!service) return 0;
+        if (!service || isHospitalGratuito) return 0;
         const base = service.price || 0;
         const extras = selectedItemIndices.reduce((acc, idx) => {
             return acc + (service.items?.[idx]?.price || 0);
@@ -228,7 +230,9 @@ export default function ServiceBookingPage() {
             return;
         }
 
-        if (!paymentMethod) {
+        const isFreeService = isHospitalGratuito || totalPrice === 0;
+
+        if (!isFreeService && !paymentMethod) {
             toast({ variant: 'destructive', title: 'Método de Pago', description: 'Selecciona una forma de pago para continuar.' });
             return;
         }
@@ -239,7 +243,7 @@ export default function ServiceBookingPage() {
             const appointmentServices: any[] = [{
                 id: service!.id,
                 name: service!.name,
-                price: service!.price,
+                price: isHospitalGratuito ? 0 : service!.price,
                 duration: service!.duration
             }];
 
@@ -248,7 +252,7 @@ export default function ServiceBookingPage() {
                 appointmentServices.push({
                     id: `${service!.id}-item-${idx}`,
                     name: item.name,
-                    price: item.price
+                    price: isHospitalGratuito ? 0 : item.price
                 });
             });
 
@@ -268,8 +272,8 @@ export default function ServiceBookingPage() {
                 time: selectedTime!,
                 totalPrice: totalPrice,
                 consultationFee: 0,
-                paymentMethod: paymentMethod!,
-                paymentStatus: 'Pendiente',
+                paymentMethod: (paymentMethod || 'efectivo') as any,
+                paymentStatus: isFreeService ? 'Pagado' : 'Pendiente',
                 paymentProof: null,
                 attendance: 'Pendiente',
                 patientConfirmationStatus: 'Pendiente',
@@ -518,7 +522,9 @@ export default function ServiceBookingPage() {
                                 <div className="bg-muted/30 border rounded-lg p-4 text-sm space-y-2">
                                     <div className="flex justify-between font-medium text-base">
                                         <span>Total a Pagar</span>
-                                        <span className="text-primary">${totalPrice}</span>
+                                        <span className="text-primary font-bold">
+                                            {isHospitalGratuito || totalPrice === 0 ? 'Gratuito ($0)' : `$${totalPrice}`}
+                                        </span>
                                     </div>
                                     <div className="border-t pt-2 mt-2 space-y-1 text-muted-foreground">
                                         <p><span className="font-semibold text-foreground">Paciente:</span> {user?.name}</p>
@@ -528,7 +534,15 @@ export default function ServiceBookingPage() {
                                     </div>
                                 </div>
 
-                                {/* Payment Methods */}
+                                {(isHospitalGratuito || totalPrice === 0) ? (
+                                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-sm">
+                                        <p className="font-bold">🏥 Atención 100% Gratuita</p>
+                                        <p className="text-xs text-sky-800 mt-0.5">
+                                            Este servicio es totalmente gratuito para el paciente. Haz clic en Confirmar Cita para reservar tu turno.
+                                        </p>
+                                    </div>
+                                ) : (
+                                /* Payment Methods */
                                 <div className="space-y-3">
                                     <Label className="text-base">Método de Pago</Label>
                                     {!anyPaymentMethodAvailable && (
@@ -736,15 +750,16 @@ export default function ServiceBookingPage() {
                                         )}
                                     </div>
                                 </div>
+                                )}
 
                             </CardContent>
                             <CardFooter className="flex gap-2">
                                 <Button variant="outline" onClick={() => service.items && service.items.length > 0 ? setStep('selectServices') : setStep('selectDateTime')} disabled={isSubmitting}>
                                     Atrás
                                 </Button>
-                                <Button className="flex-1" onClick={handleSubmit} disabled={isSubmitting || !paymentMethod}>
+                                <Button className="flex-1" onClick={handleSubmit} disabled={isSubmitting || (!(isHospitalGratuito || totalPrice === 0) && !paymentMethod)}>
                                     {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                                    Confirmar Cita
+                                    {isHospitalGratuito || totalPrice === 0 ? 'Confirmar Cita Gratuita' : 'Confirmar Cita'}
                                 </Button>
                             </CardFooter>
                         </Card>

@@ -1086,22 +1086,35 @@ export const getClinicDoctors = async (clinicId: string): Promise<Doctor[]> => {
     }
 
     try {
-        // 1. Obtener los IDs de médicos afiliados en doctor_workspaces
-        const { data: workspaces } = await supabaseAdmin
+        // 1. Obtener los registros de médicos afiliados en doctor_workspaces para esta clínica
+        const { data: allWorkspaces } = await supabaseAdmin
             .from('doctor_workspaces')
-            .select('doctor_id')
-            .eq('clinic_id', clinicId)
-            .eq('status', 'active');
+            .select('id, doctor_id, status, workspace_type')
+            .eq('clinic_id', clinicId);
 
-        const wsDoctorIds = (workspaces || []).map((w: any) => w.doctor_id);
+        const inactiveDoctorIds = new Set<string>();
+        const wsMap = new Map<string, { id: string; status: string; workspaceType: string }>();
 
-        // 2. Obtener también médicos que tengan clinic_id directamente en doctors
+        (allWorkspaces || []).forEach((w: any) => {
+            if (w.status === 'inactive') {
+                inactiveDoctorIds.add(w.doctor_id);
+            } else if (w.status === 'active' || w.status === 'pending_invitation') {
+                wsMap.set(w.doctor_id, { id: w.id, status: w.status, workspaceType: w.workspace_type });
+                inactiveDoctorIds.delete(w.doctor_id);
+            }
+        });
+
+        const wsDoctorIds = Array.from(wsMap.keys());
+
+        // 2. Obtener también médicos que tengan clinic_id directamente en doctors (y no hayan sido desvinculados)
         const { data: directDocs } = await supabaseAdmin
             .from('doctors')
             .select('id')
             .eq('clinic_id', clinicId);
 
-        const directDoctorIds = (directDocs || []).map((d: any) => d.id);
+        const directDoctorIds = (directDocs || [])
+            .map((d: any) => d.id)
+            .filter((id: string) => !inactiveDoctorIds.has(id));
 
         const allDoctorIds = Array.from(new Set([...wsDoctorIds, ...directDoctorIds]));
 
@@ -1113,11 +1126,29 @@ export const getClinicDoctors = async (clinicId: string): Promise<Doctor[]> => {
             .in('id', allDoctorIds);
 
         if (error) throw new Error(error.message || String(error));
-        return (data || []).map(item => toCamelCase(item as Record<string, unknown>)) as Doctor[];
+        return (data || []).map(item => {
+            const camel = toCamelCase(item as Record<string, unknown>) as any;
+            const wsInfo = wsMap.get(camel.id);
+            camel.workspaceStatus = wsInfo?.status || 'active';
+            camel.workspaceId = wsInfo?.id || null;
+            camel.workspaceType = wsInfo?.workspaceType || 'clinic';
+            return camel as Doctor;
+        });
     } catch (err) {
         console.error('Error in getClinicDoctors:', err);
         return [];
     }
+};
+
+export const unlinkClinicDoctor = async (clinicId: string, doctorId: string): Promise<{ success: boolean; message?: string }> => {
+    const res = await fetch(`/api/clinics/doctors/affiliate?clinicId=${encodeURIComponent(clinicId)}&doctorId=${encodeURIComponent(doctorId)}`, {
+        method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error || 'Error al desvincular el médico de la institución');
+    }
+    return data;
 };
 
 export const affiliateClinicDoctor = async (payload: {
@@ -3766,11 +3797,12 @@ export const getDoctorWorkspaces = async (doctorId: string): Promise<DoctorWorks
                     name,
                     logo_url,
                     address,
-                    phone
+                    phone,
+                    plan
                 )
             `)
             .eq('doctor_id', doctorId)
-            .eq('status', 'active')
+            .in('status', ['active', 'pending_invitation'])
             .order('is_default', { ascending: false });
 
         if (error) {
@@ -3784,6 +3816,7 @@ export const getDoctorWorkspaces = async (doctorId: string): Promise<DoctorWorks
                 camel.clinicName = row.clinics.name;
                 camel.clinicLogo = row.clinics.logo_url;
                 camel.clinicAddress = row.clinics.address;
+                camel.clinicPlan = row.clinics.plan;
             }
             return camel as DoctorWorkspace;
         });
@@ -3794,6 +3827,19 @@ export const getDoctorWorkspaces = async (doctorId: string): Promise<DoctorWorks
 };
 
 export const addDoctorWorkspace = async (workspace: Partial<DoctorWorkspace>): Promise<DoctorWorkspace | null> => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/doctors/workspaces', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(workspace),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to add workspace');
+        }
+        return await res.json();
+    }
+
     const payload = toSnakeCase(workspace as Record<string, unknown>);
     const { data, error } = await supabaseAdmin
         .from('doctor_workspaces')
@@ -3810,6 +3856,17 @@ export const addDoctorWorkspace = async (workspace: Partial<DoctorWorkspace>): P
 };
 
 export const updateDoctorWorkspace = async (workspaceId: string, updates: Partial<DoctorWorkspace>): Promise<boolean> => {
+    if (typeof window !== 'undefined') {
+        const res = await fetch('/api/doctors/workspaces', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId, ...updates }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        return Boolean(data.success);
+    }
+
     const payload = toSnakeCase(updates as Record<string, unknown>);
     payload.updated_at = new Date().toISOString();
 

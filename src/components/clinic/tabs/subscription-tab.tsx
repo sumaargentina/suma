@@ -10,17 +10,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Shield, Upload, Eye, Calendar, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, ChevronLeft, ChevronRight, Building2, Copy, Check, BanknoteIcon, Loader2, Crown } from 'lucide-react';
+import { Shield, Upload, Eye, Calendar, DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, ChevronLeft, ChevronRight, Building2, Copy, Check, BanknoteIcon, Loader2, Crown, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, addMonths } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Image from 'next/image';
-import { getSettings, getClinicPayments, addClinicPayment } from '@/lib/supabaseService';
+import { getSettings, getClinic, getClinicPayments, addClinicPayment } from '@/lib/supabaseService';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 
-// Base monthly price - matches landing page
-const BASE_MONTHLY_PRICE = 200;
+const DEFAULT_MONTHLY_PRICE = 200;
+
+const PLAN_PRICES: Record<string, number> = {
+    esencial: 99,
+    profesional: 149,
+    integral: 200,
+    empresarial: 249,
+    hospital_gratuito: 0,
+};
 
 // Discounts for multi-month payments
 const DISCOUNTS: Record<number, number> = {
@@ -28,15 +35,6 @@ const DISCOUNTS: Record<number, number> = {
     3: 0.05,  // 5% off
     6: 0.08,  // 8% off
     12: 0.15, // 15% off
-};
-
-// Calculate total and discount for a given number of months
-const calculatePayment = (months: number) => {
-    const discount = DISCOUNTS[months] || 0;
-    const subtotal = BASE_MONTHLY_PRICE * months;
-    const total = subtotal * (1 - discount);
-    const pricePerMonth = total / months;
-    return { total, discount, pricePerMonth, subtotal };
 };
 
 export function SubscriptionTab() {
@@ -65,33 +63,37 @@ export function SubscriptionTab() {
 
     const paymentsPerPage = 20;
 
-    // Load clinic data
+    // Load clinic data in real-time from DB
     useEffect(() => {
         const loadData = async () => {
             if (!user?.id) return;
 
             try {
                 setIsLoading(true);
+                const [freshClinic, payments] = await Promise.all([
+                    getClinic(user.id),
+                    getClinicPayments(user.id),
+                ]);
 
-                // Get clinic data from user context
-                const clinicInfo: Clinic = {
-                    id: user.id,
-                    name: user.name,
-                    adminEmail: user.email,
-                    slug: '',
-                    createdAt: '',
-                    plan: (user as any).plan || 'esencial',
-                    subscriptionStatus: (user as any).subscriptionStatus || 'inactive',
-                    lastPaymentDate: (user as any).lastPaymentDate,
-                    nextPaymentDate: (user as any).nextPaymentDate,
-                    subscriptionFee: BASE_MONTHLY_PRICE,
-                };
-                setClinicData(clinicInfo);
+                if (freshClinic) {
+                    setClinicData({
+                        ...freshClinic,
+                        subscriptionStatus: freshClinic.subscriptionStatus || (freshClinic.status === 'active' ? 'active' : 'inactive'),
+                    });
+                } else {
+                    setClinicData({
+                        id: user.id,
+                        name: user.name,
+                        adminEmail: user.email,
+                        slug: '',
+                        createdAt: '',
+                        plan: (user as any).plan || 'integral',
+                        subscriptionStatus: 'active',
+                        subscriptionFee: DEFAULT_MONTHLY_PRICE,
+                    });
+                }
 
-                // Load payments
-                const payments = await getClinicPayments(user.id);
                 setClinicPayments(payments);
-
             } catch (error) {
                 console.error('Error loading subscription data:', error);
                 toast({
@@ -123,6 +125,25 @@ export function SubscriptionTab() {
         loadSettings();
     }, []);
 
+    const baseMonthlyPrice = useMemo(() => {
+        if (!clinicData) return DEFAULT_MONTHLY_PRICE;
+        if (clinicData.plan === 'hospital_gratuito') return 0;
+        if (clinicData.subscriptionFee && clinicData.subscriptionFee > 0) return clinicData.subscriptionFee;
+        const planKey = (clinicData.plan || 'integral').toLowerCase();
+        return PLAN_PRICES[planKey] ?? DEFAULT_MONTHLY_PRICE;
+    }, [clinicData]);
+
+    const bcvRate = settings?.bcvRate || 65.50;
+
+    // Calculate total and discount for a given number of months
+    const { total: paymentTotal, discount, pricePerMonth } = useMemo(() => {
+        const disc = DISCOUNTS[selectedMonths] || 0;
+        const subtotal = baseMonthlyPrice * selectedMonths;
+        const total = subtotal * (1 - disc);
+        const perMonth = total / selectedMonths;
+        return { total, discount: disc, pricePerMonth: perMonth, subtotal };
+    }, [baseMonthlyPrice, selectedMonths]);
+
     const sortedPayments = useMemo(() => {
         return [...clinicPayments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [clinicPayments]);
@@ -131,9 +152,6 @@ export function SubscriptionTab() {
     const startIndex = (currentPage - 1) * paymentsPerPage;
     const endIndex = startIndex + paymentsPerPage;
     const currentPayments = sortedPayments.slice(startIndex, endIndex);
-
-    // Calculate payment based on selected months
-    const { total: paymentTotal, discount, pricePerMonth } = calculatePayment(selectedMonths);
 
     const handleViewProof = (paymentProofUrl: string | null) => {
         if (!paymentProofUrl) {
@@ -165,7 +183,6 @@ export function SubscriptionTab() {
         try {
             let proofUrl = null;
 
-            // Convert file to base64 if provided
             if (paymentForm.proofFile) {
                 const reader = new FileReader();
                 proofUrl = await new Promise<string>((resolve) => {
@@ -182,17 +199,17 @@ export function SubscriptionTab() {
                 paymentMethod: 'transfer',
                 transactionId: paymentForm.transactionId,
                 paymentProofUrl: proofUrl,
-                notes: `${selectedMonths} mes(es) de suscripción${paymentForm.notes ? '. ' + paymentForm.notes : ''}`,
+                notes: `${selectedMonths} mes(es) de suscripción (${getPlanLabel(clinicData.plan || 'integral')})${paymentForm.notes ? '. ' + paymentForm.notes : ''}`,
             });
 
-            // Reload payments
             const payments = await getClinicPayments(clinicData.id);
             setClinicPayments(payments);
+            setClinicData(prev => prev ? { ...prev, subscriptionStatus: 'pending_payment' } : prev);
 
             setIsPaymentDialogOpen(false);
             setPaymentForm({ transactionId: '', notes: '', proofFile: null });
 
-            toast({ title: "Pago reportado", description: "Tu pago ha sido enviado para revisión" });
+            toast({ title: "Pago reportado", description: "Tu pago ha sido enviado para revisión por el equipo administrativo de SUMA." });
         } catch (error: any) {
             toast({ title: "Error", description: error.message || "No se pudo reportar el pago", variant: "destructive" });
         } finally {
@@ -224,16 +241,28 @@ export function SubscriptionTab() {
             profesional: 'Profesional',
             empresarial: 'Empresarial',
             integral: 'Integral',
+            hospital_gratuito: 'Hospital / Centro Gratuito',
         };
         return labels[plan] || plan;
     };
 
-    function getNextCycleDates(settings: AppSettings | null, today = new Date()) {
-        if (!settings?.billingCycleStartDay || !settings?.billingCycleEndDay) return { nextStart: null, nextEnd: null };
+    function getNextCycleDates(settingsObj: AppSettings | null, createdAtStr?: string, today = new Date()) {
+        if (createdAtStr) {
+            const createdDate = new Date(createdAtStr);
+            if (!isNaN(createdDate.getTime())) {
+                const freeEnd = addDays(createdDate, 30);
+                if (freeEnd > today) {
+                    return { nextStart: createdDate, nextEnd: freeEnd, isFreeMonth: true };
+                }
+            }
+        }
+        if (!settingsObj?.billingCycleStartDay || !settingsObj?.billingCycleEndDay) {
+            return { nextStart: null, nextEnd: addDays(today, 30), isFreeMonth: false };
+        }
         const year = today.getFullYear();
         const month = today.getMonth();
-        const startDay = settings.billingCycleStartDay;
-        const endDay = settings.billingCycleEndDay;
+        const startDay = settingsObj.billingCycleStartDay;
+        const endDay = settingsObj.billingCycleEndDay;
         let nextStart, nextEnd;
         if (today.getDate() < startDay) {
             nextStart = new Date(year, month, startDay);
@@ -242,10 +271,10 @@ export function SubscriptionTab() {
             nextStart = new Date(year, month + 1, startDay);
             nextEnd = new Date(year, month + 1, endDay);
         }
-        return { nextStart, nextEnd };
+        return { nextStart, nextEnd, isFreeMonth: false };
     }
 
-    const { nextStart, nextEnd } = getNextCycleDates(settings);
+    const { nextEnd, isFreeMonth } = getNextCycleDates(settings, clinicData?.createdAt);
 
     if (isLoading) {
         return (
@@ -263,19 +292,49 @@ export function SubscriptionTab() {
         );
     }
 
+    if (clinicData.plan === 'hospital_gratuito') {
+        return (
+            <Card className="border-2 border-sky-200 bg-gradient-to-r from-sky-50 to-emerald-50">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sky-900">
+                        <Building2 className="h-6 w-6 text-sky-600" />
+                        Modalidad Institucional: Hospital / Centro Gratuito
+                    </CardTitle>
+                    <CardDescription className="text-sky-800">
+                        Esta cuenta institucional fue otorgada de forma 100% gratuita por la administración de SUMA.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm text-sky-900">
+                    <p>✅ <strong>Exento de Mensualidad:</strong> Tu institución no paga suscripción mensual ni anual en SUMA.</p>
+                    <p>✅ <strong>Servicios Gratuitos:</strong> Todas las consultas y servicios ofrecidos a los pacientes se agendan sin costo ($0).</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
     return (
         <>
             <div className="space-y-6">
                 {/* Plan Information */}
                 <Card className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-purple-800">
-                            <Crown className="h-6 w-6" />
-                            Mi Plan: {getPlanLabel(clinicData.plan || 'esencial')}
-                        </CardTitle>
-                        <CardDescription className="text-purple-700">
-                            Gestiona tu suscripción y mantén tu clínica activa en SUMA
-                        </CardDescription>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                                <CardTitle className="flex items-center gap-2 text-purple-800">
+                                    <Crown className="h-6 w-6" />
+                                    Mi Plan: {getPlanLabel(clinicData.plan || 'integral')}
+                                </CardTitle>
+                                <CardDescription className="text-purple-700">
+                                    Gestiona tu suscripción y mantén tu clínica activa en SUMA
+                                </CardDescription>
+                            </div>
+                            {(isFreeMonth || (clinicPayments.length === 0 && clinicData.status === 'active')) && (
+                                <Badge className="bg-emerald-600 text-white px-3 py-1 text-xs font-bold flex items-center gap-1.5 w-fit">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    1er Mes Gratis de Bienvenida Activo
+                                </Badge>
+                            )}
+                        </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         {/* Status Cards */}
@@ -301,11 +360,14 @@ export function SubscriptionTab() {
                                 <CardContent className="p-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <DollarSign className="h-4 w-4 text-green-600" />
-                                        <p className="text-sm text-muted-foreground">Precio Base</p>
+                                        <p className="text-sm text-muted-foreground">Tarifa Mensual</p>
                                     </div>
                                     <p className="text-xl font-bold text-green-600">
-                                        ${BASE_MONTHLY_PRICE.toLocaleString('en-US')} USD
+                                        ${baseMonthlyPrice.toLocaleString('en-US')} USD
                                         <span className="text-sm font-normal text-muted-foreground">/mes</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        ≈ Bs. {(baseMonthlyPrice * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (BCV)
                                     </p>
                                 </CardContent>
                             </Card>
@@ -319,7 +381,7 @@ export function SubscriptionTab() {
                                     <p className="font-semibold text-sm">
                                         {clinicData.lastPaymentDate
                                             ? format(new Date(clinicData.lastPaymentDate + 'T00:00:00'), "d 'de' MMM, yyyy", { locale: es })
-                                            : 'Sin pagos registrados'}
+                                            : 'Período de 1er Mes Gratis'}
                                     </p>
                                 </CardContent>
                             </Card>
@@ -328,10 +390,14 @@ export function SubscriptionTab() {
                                 <CardContent className="p-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Calendar className="h-4 w-4 text-orange-600" />
-                                        <p className="text-sm text-muted-foreground">Próximo Vencimiento</p>
+                                        <p className="text-sm text-muted-foreground">Próximo Corte</p>
                                     </div>
                                     <p className="font-semibold text-sm">
-                                        {nextEnd ? format(nextEnd, "d 'de' MMM, yyyy", { locale: es }) : 'N/A'}
+                                        {clinicData.nextPaymentDate
+                                            ? format(new Date(clinicData.nextPaymentDate + 'T00:00:00'), "d 'de' MMM, yyyy", { locale: es })
+                                            : nextEnd
+                                            ? format(nextEnd, "d 'de' MMM, yyyy", { locale: es })
+                                            : 'N/A'}
                                     </p>
                                 </CardContent>
                             </Card>
@@ -342,10 +408,10 @@ export function SubscriptionTab() {
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-green-800">
                                     <Building2 className="h-5 w-5" />
-                                    Cuentas Bancarias de SUMA
+                                    Cuentas Bancarias Oficiales de SUMA
                                 </CardTitle>
                                 <CardDescription className="text-green-700">
-                                    Realiza tu pago a cualquiera de estas cuentas oficiales
+                                    Realiza el pago de tu suscripción a cualquiera de estas cuentas oficiales de SUMA
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -381,8 +447,14 @@ export function SubscriptionTab() {
                                                             <span className="text-muted-foreground">Titular:</span>
                                                             <p className="font-medium">{account.accountHolder}</p>
                                                         </div>
+                                                        {account.idNumber && (
+                                                            <div>
+                                                                <span className="text-muted-foreground">RIF / C.I.:</span>
+                                                                <p className="font-medium">{account.idNumber}</p>
+                                                            </div>
+                                                        )}
                                                         <div>
-                                                            <span className="text-muted-foreground">Número:</span>
+                                                            <span className="text-muted-foreground">Número / Datos:</span>
                                                             <p className="font-mono text-sm bg-green-50 px-2 py-1 rounded">{account.accountNumber}</p>
                                                         </div>
                                                     </div>
@@ -401,16 +473,16 @@ export function SubscriptionTab() {
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-blue-800">
                                     <CreditCard className="h-5 w-5" />
-                                    Reportar un Pago
+                                    Reportar Pago de Suscripción a SUMA
                                 </CardTitle>
                                 <CardDescription className="text-blue-700">
-                                    ¿Ya realizaste el pago de tu suscripción? Repórtalo aquí para que sea verificado.
+                                    ¿Ya realizaste el pago de tu mensualidad o plan anual? Repórtalo aquí con tu número de referencia y comprobante para que sea verificado.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <Button onClick={() => setIsPaymentDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700">
                                     <Upload className="mr-2 h-4 w-4" />
-                                    Reportar Pago
+                                    Reportar Pago a SUMA
                                 </Button>
                             </CardContent>
                         </Card>
@@ -422,7 +494,7 @@ export function SubscriptionTab() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <CreditCard className="h-5 w-5" />
-                            Historial de Pagos
+                            Historial de Pagos a SUMA
                         </CardTitle>
                         <CardDescription>
                             Registro de todos tus pagos de suscripción ({sortedPayments.length} pagos)
@@ -435,7 +507,7 @@ export function SubscriptionTab() {
                                     <TableHead>Fecha</TableHead>
                                     <TableHead>Monto</TableHead>
                                     <TableHead>Estado</TableHead>
-                                    <TableHead>ID Transacción</TableHead>
+                                    <TableHead>Referencia</TableHead>
                                     <TableHead className="text-right">Comprobante</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -444,7 +516,7 @@ export function SubscriptionTab() {
                                     currentPayments.map(p => (
                                         <TableRow key={p.id}>
                                             <TableCell>{format(new Date(p.date + 'T00:00:00'), "d MMM, yyyy", { locale: es })}</TableCell>
-                                            <TableCell className="font-bold text-green-600">${p.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="font-bold text-green-600">${p.amount.toFixed(2)} USD</TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-2">
                                                     {getStatusIcon(p.status)}
@@ -475,7 +547,7 @@ export function SubscriptionTab() {
                                         <TableCell colSpan={5} className="h-24 text-center">
                                             <div className="flex flex-col items-center gap-2">
                                                 <CreditCard className="h-8 w-8 text-muted-foreground" />
-                                                <p className="text-muted-foreground">No hay pagos registrados</p>
+                                                <p className="text-muted-foreground">No hay pagos registrados aún</p>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -483,7 +555,6 @@ export function SubscriptionTab() {
                             </TableBody>
                         </Table>
 
-                        {/* Pagination */}
                         {totalPages > 1 && (
                             <div className="flex items-center justify-between pt-4 border-t">
                                 <div className="text-sm text-muted-foreground">
@@ -536,9 +607,9 @@ export function SubscriptionTab() {
             <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Reportar Pago</DialogTitle>
+                        <DialogTitle>Reportar Pago de Suscripción a SUMA</DialogTitle>
                         <DialogDescription>
-                            Ingresa los datos de tu transferencia para verificación
+                            Selecciona la cantidad de meses e ingresa los datos de tu pago para validación.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -572,21 +643,27 @@ export function SubscriptionTab() {
                             </div>
                         </div>
 
-                        {/* Payment Summary */}
+                        {/* Payment Summary with Dual Currency (USD + Bs BCV) */}
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm text-muted-foreground">Precio por mes:</span>
-                                <span className="font-medium">${BASE_MONTHLY_PRICE.toLocaleString('en-US')} USD</span>
+                                <span className="text-sm text-muted-foreground">Tarifa base por mes:</span>
+                                <span className="font-medium">${baseMonthlyPrice.toLocaleString('en-US')} USD</span>
                             </div>
                             {discount > 0 && (
                                 <div className="flex justify-between items-center mb-2 text-green-600">
                                     <span className="text-sm">Descuento ({Math.round(discount * 100)}%):</span>
-                                    <span className="font-medium">-${((BASE_MONTHLY_PRICE * selectedMonths) * discount).toLocaleString('en-US')} USD</span>
+                                    <span className="font-medium">-${((baseMonthlyPrice * selectedMonths) * discount).toLocaleString('en-US')} USD</span>
                                 </div>
                             )}
                             <div className="border-t pt-2 mt-2 flex justify-between items-center">
-                                <span className="font-bold">Total a pagar:</span>
-                                <span className="text-2xl font-bold text-green-600">${paymentTotal.toLocaleString('en-US')} USD</span>
+                                <span className="font-bold">Total a pagar (USD):</span>
+                                <span className="text-2xl font-bold text-green-700">${paymentTotal.toLocaleString('en-US')} USD</span>
+                            </div>
+                            <div className="flex justify-between items-center mt-1 text-xs text-slate-600">
+                                <span>Equivalente en Bolívares (Tasa BCV {bcvRate.toFixed(2)}):</span>
+                                <span className="font-bold text-slate-900">
+                                    Bs. {(paymentTotal * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                             </div>
                             {selectedMonths > 1 && (
                                 <p className="text-xs text-muted-foreground mt-1 text-right">
@@ -604,7 +681,7 @@ export function SubscriptionTab() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="proof">Comprobante (imagen)</Label>
+                            <Label htmlFor="proof">Comprobante de Pago (imagen)</Label>
                             <Input
                                 id="proof"
                                 type="file"
@@ -616,7 +693,7 @@ export function SubscriptionTab() {
                             <Label htmlFor="notes">Notas adicionales</Label>
                             <Textarea
                                 id="notes"
-                                placeholder="Información adicional sobre el pago..."
+                                placeholder="Banco emisor, método utilizado u observaciones..."
                                 value={paymentForm.notes}
                                 onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
                             />

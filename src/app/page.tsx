@@ -283,17 +283,12 @@ export default function Home() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="rounded-full justify-between px-6 h-12 border-indigo-600 text-indigo-700 hover:bg-indigo-50"
+                    className="rounded-full justify-start px-6 h-12 border-indigo-600 text-indigo-700 hover:bg-indigo-50"
                     asChild
                   >
                     <Link href="/landing-laboratorio">
-                      <span className="flex items-center">
-                        <FlaskConical className="mr-2.5 h-5 w-5 text-indigo-600" />
-                        Soy un Laboratorio
-                      </span>
-                      <span className="ml-2 text-[10px] font-bold uppercase bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
-                        $50 BCV
-                      </span>
+                      <FlaskConical className="mr-2.5 h-5 w-5 text-indigo-600" />
+                      Soy un Laboratorio
                     </Link>
                   </Button>
                 </div>

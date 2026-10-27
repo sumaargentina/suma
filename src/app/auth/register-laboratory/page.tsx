@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
@@ -163,6 +164,7 @@ function RegisterLaboratoryContent() {
           billingMonths,
           subscriptionFee: totalToPay / billingMonths,
           discountPercentage: Math.round(discount * 100),
+          freeMonths: 1,
           isPublicRegistration: true,
         }),
       });
@@ -173,8 +175,8 @@ function RegisterLaboratoryContent() {
       }
 
       toast({
-        title: "¡Laboratorio Clínico Registrado!",
-        description: `Registro exitoso en el Plan Integral ($${totalToPay.toLocaleString("en-US")} USD / Bs. ${totalBs.toLocaleString("es-VE", { maximumFractionDigits: 2 })} a BCV). Ya puedes iniciar sesión.`,
+        title: "¡Laboratorio Clínico Registrado con 1er Mes Gratis!",
+        description: `Registro exitoso. Disfruta de tu 1er Mes Gratis y luego continúa tu Plan Integral (${billingMonths} mes/es). Ya puedes iniciar sesión.`,
       });
 
       router.push("/login");
@@ -196,11 +198,24 @@ function RegisterLaboratoryContent() {
         <div>
           <Link
             href="/landing-laboratorio"
-            className="inline-flex items-center gap-2 text-indigo-300 hover:text-white text-sm mb-8 transition-colors"
+            className="inline-flex items-center gap-2 text-indigo-300 hover:text-white text-sm mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Volver a Planes de Laboratorio
           </Link>
+
+          <div className="mb-6">
+            <Link href="/" className="bg-white px-4 py-2 rounded-2xl shadow-md inline-flex items-center">
+              <Image
+                src="/images/logo_suma.png"
+                alt="SUMA Logo"
+                width={150}
+                height={52}
+                className="h-10 w-auto object-contain"
+                priority
+              />
+            </Link>
+          </div>
 
           <div className="flex items-center gap-2.5 mb-6">
             <FlaskConical className="h-8 w-8 text-indigo-400" />
@@ -210,14 +225,14 @@ function RegisterLaboratoryContent() {
           <h2 className="text-2xl lg:text-3xl font-bold mb-4">
             Afilia tu Laboratorio Clínico a la Red SUMA
           </h2>
-          <p className="text-slate-300 text-sm mb-8">
+          <p className="text-slate-300 text-sm mb-6">
             Conecta directamente con las órdenes de exámenes de los médicos de tu ciudad por número de cédula.
           </p>
 
           {/* Selector rápido de ciclo */}
           <div className="mb-4">
             <Label className="text-xs uppercase tracking-wider text-indigo-300 font-bold mb-2 block">
-              Ciclo de Facturación (${basePrice}/mes base)
+              Plan elegido luego de tu 1er Mes Gratis
             </Label>
             <div className="grid grid-cols-4 gap-1.5 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
               {[1, 3, 6, 12].map((m) => (
@@ -238,12 +253,19 @@ function RegisterLaboratoryContent() {
           </div>
 
           <div className="bg-slate-800/90 p-6 rounded-2xl border border-indigo-500/30">
+            <div className="mb-4 bg-emerald-500/20 border border-emerald-400/40 rounded-lg p-2.5 text-center text-emerald-300 text-xs font-bold">
+              🎁 ¡1er Mes 100% Gratis ($0 USD) Incluido!
+            </div>
             <h3 className="text-lg font-bold mb-4 text-indigo-300">
               Resumen de tu Plan ({pricing.flag} {pricing.name})
             </h3>
             <div className="space-y-3 text-sm">
+              <div className="flex justify-between text-emerald-300 font-bold">
+                <span>Primer Mes de Prueba</span>
+                <span>GRATIS ($0 USD)</span>
+              </div>
               <div className="flex justify-between">
-                <span>Plan Integral Laboratorio</span>
+                <span>Plan Integral (luego del 1er mes)</span>
                 <span className="font-mono">${basePrice} USD/mes</span>
               </div>
               <div className="flex justify-between">
@@ -259,8 +281,8 @@ function RegisterLaboratoryContent() {
                 </div>
               )}
               <Separator className="bg-slate-700 my-2" />
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total en USD</span>
+              <div className="flex justify-between text-base font-bold">
+                <span>Monto del Plan (post mes gratis)</span>
                 <span>${totalToPay.toLocaleString("en-US")} USD</span>
               </div>
               <div className="flex justify-between text-xs text-indigo-200 bg-indigo-950/80 p-2.5 rounded-lg border border-indigo-500/30">
@@ -286,16 +308,31 @@ function RegisterLaboratoryContent() {
       <div className="flex-1 p-4 sm:p-8 lg:p-12 overflow-y-auto">
         <Card className="max-w-2xl mx-auto shadow-lg border-slate-200">
           <CardHeader className="border-b bg-white rounded-t-xl">
-            <div className="flex justify-between items-center mb-1">
-              <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-1 rounded uppercase">
-                Plan Integral — ${basePrice}/mes ({pricing.flag})
-              </span>
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+              <Link href="/">
+                <Image
+                  src="/images/logo_suma.png"
+                  alt="SUMA Logo"
+                  width={130}
+                  height={46}
+                  className="h-10 w-auto object-contain"
+                  priority
+                />
+              </Link>
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                  🎁 1er Mes Gratis
+                </span>
+                <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-1 rounded uppercase">
+                  Plan {billingMonths === 1 ? "1 Mes" : `${billingMonths} Meses`}
+                </span>
+              </div>
             </div>
             <CardTitle className="text-2xl font-bold">
               Configura la Cuenta de tu Laboratorio
             </CardTitle>
             <CardDescription>
-              Completa los datos oficiales de la empresa e institución bioanalítica.
+              Completa los datos oficiales para activar tu 1er mes gratis y registrar tu laboratorio.
             </CardDescription>
           </CardHeader>
 
@@ -552,7 +589,7 @@ function RegisterLaboratoryContent() {
                     Registrando Laboratorio...
                   </>
                 ) : (
-                  `Registrar Laboratorio ($${totalToPay.toLocaleString("en-US")} USD / ${pricing.currencySymbol} ${totalBs.toLocaleString("es-VE", { maximumFractionDigits: 2 })})`
+                  `Activar 1er Mes Gratis y Registrar Laboratorio (Plan ${billingMonths === 1 ? "1 Mes" : `${billingMonths} Meses`})`
                 )}
               </Button>
             </form>

@@ -27,16 +27,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Falta el ID de la clínica' }, { status: 400 });
         }
 
-        // Fetch clinic details for custom_name and location defaults
+        // Fetch clinic details for custom_name, plan, and location defaults
         const { data: clinic, error: clinicError } = await supabaseAdmin
             .from('clinics')
-            .select('id, name, city, state, country, address, sector, phone, whatsapp')
+            .select('id, name, plan, city, state, country, address, sector, phone, whatsapp')
             .eq('id', clinicId)
             .single();
 
         if (clinicError || !clinic) {
             return NextResponse.json({ error: 'La clínica no existe' }, { status: 404 });
         }
+
+        const isHospitalGratuito = clinic.plan === 'hospital_gratuito';
+        const targetWorkspaceType = isHospitalGratuito ? 'public_hospital' : 'clinic';
 
         let targetDoctorId = doctorId;
 
@@ -67,33 +70,47 @@ export async function POST(req: NextRequest) {
                 .maybeSingle();
 
             if (existingWs) {
-                if (existingWs.status !== 'active') {
-                    await supabaseAdmin
-                        .from('doctor_workspaces')
-                        .update({ status: 'active', updated_at: new Date().toISOString() })
-                        .eq('id', existingWs.id);
+                if (existingWs.status === 'active') {
+                    return NextResponse.json({
+                        success: true,
+                        isNew: false,
+                        doctorId: targetDoctorId,
+                        workspaceStatus: 'active',
+                        message: 'El médico ya se encuentra activo y validado en tu equipo.',
+                    });
                 }
+                await supabaseAdmin
+                    .from('doctor_workspaces')
+                    .update({
+                        status: 'pending_invitation',
+                        workspace_type: targetWorkspaceType,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingWs.id);
+
                 return NextResponse.json({
                     success: true,
                     isNew: false,
                     doctorId: targetDoctorId,
-                    message: 'El médico ya estaba vinculado y ha sido reactivado en tu equipo.',
+                    workspaceStatus: 'pending_invitation',
+                    message: 'Se ha reenviado la invitación al médico para que valide su integración a tu espacio de trabajo.',
                 });
             }
 
-            // Insert new clinic workspace for this doctor
+            // Insert new clinic/hospital workspace for this doctor (pending doctor validation)
             const { error: wsError } = await supabaseAdmin
                 .from('doctor_workspaces')
                 .insert([{
                     doctor_id: targetDoctorId,
-                    workspace_type: 'clinic',
+                    workspace_type: targetWorkspaceType,
                     clinic_id: clinicId,
                     custom_name: clinic.name,
                     role_in_workplace: 'staff_doctor',
                     can_manage_finances: false,
                     can_manage_schedule: true,
+                    consultation_fee: 0,
                     is_default: false,
-                    status: 'active',
+                    status: 'pending_invitation',
                 }]);
 
             if (wsError) {
@@ -101,12 +118,12 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Error al vincular el médico a la clínica: ' + wsError.message }, { status: 500 });
             }
 
-            // If the doctor has specialty specified for this clinic and doesn't have one, update or keep
             return NextResponse.json({
                 success: true,
                 isNew: false,
                 doctorId: targetDoctorId,
-                message: 'Médico vinculado exitosamente a tu clínica. Podrá acceder con su misma cuenta de SUMA.',
+                workspaceStatus: 'pending_invitation',
+                message: 'Invitación enviada al médico. Deberá validarla desde su Espacio de Trabajo en SUMA para quedar activo en tu sede.',
             });
         }
 
@@ -126,19 +143,20 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         if (existingDoc) {
-            // Already exists! Link them automatically without password requirement
+            // Already exists! Send workspace invitation for validation
             const { error: wsError } = await supabaseAdmin
                 .from('doctor_workspaces')
                 .upsert([{
                     doctor_id: existingDoc.id,
-                    workspace_type: 'clinic',
+                    workspace_type: targetWorkspaceType,
                     clinic_id: clinicId,
                     custom_name: clinic.name,
                     role_in_workplace: 'staff_doctor',
                     can_manage_finances: false,
                     can_manage_schedule: true,
+                    consultation_fee: 0,
                     is_default: false,
-                    status: 'active',
+                    status: 'pending_invitation',
                 }]);
 
             if (wsError) {
@@ -149,7 +167,8 @@ export async function POST(req: NextRequest) {
                 success: true,
                 isNew: false,
                 doctorId: existingDoc.id,
-                message: `El médico ${existingDoc.name} ya tenía cuenta en SUMA y ha sido vinculado directamente a tu clínica.`,
+                workspaceStatus: 'pending_invitation',
+                message: `El médico ${existingDoc.name} ya tenía cuenta en SUMA. Se le ha enviado la invitación para validar su integración a tu espacio de trabajo.`,
             });
         }
 
@@ -167,9 +186,9 @@ export async function POST(req: NextRequest) {
             email: normalizedEmail,
             cedula: cleanDni,
             specialty: sanitizeString(specialty),
-            city: clinic.city || 'Buenos Aires',
-            state: clinic.state || 'CABA',
-            country: clinic.country || 'AR',
+            city: clinic.city || 'Maturín',
+            state: clinic.state || 'Monagas',
+            country: clinic.country || 'VE',
             address: clinic.address || '',
             sector: clinic.sector || '',
             phone: clinic.phone || '',
@@ -229,7 +248,7 @@ export async function POST(req: NextRequest) {
             },
         }).catch((err) => console.error('Error enviando correo de bienvenida a médico afiliado:', err));
 
-        // Create both workspaces: Private and Clinic
+        // Create both workspaces: Private (active) and Clinic/Hospital (pending doctor validation)
         await supabaseAdmin
             .from('doctor_workspaces')
             .insert([
@@ -245,14 +264,15 @@ export async function POST(req: NextRequest) {
                 },
                 {
                     doctor_id: createdDoctor.id,
-                    workspace_type: 'clinic',
+                    workspace_type: targetWorkspaceType,
                     clinic_id: clinicId,
                     custom_name: clinic.name,
                     role_in_workplace: 'staff_doctor',
                     can_manage_finances: false,
                     can_manage_schedule: true,
+                    consultation_fee: 0,
                     is_default: false,
-                    status: 'active',
+                    status: 'pending_invitation',
                 }
             ]);
 
@@ -260,11 +280,93 @@ export async function POST(req: NextRequest) {
             success: true,
             isNew: true,
             doctorId: createdDoctor.id,
-            message: `Médico ${createdDoctor.name} registrado y vinculado exitosamente a tu clínica.`,
+            workspaceStatus: 'pending_invitation',
+            message: `Médico ${createdDoctor.name} registrado en SUMA. Al iniciar sesión deberá validar su integración a tu espacio de trabajo.`,
         });
 
     } catch (error: any) {
         console.error('Exception in POST /api/clinics/doctors/affiliate:', error);
+        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const clinicId = searchParams.get('clinicId');
+        const doctorId = searchParams.get('doctorId');
+
+        if (!clinicId || !doctorId) {
+            return NextResponse.json({ error: 'Faltan parámetros (clinicId, doctorId)' }, { status: 400 });
+        }
+
+        // 1. Marcar como inactivo el espacio de trabajo del médico con esta clínica/hospital
+        const { error: wsError } = await supabaseAdmin
+            .from('doctor_workspaces')
+            .update({
+                status: 'inactive',
+                is_default: false,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('doctor_id', doctorId)
+            .eq('clinic_id', clinicId);
+
+        if (wsError) {
+            console.error('Error unlinking doctor workspace:', wsError);
+            return NextResponse.json({ error: 'Error al desvincular espacio de trabajo: ' + wsError.message }, { status: 500 });
+        }
+
+        // 2. Si el registro en doctors tenía este clinic_id directo, limpiarlo para que no siga apareciendo en la clínica
+        const { data: docRecord } = await supabaseAdmin
+            .from('doctors')
+            .select('id, clinic_id')
+            .eq('id', doctorId)
+            .maybeSingle();
+
+        if (docRecord && docRecord.clinic_id === clinicId) {
+            await supabaseAdmin
+                .from('doctors')
+                .update({
+                    clinic_id: null,
+                    is_clinic_employee: false,
+                })
+                .eq('id', doctorId);
+        }
+
+        // 3. Garantizar que el médico tenga su consultorio privado activo para que su cuenta personal en SUMA siga funcionando
+        const { data: privateWs } = await supabaseAdmin
+            .from('doctor_workspaces')
+            .select('id, status')
+            .eq('doctor_id', doctorId)
+            .eq('workspace_type', 'private')
+            .maybeSingle();
+
+        if (!privateWs) {
+            await supabaseAdmin
+                .from('doctor_workspaces')
+                .insert([{
+                    doctor_id: doctorId,
+                    workspace_type: 'private',
+                    custom_name: 'Mi Consultorio Privado',
+                    role_in_workplace: 'owner',
+                    can_manage_finances: true,
+                    can_manage_schedule: true,
+                    is_default: true,
+                    status: 'active',
+                }]);
+        } else if (privateWs.status !== 'active') {
+            await supabaseAdmin
+                .from('doctor_workspaces')
+                .update({ status: 'active', is_default: true })
+                .eq('id', privateWs.id);
+        }
+
+        return NextResponse.json({
+            success: true,
+            message: 'El médico ha sido desvinculado de la institución exitosamente. Su cuenta personal en SUMA y el historial de atenciones se mantienen intactos.',
+        });
+    } catch (error: any) {
+        console.error('Exception in DELETE /api/clinics/doctors/affiliate:', error);
         return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
 }

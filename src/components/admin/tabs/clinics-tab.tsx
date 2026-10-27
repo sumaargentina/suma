@@ -272,11 +272,11 @@ export function ClinicsTab() {
                     <div className="flex items-center justify-between">
                         <CardTitle className="flex items-center gap-2">
                             <Building2 className="h-5 w-5" />
-                            Gestión de Clínicas ({clinics.length})
+                            Gestión de Clínicas y Hospitales ({clinics.length})
                         </CardTitle>
                         <Button onClick={() => setShowCreateModal(true)}>
                             <Plus className="h-4 w-4 mr-2" />
-                            Nueva Clínica
+                            Nueva Clínica / Hospital
                         </Button>
                     </div>
                 </CardHeader>
@@ -304,12 +304,18 @@ export function ClinicsTab() {
                                     <TableRow key={clinic.id}>
                                         <TableCell className="font-medium">{clinic.name}</TableCell>
                                         <TableCell>
-                                            <Badge variant="outline" className="uppercase text-xs" style={{
-                                                borderColor: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue',
-                                                color: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue'
-                                            }}>
-                                                {clinic.plan || 'N/A'}
-                                            </Badge>
+                                            {clinic.plan === 'hospital_gratuito' ? (
+                                                <Badge className="bg-sky-100 text-sky-800 border-sky-300 uppercase text-xs font-semibold">
+                                                    🏥 Hospital Gratuito
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="uppercase text-xs" style={{
+                                                    borderColor: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue',
+                                                    color: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue'
+                                                }}>
+                                                    {clinic.plan || 'N/A'}
+                                                </Badge>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1">
@@ -527,24 +533,32 @@ export function ClinicsTab() {
                                 <TabsContent value="config" className="space-y-4 mt-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Plan</Label>
+                                            <Label>Tipo / Plan</Label>
                                             {isEditing ? (
                                                 <Select
                                                     value={editData.plan || 'esencial'}
-                                                    onValueChange={(value) => handleInputChange('plan', value)}
+                                                    onValueChange={(value) => {
+                                                        handleInputChange('plan', value);
+                                                        if (value === 'hospital_gratuito') {
+                                                            handleInputChange('billingCycle', 'free');
+                                                        }
+                                                    }}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="esencial">Esencial</SelectItem>
-                                                        <SelectItem value="profesional">Profesional</SelectItem>
-                                                        <SelectItem value="empresarial">Empresarial</SelectItem>
-                                                        <SelectItem value="integral">Integral</SelectItem>
+                                                        <SelectItem value="hospital_gratuito">🏥 Hospital / Centro Gratuito (100% Gratis)</SelectItem>
+                                                        <SelectItem value="integral">Clínica - Integral</SelectItem>
+                                                        <SelectItem value="esencial">Clínica - Esencial</SelectItem>
+                                                        <SelectItem value="profesional">Clínica - Profesional</SelectItem>
+                                                        <SelectItem value="empresarial">Clínica - Empresarial</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             ) : (
-                                                <Badge variant="outline" className="uppercase">{selectedClinic.plan || 'Sin plan'}</Badge>
+                                                <Badge variant="outline" className="uppercase">
+                                                    {selectedClinic.plan === 'hospital_gratuito' ? '🏥 Hospital Gratuito' : (selectedClinic.plan || 'Sin plan')}
+                                                </Badge>
                                             )}
                                         </div>
                                         <div className="space-y-2">
@@ -700,21 +714,21 @@ export function ClinicsTab() {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Building2 className="h-5 w-5" />
-                            Nueva Clínica
+                            Nueva Clínica o Hospital
                         </DialogTitle>
                         <DialogDescription>
-                            Completa los datos para crear una nueva clínica.
+                            Crea la cuenta de una clínica privada o de un hospital / centro de atención gratuita.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nombre *</Label>
+                                <Label>Nombre de la Institución *</Label>
                                 <Input
                                     value={newClinicData.name}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder="Centro Médico XYZ"
+                                    placeholder="Ej: Hospital Central / Clínica XYZ"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -723,7 +737,7 @@ export function ClinicsTab() {
                                     type="email"
                                     value={newClinicData.adminEmail}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, adminEmail: e.target.value }))}
-                                    placeholder="admin@clinica.com"
+                                    placeholder="admin@institucion.com"
                                 />
                             </div>
                         </div>
@@ -752,7 +766,7 @@ export function ClinicsTab() {
                                 <Input
                                     value={newClinicData.city}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, city: e.target.value }))}
-                                    placeholder="Caracas"
+                                    placeholder="Maturín"
                                 />
                             </div>
                         </div>
@@ -762,7 +776,7 @@ export function ClinicsTab() {
                             <Input
                                 value={newClinicData.address}
                                 onChange={(e) => setNewClinicData(prev => ({ ...prev, address: e.target.value }))}
-                                placeholder="Av. Corrientes 1234"
+                                placeholder="Av. Principal..."
                             />
                         </div>
 
@@ -771,45 +785,66 @@ export function ClinicsTab() {
                             <Textarea
                                 value={newClinicData.description}
                                 onChange={(e) => setNewClinicData(prev => ({ ...prev, description: e.target.value }))}
-                                placeholder="Descripción de la clínica..."
+                                placeholder="Descripción de la clínica u hospital..."
                                 rows={3}
                             />
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Plan</Label>
+                                <Label>Tipo / Plan</Label>
                                 <Select
                                     value={newClinicData.plan}
-                                    onValueChange={(value) => setNewClinicData(prev => ({ ...prev, plan: value }))}
+                                    onValueChange={(value) => setNewClinicData(prev => ({
+                                        ...prev,
+                                        plan: value,
+                                        billingCycle: value === 'hospital_gratuito' ? 'free' : (prev.billingCycle === 'free' ? 'monthly' : prev.billingCycle)
+                                    }))}
                                 >
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="esencial">Esencial</SelectItem>
-                                        <SelectItem value="profesional">Profesional</SelectItem>
-                                        <SelectItem value="empresarial">Empresarial</SelectItem>
-                                        <SelectItem value="integral">Integral</SelectItem>
+                                        <SelectItem value="hospital_gratuito">🏥 Hospital / Centro Gratuito (100% Gratis)</SelectItem>
+                                        <SelectItem value="integral">Clínica - Plan Integral</SelectItem>
+                                        <SelectItem value="esencial">Clínica - Plan Esencial</SelectItem>
+                                        <SelectItem value="profesional">Clínica - Plan Profesional</SelectItem>
+                                        <SelectItem value="empresarial">Clínica - Plan Empresarial</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Ciclo de Facturación</Label>
-                                <Select
-                                    value={newClinicData.billingCycle}
-                                    onValueChange={(value) => setNewClinicData(prev => ({ ...prev, billingCycle: value }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="monthly">Mensual</SelectItem>
-                                        <SelectItem value="annual">Anual</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {newClinicData.plan !== 'hospital_gratuito' ? (
+                                <div className="space-y-2">
+                                    <Label>Ciclo de Facturación</Label>
+                                    <Select
+                                        value={newClinicData.billingCycle}
+                                        onValueChange={(value) => setNewClinicData(prev => ({ ...prev, billingCycle: value }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="monthly">Mensual</SelectItem>
+                                            <SelectItem value="annual">Anual</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label>Facturación</Label>
+                                    <div className="h-10 px-3 flex items-center rounded-md border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-800">
+                                        Exento de Mensualidad ($0)
+                                    </div>
+                                </div>
+                            )}
                         </div>
+
+                        {newClinicData.plan === 'hospital_gratuito' && (
+                            <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-900 space-y-1">
+                                <p className="font-bold">🏥 Modalidad Hospital / Centro Gratuito:</p>
+                                <p>Esta cuenta tendrá el mismo panel operativo de una clínica, pero sin cobro de mensualidad a SUMA y todos sus servicios/consultas para los pacientes serán 100% gratuitos ($0).</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
@@ -818,7 +853,7 @@ export function ClinicsTab() {
                         </Button>
                         <Button onClick={handleCreateClinic} disabled={isCreating}>
                             {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                            Crear Clínica
+                            {newClinicData.plan === 'hospital_gratuito' ? 'Crear Hospital Gratuito' : 'Crear Clínica'}
                         </Button>
                     </div>
                 </DialogContent>

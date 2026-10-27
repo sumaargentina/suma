@@ -40,6 +40,8 @@ import { InsurancesTab } from '@/components/clinic/tabs/insurances-tab';
 import { CouponsTab } from '@/components/clinic/tabs/coupons-tab';
 import { SubscriptionTab } from '@/components/clinic/tabs/subscription-tab';
 import { SupportTab } from '@/components/clinic/tabs/support-tab';
+import { HealthCampaignsManager } from '@/components/medical/health-campaigns-manager';
+import { HeartHandshake } from 'lucide-react';
 
 export function LaboratoryDashboardClient({ currentTab = 'overview' }: { currentTab?: string }) {
     const { user, logout } = useAuth();
@@ -66,6 +68,7 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
         { icon: CalendarDays, label: 'Agenda y Muestras', value: 'agenda' },
         { icon: FlaskConical, label: 'Pruebas y Análisis', value: 'services' },
         { icon: Users, label: 'Pacientes', value: 'patients' },
+        { icon: HeartHandshake, label: 'Jornadas de Salud', value: 'health-campaigns' },
         { icon: ShieldCheck, label: 'Coberturas de Seguro', value: 'insurances', adminOnly: true },
         { icon: Users, label: 'Equipo / Secretarias', value: 'team', adminOnly: true },
         { icon: CreditCard, label: 'Finanzas', value: 'finances', adminOnly: true },
@@ -90,6 +93,15 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
             case 'agenda': return <LaboratoryAgendaTab />;
             case 'services': return <LaboratoryServicesTab />;
             case 'patients': return <PatientsTab />;
+            case 'health-campaigns': return (
+                <div className="p-4 lg:p-6">
+                    <HealthCampaignsManager
+                        organizerId={user.laboratoryId || user.id}
+                        organizerRole="laboratory"
+                        organizerName={user.name || 'Laboratorio'}
+                    />
+                </div>
+            );
             case 'insurances': return <InsurancesTab />;
             case 'team': return <LaboratoryTeamTab />;
             case 'finances': return <FinancesTab />;

@@ -67,8 +67,17 @@ interface VerificationData {
     name: string;
     cedula: string;
     email?: string;
+    phone?: string;
     city?: string;
+    isRegistered?: boolean;
   };
+  campaign?: {
+    id: string;
+    title: string;
+    organizerName: string;
+    organizerRole: string;
+    organizerLogo?: string | null;
+  } | null;
 }
 
 export default function VerifyRecipePage({ params }: { params: Promise<{ id: string }> }) {
@@ -233,6 +242,22 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
               <p className="text-xs text-slate-500 mt-1">
                 Documento médico con validez oficial emitido a través de la red <strong>SUMA Salud</strong>.
               </p>
+              {data.campaign && (
+                <p className="text-xs text-teal-800 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1 mt-1.5 inline-block">
+                  🩺 Emitido en la Jornada de Salud: <strong>{data.campaign.title}</strong> • Organizada por:{' '}
+                  <strong>{data.campaign.organizerName}</strong> (
+                  {data.campaign.organizerRole === 'pharmacy'
+                    ? 'Farmacia Aliada'
+                    : data.campaign.organizerRole === 'laboratory'
+                    ? 'Laboratorio Clínico'
+                    : data.campaign.organizerRole === 'clinic'
+                    ? 'Clínica / Centro Médico'
+                    : data.campaign.organizerRole === 'doctor'
+                    ? 'Médico Especialista'
+                    : 'SUMA'}
+                  )
+                </p>
+              )}
             </div>
           </div>
 
@@ -603,6 +628,45 @@ export default function VerifyRecipePage({ params }: { params: Promise<{ id: str
             prescriptionText={record?.prescription || ''}
             recipeCode={recipeCode}
           />
+
+          {/* Banner de Plataforma SUMA (Registro o Acceso al Historial) */}
+          <div className="print:hidden p-5 bg-gradient-to-r from-teal-50 via-cyan-50 to-blue-50 border-t border-teal-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {(pat as any)?.isRegistered === false ? (
+              <>
+                <div className="space-y-1 text-center sm:text-left">
+                  <p className="text-sm font-bold text-teal-900">
+                    🌟 ¿Aún no estás registrado en SUMA?
+                  </p>
+                  <p className="text-xs text-slate-600 max-w-xl">
+                    Crea tu cuenta gratuita para guardar este récipe e historial médico en tu perfil digital, agendar consultas con cualquier especialista y participar en próximas jornadas de salud.
+                  </p>
+                </div>
+                <Button asChild className="bg-teal-600 hover:bg-teal-700 text-white shrink-0 font-semibold shadow-sm">
+                  <Link
+                    href={`/auth/register?name=${encodeURIComponent(pat?.name || '')}&cedula=${encodeURIComponent(pat?.cedula || '')}&email=${encodeURIComponent((pat as any)?.email || '')}&phone=${encodeURIComponent((pat as any)?.phone || '')}`}
+                  >
+                    Registrarme Gratis en SUMA
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1 text-center sm:text-left">
+                  <p className="text-sm font-bold text-emerald-900">
+                    ✅ Este récipe ya está vinculado a tu cuenta de SUMA
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    Puedes acceder en cualquier momento desde tu plataforma para ver tu historial médico completo o agendar nuevas consultas.
+                  </p>
+                </div>
+                <Button asChild variant="outline" className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 shrink-0 font-semibold">
+                  <Link href="/dashboard">
+                    Ir a mi Plataforma SUMA
+                  </Link>
+                </Button>
+              </>
+            )}
+          </div>
 
         </div>
 

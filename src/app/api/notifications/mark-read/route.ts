@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
             doctorIds = [],
             appointmentIds = [],
             sellerPaymentIds = [],
+            campaignInvitationIds = [],
         } = body;
 
         const promises: PromiseLike<unknown>[] = [];
@@ -47,6 +48,11 @@ export async function POST(request: NextRequest) {
             if (Array.isArray(ticketIds) && ticketIds.length > 0) {
                 promises.push(
                     supabaseAdmin.from('support_tickets').update({ read_by_doctor: true }).in('id', ticketIds)
+                );
+            }
+            if (Array.isArray(campaignInvitationIds) && campaignInvitationIds.length > 0) {
+                promises.push(
+                    supabaseAdmin.from('health_campaign_doctors').update({ read_by_doctor: true }).in('id', campaignInvitationIds)
                 );
             }
         } else if (role === 'seller') {

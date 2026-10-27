@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Doctor, ClinicBranch, ClinicSpecialty } from '@/lib/types';
-import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage, affiliateClinicDoctor } from '@/lib/supabaseService';
+import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage, affiliateClinicDoctor, unlinkClinicDoctor } from '@/lib/supabaseService';
 import Image from 'next/image';
 import { Appointment } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Calendar as CalendarIcon, CheckCircle2, Search, AlertTriangle, Sparkles, UserCheck } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, Search, AlertTriangle, Sparkles, UserCheck, UserMinus } from 'lucide-react';
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { hashPassword } from '@/lib/password-utils';
@@ -54,6 +54,8 @@ export function DoctorsTab() {
     // Config Modal State
     const [isConfigOpen, setIsConfigOpen] = useState(false);
     const [configDoctor, setConfigDoctor] = useState<Doctor | null>(null);
+    const [doctorToUnlink, setDoctorToUnlink] = useState<Doctor | null>(null);
+    const [isUnlinking, setIsUnlinking] = useState(false);
 
     const [formData, setFormData] = useState({
         dni: '',
@@ -283,6 +285,29 @@ export function DoctorsTab() {
         }
     };
 
+    const handleUnlinkDoctor = async () => {
+        if (!user?.id || !doctorToUnlink) return;
+        setIsUnlinking(true);
+        try {
+            const res = await unlinkClinicDoctor(user.id, doctorToUnlink.id);
+            setDoctors(docs => docs.filter(d => d.id !== doctorToUnlink.id));
+            toast({
+                title: 'Médico desvinculado',
+                description: res.message || `El Dr. ${doctorToUnlink.name} ya no forma parte del equipo activo de tu institución.`,
+            });
+            setDoctorToUnlink(null);
+        } catch (error: any) {
+            console.error('Error unlinking doctor:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error al desvincular',
+                description: error.message || 'No se pudo desvincular al médico.',
+            });
+        } finally {
+            setIsUnlinking(false);
+        }
+    };
+
     const handleOpenDialog = (doctor?: Doctor) => {
         if (doctor) {
             setEditingDoctor(doctor);
@@ -469,7 +494,7 @@ export function DoctorsTab() {
                                                     </Badge>
                                                 </div>
                                                 <p className="text-emerald-700 dark:text-emerald-400">
-                                                    Este médico ya tiene cuenta en SUMA ({existingDoctorFound.email}). Se vinculará a tu clínica <strong>sin requerir contraseña provisional</strong> y podrá acceder con su sesión habitual.
+                                                    Este médico ya tiene cuenta en SUMA ({existingDoctorFound.email}). Se le enviará una invitación a su <strong>Espacio de Trabajo</strong> para que la valide desde su cuenta sin requerir contraseña provisional.
                                                 </p>
                                                 {isAlreadyAffiliated && (
                                                     <p className="text-amber-700 dark:text-amber-300 font-semibold pt-1">
@@ -629,9 +654,20 @@ export function DoctorsTab() {
                                         />
                                     </div>
                                 </div>
-                                <CardDescription>
-                                    {doctor.specialty}
-                                </CardDescription>
+                                <div className="flex items-center justify-between gap-2 pt-1">
+                                    <CardDescription className="truncate">
+                                        {doctor.specialty}
+                                    </CardDescription>
+                                    {(doctor as any).workspaceStatus === 'pending_invitation' ? (
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] shrink-0">
+                                            ⏳ Pendiente de validar
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] shrink-0">
+                                            ✅ Espacio Validado
+                                        </Badge>
+                                    )}
+                                </div>
                             </CardHeader>
                             <CardContent className="text-sm space-y-2">
                                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -640,10 +676,19 @@ export function DoctorsTab() {
 
                                 <div className="flex gap-2 mt-4 pt-2 border-t">
                                     <Button variant="outline" size="sm" className="flex-1" onClick={() => handleOpenDialog(doctor)}>
-                                        <Pencil className="h-3 w-3 mr-2" /> Editar
+                                        <Pencil className="h-3 w-3 mr-1.5" /> Editar
                                     </Button>
                                     <Button variant="secondary" size="sm" className="flex-1" onClick={() => handleOpenConfig(doctor)}>
-                                        <Settings className="h-3 w-3 mr-2" /> Configurar
+                                        <Settings className="h-3 w-3 mr-1.5" /> Configurar
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 px-2.5"
+                                        title="Desvincular médico de esta institución"
+                                        onClick={() => setDoctorToUnlink(doctor)}
+                                    >
+                                        <UserMinus className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
                             </CardContent>
@@ -659,6 +704,41 @@ export function DoctorsTab() {
                 onSave={handleSaveConfig}
                 clinicServices={clinicServices}
             />
+
+            {/* Modal de Confirmación para Desvincular Médico */}
+            <Dialog open={!!doctorToUnlink} onOpenChange={(open) => !open && setDoctorToUnlink(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-red-700">
+                            <UserMinus className="h-5 w-5" />
+                            Desvincular Médico de la Institución
+                        </DialogTitle>
+                        <DialogDescription className="pt-2 text-slate-600 space-y-2">
+                            <p>
+                                ¿Confirmas que <strong>{doctorToUnlink?.name}</strong> ya no trabaja en <strong>{user?.name}</strong>?
+                            </p>
+                            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                                <p>• Se retirará de tu plantel médico y de las reservas públicas de tu sede.</p>
+                                <p>• El médico ya no verá el espacio de trabajo de tu institución en su panel.</p>
+                                <p>• <strong>Su cuenta personal en SUMA y el historial de citas atendidas se conservan intactos.</strong></p>
+                            </div>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => setDoctorToUnlink(null)} disabled={isUnlinking}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleUnlinkDoctor}
+                            disabled={isUnlinking}
+                        >
+                            {isUnlinking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserMinus className="h-4 w-4 mr-2" />}
+                            Sí, Desvincular Médico
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             {/* Performance List Section */}
             <div className="mt-12 space-y-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -685,7 +765,9 @@ export function DoctorsTab() {
                                     <TableHead>Médico</TableHead>
                                     <TableHead>Especialidad</TableHead>
                                     <TableHead className="text-center">Pacientes</TableHead>
-                                    <TableHead className="text-right">Ingresos</TableHead>
+                                    {user?.plan !== 'hospital_gratuito' && (
+                                        <TableHead className="text-right">Ingresos</TableHead>
+                                    )}
                                     <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -696,14 +778,25 @@ export function DoctorsTab() {
 
                                     return (
                                         <TableRow key={doctor.id}>
-                                            <TableCell className="font-medium">{doctor.name}</TableCell>
+                                            <TableCell className="font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{doctor.name}</span>
+                                                    {(doctor as any).workspaceStatus === 'pending_invitation' && (
+                                                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[10px]">
+                                                            Por validar
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </TableCell>
                                             <TableCell>{doctor.specialty || '-'}</TableCell>
                                             <TableCell className="text-center">
                                                 <Badge variant="secondary">{docsAppts.length}</Badge>
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-green-700">
-                                                ${income.toLocaleString('en-US')}
-                                            </TableCell>
+                                            {user?.plan !== 'hospital_gratuito' && (
+                                                <TableCell className="text-right font-bold text-green-700">
+                                                    ${income.toLocaleString('en-US')}
+                                                </TableCell>
+                                            )}
                                             <TableCell className="text-right">
                                                 <Button size="sm" variant="outline" onClick={() => handleViewDetails(doctor)}>
                                                     Ver Detalles

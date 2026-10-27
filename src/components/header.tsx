@@ -385,6 +385,7 @@ export function Header() {
       case 'new_message': return <MessageSquare className="h-4 w-4 text-blue-500" />;
       case 'support_reply': return <LifeBuoy className="h-4 w-4 text-orange-500" />;
       case 'subscription_update': return <CreditCard className="h-4 w-4 text-indigo-500" />;
+      case 'campaign_invitation': return <Heart className="h-4 w-4 text-teal-600" />;
       default: return <BellRing className="h-4 w-4 text-primary" />;
     }
   };
@@ -413,6 +414,7 @@ export function Header() {
 
   const patientNavLinks = [
     { href: "/find-a-doctor", label: "Buscar Médico" },
+    { href: "/jornadas", label: "Jornadas de Salud" },
     { href: "/ai-assistant", label: "Asistente IA" },
   ];
 
@@ -438,12 +440,14 @@ export function Header() {
     ? [
         { href: "/doctor/dashboard?view=appointments", label: "Citas" },
         { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
+        { href: "/doctor/dashboard?view=health-campaigns", label: "Jornadas de Salud" },
         ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", label: "Farmacias" }] : []),
         { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
       ]
     : [
         { href: "/doctor/dashboard?view=appointments", label: "Citas" },
         { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
+        { href: "/doctor/dashboard?view=health-campaigns", label: "Jornadas de Salud" },
         { href: "/doctor/dashboard?view=finances", label: "Finanzas" },
         { href: "/doctor/dashboard?view=addresses", label: "Consultorios" },
         { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },

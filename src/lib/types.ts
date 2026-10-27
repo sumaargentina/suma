@@ -198,6 +198,7 @@ export interface DoctorWorkspace {
   clinicName?: string;
   clinicLogo?: string;
   clinicAddress?: string;
+  clinicPlan?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -407,8 +408,8 @@ export type Clinic = {
   status?: 'active' | 'inactive';
   paymentSettings?: PaymentSettings;
   coupons?: Coupon[];
-  plan?: 'esencial' | 'profesional' | 'empresarial' | 'integral';
-  billingCycle?: 'monthly' | 'annual';
+  plan?: 'esencial' | 'profesional' | 'empresarial' | 'integral' | 'hospital_gratuito' | string;
+  billingCycle?: 'monthly' | 'annual' | 'free' | string;
   verificationStatus?: 'pending' | 'verified' | 'rejected';
   acceptedInsurances?: string[];
   // Subscription fields
@@ -504,8 +505,8 @@ export type Laboratory = {
   acceptedInsurances?: string[];
   verificationStatus?: 'pending' | 'verified' | 'rejected';
   subscriptionStatus?: 'active' | 'inactive' | 'pending_payment';
-  plan?: 'esencial' | 'profesional' | 'empresarial' | 'integral';
-  billingCycle?: 'monthly' | 'annual';
+  plan?: 'esencial' | 'profesional' | 'empresarial' | 'integral' | 'hospital_gratuito' | string;
+  billingCycle?: 'monthly' | 'annual' | 'free' | string;
   subscriptionFee?: number;
   billingMonths?: number;
   discountPercentage?: number;
@@ -1110,7 +1111,7 @@ export type PatientNotification = {
 
 export type DoctorNotification = {
   id: string;
-  type: 'new_appointment' | 'payment_verification' | 'support_reply' | 'subscription_update' | 'new_message' | 'patient_confirmed' | 'patient_cancelled';
+  type: 'new_appointment' | 'payment_verification' | 'support_reply' | 'subscription_update' | 'new_message' | 'patient_confirmed' | 'patient_cancelled' | 'campaign_invitation';
   title: string;
   description: string;
   date: string;
@@ -1243,4 +1244,157 @@ export type DoctorReview = {
   date: string;
   appointmentId?: string;
   isVerified: boolean;
+};
+
+// =====================================================
+// JORNADAS DE SALUD (HEALTH CAMPAIGNS)
+// =====================================================
+
+export type HealthCampaignOrganizerRole = 'doctor' | 'clinic' | 'pharmacy' | 'laboratory' | 'admin';
+
+export type HealthCampaignDoctor = {
+  id: string;
+  campaignId: string;
+  doctorId: string;
+  doctorName: string;
+  doctorEmail?: string | null;
+  doctorSpecialty?: string | null;
+  doctorProfileImage?: string | null;
+  status: 'pending' | 'accepted' | 'declined';
+  readByDoctor?: boolean;
+  invitedAt: string;
+  respondedAt?: string | null;
+};
+
+export type HealthCampaignPaymentDetails = {
+  currency?: 'USD' | 'VES' | 'ARS' | string;
+  bank?: string;
+  accountType?: string; // ej. 'Pago Móvil', 'Transferencia', 'Zelle', 'Efectivo', 'Alias/CBU'
+  accountHolder?: string;
+  idNumber?: string; // C.I. / RIF / CUIT
+  accountNumber?: string;
+  phone?: string;
+  notes?: string;
+};
+
+export type HealthCampaignRegistration = {
+  id: string;
+  campaignId: string;
+  patientId?: string | null;
+  name: string;
+  cedula: string;
+  email?: string | null;
+  phone?: string | null;
+  age?: number | null;
+  gender?: 'hombre' | 'mujer' | 'nino' | 'nina' | string;
+  interestSpecialty?: string | null;
+  notes?: string | null;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  amountPaid?: number | null;
+  ticketCode?: string | null;
+  spotNumber?: number | null;
+  status: 'registered' | 'attended';
+  createdAt: string;
+};
+
+export type HealthCampaignAttendance = {
+  id: string;
+  campaignId: string;
+  doctorId: string;
+  doctorName: string;
+  specialty: string;
+  patientId?: string | null;
+  isRegisteredPatient: boolean;
+  patientName: string;
+  patientCedula: string;
+  patientEmail?: string | null;
+  patientPhone?: string | null;
+  patientAge?: number | null;
+  patientGender: 'hombre' | 'mujer' | string;
+  demographicGroup: 'hombre' | 'mujer' | 'nino' | string;
+  symptoms?: string | null;
+  diagnosis?: string | null;
+  evaluation?: string | null;
+  treatmentPlan?: string | null;
+  prescription?: string | null;
+  requestedStudies?: string | null;
+  hasPrescription: boolean;
+  medicalRecordId?: string | null;
+  amountPaid?: number;
+  paymentStatus?: 'paid' | 'pending' | 'free' | string;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  emailSent?: boolean;
+  attendedAt: string;
+};
+
+export type HealthCampaignStats = {
+  totalAttended: number;
+  totalPreRegistered: number;
+  totalWithPrescription: number;
+  totalRegisteredInSuma: number;
+  totalGuests: number;
+  totalRevenue?: number;
+  demographics: {
+    hombres: number;
+    mujeres: number;
+    ninos: number;
+  };
+  bySpecialty: {
+    specialty: string;
+    count: number;
+    withPrescription: number;
+  }[];
+  byDoctor: {
+    doctorId: string;
+    doctorName: string;
+    specialty: string;
+    attendedCount: number;
+    prescriptionCount: number;
+  }[];
+  topDoctor?: {
+    doctorId: string;
+    doctorName: string;
+    specialty: string;
+    attendedCount: number;
+  } | null;
+};
+
+export type HealthCampaign = {
+  id: string;
+  title: string;
+  description?: string | null;
+  organizerId: string;
+  organizerRole: HealthCampaignOrganizerRole;
+  organizerName: string;
+  organizerLogo?: string | null;
+  campaignType: 'free' | 'paid';
+  pricingMode?: 'per_event' | 'per_specialist';
+  priceAmount?: number;
+  specialtyPrices?: Record<string, number>;
+  priceInfo?: string | null;
+  paymentAccountSource?: 'organizer' | 'manual';
+  paymentDetails?: HealthCampaignPaymentDetails | null;
+  capacityMode?: 'unlimited' | 'limited';
+  maxCapacity?: number | null;
+  specialties: string[];
+  startDate: string;
+  endDate?: string | null;
+  startTime: string;
+  endTime: string;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  sector?: string | null;
+  address?: string | null;
+  coverImage?: string | null;
+  galleryImages: string[];
+  status: 'upcoming' | 'active' | 'completed' | 'cancelled';
+  createdAt: string;
+  updatedAt?: string;
+  doctors?: HealthCampaignDoctor[];
+  registrations?: HealthCampaignRegistration[];
+  attendances?: HealthCampaignAttendance[];
+  stats?: HealthCampaignStats;
 };

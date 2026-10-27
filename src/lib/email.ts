@@ -559,3 +559,290 @@ export async function sendSellerCommissionPaidEmail({
         html,
     });
 }
+
+export async function sendCampaignDoctorInvitationEmail({
+    doctorEmail,
+    doctorName,
+    campaignTitle,
+    organizerName,
+    startDate,
+    startTime,
+    endTime,
+    city,
+    address,
+    campaignType,
+}: {
+    doctorEmail: string;
+    doctorName: string;
+    campaignTitle: string;
+    organizerName: string;
+    startDate: string;
+    startTime: string;
+    endTime: string;
+    city?: string;
+    address?: string;
+    campaignType: 'free' | 'paid';
+}) {
+    if (!doctorEmail || !doctorName) {
+        return { success: false, error: 'Missing doctor email or name' };
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const year = new Date().getFullYear();
+
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+      <div style="background: linear-gradient(135deg, #0d9488 0%, #0284c7 100%); padding: 26px 20px; text-align: center;">
+        <div style="font-size: 2.2rem; color: #fff; font-weight: bold; letter-spacing: 2px;">SUMA</div>
+        <div style="font-size: 13px; color: #ccfbf1; margin-top: 4px;">Invitación a Jornada de Salud</div>
+      </div>
+      <div style="padding: 32px 24px 24px 24px;">
+        <h2 style="color: #0f766e; margin-bottom: 12px;">¡Hola, Dr(a). ${doctorName}! 🩺</h2>
+        <p style="color: #334155; margin-bottom: 16px; line-height: 1.6;">
+          <strong>${organizerName}</strong> te ha invitado a participar como especialista en la siguiente <strong>Jornada de Salud</strong> dentro del ecosistema SUMA:
+        </p>
+
+        <div style="background-color: #f0fdfa; border-left: 4px solid #0d9488; padding: 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
+          <p style="margin: 0 0 8px 0; font-weight: bold; color: #115e59; font-size: 17px;">${campaignTitle}</p>
+          <p style="margin: 0 0 4px 0; color: #134e4a; font-size: 14px;">📅 Fecha: <strong>${startDate}</strong> (${startTime} - ${endTime})</p>
+          <p style="margin: 0 0 4px 0; color: #134e4a; font-size: 14px;">📍 Lugar: <strong>${[city, address].filter(Boolean).join(' - ') || 'Por confirmar'}</strong></p>
+          <p style="margin: 0; color: #134e4a; font-size: 14px;">🏷️ Modalidad: <strong>${campaignType === 'free' ? 'Jornada Gratuita' : 'Jornada Privada'}</strong></p>
+        </div>
+
+        <p style="color: #334155; margin-bottom: 20px; line-height: 1.5;">
+          Ingresa a tu portal médico en SUMA en la pestaña <strong>"Jornadas de Salud"</strong> para aceptar o rechazar tu participación en este evento.
+        </p>
+
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${appUrl}/doctor/dashboard?view=health-campaigns" style="display: inline-block; background: #0d9488; color: #fff; padding: 13px 28px; border-radius: 8px; font-weight: bold; font-size: 15px; text-decoration: none;">Ver Invitación en mi Portal SUMA</a>
+        </div>
+      </div>
+      <div style="background: #f8fafc; color: #94a3b8; text-align: center; font-size: 12px; padding: 16px; border-top: 1px solid #e2e8f0;">
+        &copy; ${year} Suma Salud. Todos los derechos reservados.
+      </div>
+    </div>
+    `;
+
+    return sendEmail({
+        to: doctorEmail,
+        subject: `🩺 Invitación a Jornada de Salud: ${campaignTitle} - SUMA`,
+        html,
+    });
+}
+
+export async function sendCampaignAttendanceEmail({
+    patientEmail,
+    patientName,
+    patientCedula,
+    patientPhone,
+    campaignTitle,
+    organizerName,
+    doctorName,
+    specialty,
+    diagnosis,
+    evaluation,
+    treatmentPlan,
+    prescription,
+    requestedStudies,
+    medicalRecordId,
+    isRegisteredPatient,
+}: {
+    patientEmail: string;
+    patientName: string;
+    patientCedula: string;
+    patientPhone?: string | null;
+    campaignTitle: string;
+    organizerName: string;
+    doctorName: string;
+    specialty: string;
+    diagnosis?: string | null;
+    evaluation?: string | null;
+    treatmentPlan?: string | null;
+    prescription?: string | null;
+    requestedStudies?: string | null;
+    medicalRecordId?: string | null;
+    isRegisteredPatient: boolean;
+}) {
+    if (!patientEmail || !patientName) {
+        return { success: false, error: 'Missing patient email or name' };
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const year = new Date().getFullYear();
+
+    const recipeUrl = medicalRecordId ? `${appUrl}/ver-recipe/${medicalRecordId}` : null;
+    const reportUrl = medicalRecordId ? `${appUrl}/ver-informe/${medicalRecordId}` : null;
+    const registerParams = new URLSearchParams({
+        name: patientName,
+        cedula: patientCedula || '',
+        email: patientEmail,
+        ...(patientPhone ? { phone: patientPhone } : {}),
+    });
+    const registerUrl = `${appUrl}/auth/register?${registerParams.toString()}`;
+
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #ffffff;">
+      <div style="background: linear-gradient(135deg, #0d9488 0%, #2563eb 100%); padding: 28px 22px; text-align: center;">
+        <div style="font-size: 2.3rem; color: #fff; font-weight: bold; letter-spacing: 2px;">SUMA</div>
+        <div style="font-size: 14px; color: #e0f2fe; margin-top: 4px;">Resumen de Atención y Récipe Digital - Jornada de Salud</div>
+      </div>
+      <div style="padding: 30px 24px 24px 24px;">
+        <h2 style="color: #0f172a; margin-top: 0; margin-bottom: 10px;">¡Gracias por participar, ${patientName}! 💙</h2>
+        <p style="color: #334155; margin-bottom: 18px; line-height: 1.6;">
+          Aquí tienes el resumen oficial de tu atención médica realizada durante la jornada <strong>"${campaignTitle}"</strong> organizada por <strong>${organizerName}</strong>.
+        </p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; margin-bottom: 20px; border-radius: 8px;">
+          <p style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">👨‍⚕️ Especialista tratante: <strong>Dr(a). ${doctorName}</strong> (${specialty})</p>
+          <p style="margin: 0; color: #475569; font-size: 13px;">🪪 Paciente: <strong>${patientName}</strong> (Doc: ${patientCedula || 'N/A'})</p>
+        </div>
+
+        ${diagnosis || evaluation ? `
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 6px 0; color: #0f766e; font-size: 14px; text-transform: uppercase;">📋 Evaluación / Diagnóstico</h4>
+          <div style="background: #f0fdfa; border-left: 3px solid #0d9488; padding: 12px; border-radius: 0 6px 6px 0; color: #134e4a; font-size: 14px; white-space: pre-line;">${[diagnosis, evaluation].filter(Boolean).join('\n\n')}</div>
+        </div>
+        ` : ''}
+
+        ${prescription ? `
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 6px 0; color: #1d4ed8; font-size: 14px; text-transform: uppercase;">💊 Récipe Médico (Medicamentos Indicados)</h4>
+          <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 12px; border-radius: 0 6px 6px 0; color: #1e3a8a; font-size: 14px; white-space: pre-line;">${prescription}</div>
+        </div>
+        ` : ''}
+
+        ${treatmentPlan ? `
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 6px 0; color: #0369a1; font-size: 14px; text-transform: uppercase;">📝 Indicaciones y Plan de Tratamiento</h4>
+          <div style="background: #f0f9ff; border-left: 3px solid #0284c7; padding: 12px; border-radius: 0 6px 6px 0; color: #0c4a6e; font-size: 14px; white-space: pre-line;">${treatmentPlan}</div>
+        </div>
+        ` : ''}
+
+        ${requestedStudies ? `
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin: 0 0 6px 0; color: #6d28d9; font-size: 14px; text-transform: uppercase;">🔬 Estudios / Exámenes Solicitados</h4>
+          <div style="background: #f5f3ff; border-left: 3px solid #7c3aed; padding: 12px; border-radius: 0 6px 6px 0; color: #4c1d95; font-size: 14px; white-space: pre-line;">${requestedStudies}</div>
+        </div>
+        ` : ''}
+
+        ${recipeUrl ? `
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${recipeUrl}" style="display: inline-block; background: #0d9488; color: #ffffff; padding: 13px 24px; border-radius: 8px; font-weight: bold; font-size: 15px; text-decoration: none; margin: 4px;">💊 Ver y Descargar mi Récipe Digital (con QR)</a>
+          ${reportUrl ? `<a href="${reportUrl}" style="display: inline-block; background: #475569; color: #ffffff; padding: 11px 20px; border-radius: 8px; font-weight: bold; font-size: 14px; text-decoration: none; margin: 4px;">📄 Ver Informe Médico</a>` : ''}
+        </div>
+        ` : ''}
+
+        ${isRegisteredPatient ? `
+        <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 18px; border-radius: 10px; margin-top: 24px; text-align: center;">
+          <p style="margin: 0 0 10px 0; color: #065f46; font-weight: bold; font-size: 15px;">✅ ¡Tu atención y récipe ya están guardados en tu cuenta SUMA!</p>
+          <p style="margin: 0 0 16px 0; color: #047857; font-size: 13px; line-height: 1.5;">
+            Como ya eres usuario registrado de SUMA, esta evaluación y tu récipe digital quedaron almacenados automáticamente en tu Historial Médico.
+          </p>
+          <a href="${appUrl}/dashboard" style="display: inline-block; background: #059669; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; text-decoration: none;">Ir a mi Plataforma SUMA y Ver mi Historial</a>
+        </div>
+        ` : `
+        <div style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%); border: 2px solid #38bdf8; padding: 20px; border-radius: 10px; margin-top: 24px; text-align: center;">
+          <p style="margin: 0 0 8px 0; color: #0369a1; font-weight: bold; font-size: 16px;">🌟 ¿Aún no tienes cuenta en SUMA?</p>
+          <p style="margin: 0 0 16px 0; color: #334155; font-size: 13.5px; line-height: 1.5;">
+            Regístrate gratis en menos de 1 minuto para guardar este récipe y tu historial médico en tu perfil digital, agendar consultas con cualquier especialista y participar en próximos eventos de salud.
+          </p>
+          <a href="${registerUrl}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 13px 28px; border-radius: 8px; font-weight: bold; font-size: 15px; text-decoration: none; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">Registrarme Gratis en SUMA</a>
+        </div>
+        `}
+      </div>
+      <div style="background: #f8fafc; color: #94a3b8; text-align: center; font-size: 12px; padding: 16px; border-top: 1px solid #e2e8f0;">
+        &copy; ${year} Suma Salud. Conectando tu bienestar.
+      </div>
+    </div>
+    `;
+
+    return sendEmail({
+        to: patientEmail,
+        subject: `💊 Tu Atención y Récipe Digital en "${campaignTitle}" - SUMA`,
+        html,
+    });
+}
+
+/**
+ * Envía el Ticket Digital de Entrada / Cupo cuando un paciente confirma su asistencia a una Jornada de Salud
+ */
+export async function sendCampaignTicketEmail(params: {
+    patientEmail: string;
+    patientName: string;
+    patientCedula: string;
+    ticketCode: string;
+    spotNumber: number;
+    campaignId: string;
+    campaignTitle: string;
+    organizerName: string;
+    startDate: string;
+    startTime: string;
+    endTime: string;
+    locationText: string;
+    interestSpecialty?: string | null;
+}) {
+    const {
+        patientEmail,
+        patientName,
+        patientCedula,
+        ticketCode,
+        spotNumber,
+        campaignId,
+        campaignTitle,
+        organizerName,
+        startDate,
+        startTime,
+        endTime,
+        locationText,
+        interestSpecialty,
+    } = params;
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const year = new Date().getFullYear();
+    const formattedSpot = `#${String(spotNumber).padStart(3, '0')}`;
+    const eventUrl = `${appUrl}/jornadas/${campaignId}`;
+
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+      <div style="background: linear-gradient(135deg, #0d9488 0%, #0284c7 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+        <h1 style="margin: 0; font-size: 22px; letter-spacing: 0.5px;">🎟️ TICKET DE ENTRADA — JORNADA DE SALUD</h1>
+        <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.95;">Organizada por <strong>${organizerName}</strong></p>
+      </div>
+      <div style="padding: 28px 24px; background-color: #ffffff;">
+        <h2 style="color: #0f172a; margin-top: 0; margin-bottom: 10px;">¡Hola, ${patientName}! Tu cupo está reservado ✅</h2>
+        <p style="color: #334155; margin-bottom: 18px; line-height: 1.6;">
+          Presenta este ticket digital o indica tu número de cédula al llegar a la jornada <strong>"${campaignTitle}"</strong>.
+        </p>
+
+        <div style="background: linear-gradient(135deg, #f0fdfa 0%, #eff6ff 100%); border: 2px dashed #0d9488; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 22px;">
+          <p style="margin: 0; font-size: 12px; text-transform: uppercase; color: #0f766e; font-weight: bold; letter-spacing: 1px;">Cupo Asignado</p>
+          <p style="margin: 4px 0 8px 0; font-size: 34px; font-weight: 900; color: #0f172a;">CUPO ${formattedSpot}</p>
+          <span style="display: inline-block; background: #0f172a; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: bold; padding: 6px 14px; border-radius: 6px; letter-spacing: 1px;">
+            ${ticketCode}
+          </span>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; margin-bottom: 20px; border-radius: 8px; font-size: 14px; color: #334155;">
+          <p style="margin: 0 0 6px 0;">👤 <strong>Paciente:</strong> ${patientName} (${patientCedula})</p>
+          ${interestSpecialty ? `<p style="margin: 0 0 6px 0;">🩺 <strong>Especialidad solicitada:</strong> ${interestSpecialty}</p>` : ''}
+          <p style="margin: 0 0 6px 0;">📅 <strong>Fecha:</strong> ${startDate}</p>
+          <p style="margin: 0 0 6px 0;">⏰ <strong>Horario:</strong> Desde las ${startTime} hasta las ${endTime}</p>
+          <p style="margin: 0;">📍 <strong>Ubicación:</strong> ${locationText || 'Consultar página del evento'}</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 22px;">
+          <a href="${eventUrl}" style="display: inline-block; background: #0d9488; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; text-decoration: none;">Ver Mi Ticket y Detalles de la Jornada</a>
+        </div>
+      </div>
+      <div style="background: #f8fafc; color: #94a3b8; text-align: center; font-size: 12px; padding: 16px; border-top: 1px solid #e2e8f0;">
+        &copy; ${year} Suma Salud. Conectando tu bienestar.
+      </div>
+    </div>
+    `;
+
+    return sendEmail({
+        to: patientEmail,
+        subject: `🎟️ Tu Cupo ${formattedSpot} (${ticketCode}) para "${campaignTitle}" - SUMA Salud`,
+        html,
+    });
+}

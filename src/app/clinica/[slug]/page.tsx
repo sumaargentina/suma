@@ -9,11 +9,10 @@ import { getClinicBySlug, getClinicBranches, getClinicServices, getClinicDoctors
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import {
     Loader2, MapPin, Phone, Clock, Stethoscope, Building2, Users,
-    ShieldCheck, Star, ChevronRight, Sparkles, Heart, Share2, Banknote
+    ShieldCheck, Star, ChevronRight, Sparkles, Share2, Banknote
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +34,7 @@ export default function ClinicPublicProfilePage() {
         if (slug) {
             loadClinicData();
         }
-    }, [slug]);
+    }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const loadClinicData = async () => {
         try {
@@ -54,13 +53,19 @@ export default function ClinicPublicProfilePage() {
             ]);
             setBranches(branchesData);
             setServices(servicesData);
-            setDoctors(doctorsData);
+            // Solo mostrar médicos que hayan validado su espacio de trabajo y estén activos
+            const validatedDoctors = (doctorsData || []).filter(
+                (d: any) => d.workspaceStatus !== 'pending_invitation' && d.status !== 'inactive'
+            );
+            setDoctors(validatedDoctors);
         } catch (error) {
             console.error("Error loading clinic data:", error);
         } finally {
             setIsLoading(false);
         }
     };
+
+    const isHospitalGratuito = clinic?.plan === 'hospital_gratuito';
 
     // Extraer especialidades únicas de los médicos
     const specialties = useMemo(() => {
@@ -77,12 +82,6 @@ export default function ClinicPublicProfilePage() {
         if (!selectedSpecialty) return doctors;
         return doctors.filter(d => d.specialty === selectedSpecialty);
     }, [doctors, selectedSpecialty]);
-
-    // Extraer categorías únicas de servicios
-    const serviceCategories = useMemo(() => {
-        const cats = services.map(s => s.serviceCategory || "General").filter(Boolean);
-        return Array.from(new Set(cats));
-    }, [services]);
 
     const handleShare = async () => {
         const shareUrl = `${window.location.origin}/clinica/${slug}`;
@@ -139,7 +138,6 @@ export default function ClinicPublicProfilePage() {
                             <Building2 className="h-16 w-16 text-primary/20" />
                         </div>
                     )}
-                    {/* Overlay para mejor contraste */}
                     <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
                 </section>
 
@@ -171,9 +169,16 @@ export default function ClinicPublicProfilePage() {
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
-                                        <h1 className="text-lg md:text-2xl font-bold text-slate-900 line-clamp-2">
-                                            {clinic.name}
-                                        </h1>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h1 className="text-lg md:text-2xl font-bold text-slate-900 line-clamp-2">
+                                                {clinic.name}
+                                            </h1>
+                                            {isHospitalGratuito && (
+                                                <Badge className="bg-sky-100 text-sky-800 border-sky-200 text-xs">
+                                                    🏥 Atención Gratuita
+                                                </Badge>
+                                            )}
+                                        </div>
                                         {clinic.verificationStatus === 'verified' && (
                                             <div className="flex items-center gap-1 text-emerald-600 text-xs md:text-sm mt-0.5">
                                                 <ShieldCheck className="h-3.5 w-3.5" />
@@ -209,7 +214,7 @@ export default function ClinicPublicProfilePage() {
                                     )}
                                 </div>
 
-                                {/* Obras sociales - scroll horizontal */}
+                                {/* Obras sociales */}
                                 {clinic.acceptedInsurances && clinic.acceptedInsurances.length > 0 && (
                                     <div className="mt-3 overflow-x-auto scrollbar-hide -mx-3 px-3 md:mx-0 md:px-0">
                                         <div className="flex gap-1.5">
@@ -229,7 +234,7 @@ export default function ClinicPublicProfilePage() {
                             </div>
                         </div>
 
-                        {/* Contacto compacto - en línea */}
+                        {/* Contacto compacto */}
                         {(clinic.phone || clinic.address) && (
                             <div className="flex flex-wrap items-center gap-3 md:gap-4 mt-3">
                                 {clinic.phone && (
@@ -250,7 +255,6 @@ export default function ClinicPublicProfilePage() {
                             </div>
                         )}
                     </div>
-                    {/* Padding inferior */}
                     <div className="h-3 md:h-4" />
                 </section>
 
@@ -286,7 +290,7 @@ export default function ClinicPublicProfilePage() {
                     </div>
                 </section>
 
-                {/* Filtro de especialidades (solo en tab médicos) */}
+                {/* Filtro de especialidades */}
                 {activeTab === "doctors" && specialties.length > 1 && (
                     <section className="bg-white border-b py-2">
                         <div className="container mx-auto px-3 md:px-4">
@@ -340,7 +344,6 @@ export default function ClinicPublicProfilePage() {
                                             <Card className="group overflow-hidden hover:shadow-md transition-all border-0 shadow-sm">
                                                 <CardContent className="p-3 md:p-4">
                                                     <div className="flex gap-3">
-                                                        {/* Foto de perfil del médico */}
                                                         <div className="shrink-0 h-14 w-14 md:h-16 md:w-16 rounded-full overflow-hidden bg-white border-2 border-slate-200 shadow-sm">
                                                             {doctor.profileImage ? (
                                                                 <Image
@@ -380,7 +383,9 @@ export default function ClinicPublicProfilePage() {
                                                             )}
                                                             <div className="flex items-center gap-1.5 text-xs md:text-sm font-semibold text-emerald-700 mt-1.5">
                                                                 <Banknote className="h-3.5 w-3.5" />
-                                                                {(() => {
+                                                                {isHospitalGratuito ? (
+                                                                    <span className="text-sky-700 font-bold">Gratuito</span>
+                                                                ) : (() => {
                                                                     const prices: number[] = [];
                                                                     if (doctor.addresses && Array.isArray(doctor.addresses)) {
                                                                         doctor.addresses.forEach(addr => {
@@ -436,7 +441,9 @@ export default function ClinicPublicProfilePage() {
                                                         <span>{service.duration} min</span>
                                                     </div>
                                                     <div className="font-semibold text-green-600">
-                                                        {service.price > 0 ? `$${service.price.toLocaleString()}` : 'Consultar'}
+                                                        {isHospitalGratuito || service.price === 0
+                                                            ? <span className="text-sky-700 font-bold">Gratuito</span>
+                                                            : `$${service.price.toLocaleString()}`}
                                                     </div>
                                                 </div>
 

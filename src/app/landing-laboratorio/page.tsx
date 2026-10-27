@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   Zap,
   ArrowLeft,
   Globe,
+  Gift,
 } from "lucide-react";
 
 export default function LaboratoryLandingPage() {
@@ -51,7 +53,7 @@ export default function LaboratoryLandingPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 text-white py-20 md:py-24">
         <div className="container mx-auto px-4">
-          <div className="mb-6">
+          <div className="flex items-center justify-between mb-10">
             <Link
               href="/"
               className="inline-flex items-center text-sm text-indigo-300 hover:text-white transition-colors"
@@ -59,12 +61,23 @@ export default function LaboratoryLandingPage() {
               <ArrowLeft className="h-4 w-4 mr-1.5" />
               Volver al Portal Inicial
             </Link>
+            <Link href="/" className="bg-white px-4 py-2 rounded-2xl shadow-md flex items-center">
+              <Image
+                src="/images/logo_suma.png"
+                alt="SUMA Logo"
+                width={150}
+                height={52}
+                className="h-10 w-auto object-contain"
+                priority
+              />
+            </Link>
           </div>
 
           <div className="text-center max-w-3xl mx-auto">
-            <span className="inline-block bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-full px-4 py-1 text-xs font-bold uppercase tracking-wider mb-5">
-              SUMA Bioanálisis & Diagnóstico Clínico
-            </span>
+            <div className="inline-flex items-center gap-2 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider mb-5">
+              <Gift className="h-4 w-4 text-indigo-300" />
+              ¡Primer Mes 100% Gratis Incluido!
+            </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">
               Digitaliza y Conecta tu <span className="text-indigo-400">Laboratorio Clínico</span>
             </h1>
@@ -75,18 +88,9 @@ export default function LaboratoryLandingPage() {
               <Link href="#planes">
                 <Button
                   size="lg"
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 text-lg h-14 rounded-full font-bold shadow-xl"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-10 text-lg h-14 rounded-full font-bold shadow-xl"
                 >
-                  Ver Plan (${baseMonthlyPrice}/mes)
-                </Button>
-              </Link>
-              <Link href={`/auth/register-laboratory?months=${months}`}>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="text-white border-indigo-400/50 hover:bg-indigo-900/50 px-8 text-lg h-14 rounded-full"
-                >
-                  Registrar Laboratorio
+                  Ver Planes
                 </Button>
               </Link>
             </div>
@@ -141,15 +145,19 @@ export default function LaboratoryLandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section ($50/mes al cambio BCV, igual que Clínicas pero a $50) */}
+      {/* Pricing Section */}
       <section id="planes" className="py-24 bg-slate-50">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 bg-indigo-100 border border-indigo-300 text-indigo-900 px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider mb-4">
+              <Gift className="h-4 w-4 text-indigo-700" />
+              1er Mes 100% Gratis • Luego inicia tu plan
+            </div>
             <h2 className="text-3xl font-bold mb-4 text-slate-900">
               Elige tu Ciclo de Pago
             </h2>
             <p className="text-slate-600 max-w-2xl mx-auto mb-6">
-              Tarifa única accesible de <strong>${baseMonthlyPrice} USD mensuales pagaderos en moneda local ({pricing.rateLabel})</strong>. Ahorra aún más eligiendo ciclos trimestrales, semestrales o anuales.
+              Recibes tu <strong>primer mes totalmente gratis</strong> para configurar tu laboratorio y catálogo de pruebas. Luego continúa el plan que elijas a continuación.
             </p>
 
             {countries.length > 0 && (
@@ -231,6 +239,15 @@ export default function LaboratoryLandingPage() {
               </CardHeader>
 
               <CardContent className="pt-6">
+                <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-center">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 block">
+                    🎁 1er Mes: $0 USD (100% GRATIS)
+                  </span>
+                  <span className="text-xs text-emerald-700 mt-0.5 block">
+                    Luego continúa tu plan seleccionado de {months === 1 ? "1 mes" : `${months} meses`}:
+                  </span>
+                </div>
+
                 <div className="text-center mb-8">
                   <div className="flex items-center justify-center gap-1">
                     <span className="text-5xl font-extrabold text-slate-900">
@@ -314,11 +331,11 @@ export default function LaboratoryLandingPage() {
                     size="lg"
                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-12 text-lg shadow-lg transition-all"
                   >
-                    Comenzar con {months === 1 ? "1 Mes ($50)" : `${months} Meses`}
+                    Comenzar 1er Mes Gratis + Plan {months === 1 ? "1 Mes" : `${months} Meses`}
                   </Button>
                 </Link>
                 <p className="text-center text-xs text-muted-foreground mt-4">
-                  Pago en Bolívares a la tasa oficial del BCV. Activación verificada por SUMA.
+                  1er mes 100% gratis incluido. Luego pago en moneda local ({pricing.rateLabel}).
                 </p>
               </CardContent>
             </Card>

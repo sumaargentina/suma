@@ -82,6 +82,39 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Vincular automáticamente récipes o atenciones previas en Jornadas de Salud por cédula o correo
+        try {
+            if (sanitizedData.cedula) {
+                const cleanCedula = sanitizedData.cedula.replace(/\D/g, '');
+                await supabaseAdmin
+                    .from('medical_records')
+                    .update({ patient_id: data.id })
+                    .is('patient_id', null)
+                    .or(`guest_patient_cedula.eq.${sanitizedData.cedula},guest_patient_cedula.eq.${cleanCedula}`);
+
+                await supabaseAdmin
+                    .from('health_campaign_attendances')
+                    .update({ patient_id: data.id, is_registered_patient: true })
+                    .is('patient_id', null)
+                    .or(`patient_cedula.eq.${sanitizedData.cedula},patient_cedula.eq.${cleanCedula}`);
+            }
+            if (sanitizedData.email) {
+                await supabaseAdmin
+                    .from('medical_records')
+                    .update({ patient_id: data.id })
+                    .is('patient_id', null)
+                    .eq('guest_patient_email', sanitizedData.email.toLowerCase());
+
+                await supabaseAdmin
+                    .from('health_campaign_attendances')
+                    .update({ patient_id: data.id, is_registered_patient: true })
+                    .is('patient_id', null)
+                    .eq('patient_email', sanitizedData.email.toLowerCase());
+            }
+        } catch (linkErr) {
+            console.warn('API: Non-blocking warning linking prior campaign records:', linkErr);
+        }
+
         logSecurityEvent('PATIENT_REGISTERED', { patientId: data.id, email: sanitizedData.email });
         console.log('API: Patient added successfully:', data.id);
         return NextResponse.json({ id: data.id });

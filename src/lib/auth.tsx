@@ -53,6 +53,7 @@ export interface User extends Patient {
   isChain?: boolean;
   chainName?: string | null;
   branchName?: string | null;
+  plan?: string;
 }
 
 interface DoctorRegistrationData {
@@ -103,7 +104,7 @@ export interface AuthContextType {
   switchWorkspace: (workspaceId: string) => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, location?: { country?: string; state?: string; city?: string }) => Promise<void>;
+  register: (name: string, email: string, password: string, location?: { country?: string; state?: string; city?: string; cedula?: string; phone?: string }) => Promise<void>;
   registerDoctor: (doctorData: DoctorRegistrationData) => Promise<void>;
   registerClinic: (clinicData: ClinicRegistrationData) => Promise<void>;
   logout: () => void;
@@ -219,6 +220,7 @@ const buildUserFromData = (userData: any): User => {
       cedula: null,
       favoriteDoctorIds: [],
       role: 'clinic',
+      plan: clinicData.plan || 'integral',
     };
   }
 
@@ -331,11 +333,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let chosenActive: ActiveWorkspace | null = null;
       const storedActiveStr = localStorage.getItem('activeWorkspace');
 
+      const activeOnlyList = list.filter(w => w.status === 'active');
+
       if (storedActiveStr) {
         try {
           const parsed = JSON.parse(storedActiveStr);
           // Verify if it still belongs to active workspaces
-          const exists = list.find(w => w.id === parsed.id);
+          const exists = activeOnlyList.find(w => w.id === parsed.id);
           if (exists) {
             chosenActive = {
               id: exists.id,
@@ -352,8 +356,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (!chosenActive && list.length > 0) {
-        const def = list.find(w => w.isDefault) || list[0];
+      if (!chosenActive && activeOnlyList.length > 0) {
+        const def = activeOnlyList.find(w => w.isDefault) || activeOnlyList[0];
         chosenActive = {
           id: def.id,
           workspaceType: def.workspaceType,
@@ -384,7 +388,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, loadDoctorWorkspaces]);
 
   const switchWorkspace = async (workspaceId: string) => {
-    const target = workspaces.find(w => w.id === workspaceId);
+    const target = workspaces.find(w => w.id === workspaceId && w.status === 'active');
     if (!target || !user) return;
 
     const newActive: ActiveWorkspace = {
@@ -675,7 +679,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     name: string,
     email: string,
     password: string,
-    location?: { country?: string; state?: string; city?: string }
+    location?: { country?: string; state?: string; city?: string; cedula?: string; phone?: string }
   ) => {
     const lowerEmail = email.toLowerCase();
     const existingUser = await supabaseService.findUserByEmail(lowerEmail);
@@ -694,8 +698,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       birthDate: null,
       gender: null,
       profileImage: null,
-      cedula: null,
-      phone: null,
+      cedula: location?.cedula || null,
+      phone: location?.phone || null,
       country: normalizeCountryCode(location?.country || 'VE'),
       state: location?.state || null,
       city: location?.city || null,

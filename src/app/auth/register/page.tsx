@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from "next/link";
 import { useAuth } from '@/lib/auth';
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ export default function RegisterPage() {
   const { logoUrl } = useSettings();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [prefilledCedula, setPrefilledCedula] = useState('');
+  const [prefilledPhone, setPrefilledPhone] = useState('');
   const [country, setCountry] = useState('VE');
   const [state, setState] = useState('Monagas');
   const [city, setCity] = useState('Maturín');
@@ -53,6 +55,20 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const qName = params.get('name');
+      const qEmail = params.get('email');
+      const qCedula = params.get('cedula');
+      const qPhone = params.get('phone');
+      if (qName) setFullName(qName);
+      if (qEmail) setEmail(qEmail);
+      if (qCedula) setPrefilledCedula(qCedula);
+      if (qPhone) setPrefilledPhone(qPhone);
+    }
+  }, []);
 
   const handleGoogleRegister = async () => {
     setIsGoogleLoading(true);
@@ -101,7 +117,13 @@ export default function RegisterPage() {
         return;
       }
 
-      await register(nameSan.sanitized, emailSan.sanitized, password, { country, state, city });
+      await register(nameSan.sanitized, emailSan.sanitized, password, {
+        country,
+        state,
+        city,
+        cedula: prefilledCedula || undefined,
+        phone: prefilledPhone || undefined,
+      });
     } catch (error) {
       console.error("Registration error:", error);
       toast({

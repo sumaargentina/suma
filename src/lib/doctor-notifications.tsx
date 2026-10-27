@@ -14,7 +14,8 @@ interface DoctorNotificationContextType {
   checkAndSetDoctorNotifications: (
     appointments: Appointment[],
     supportTickets: AdminSupportTicket[],
-    doctorPayments: DoctorPayment[]
+    doctorPayments: DoctorPayment[],
+    campaigns?: any[]
   ) => void;
   markDoctorNotificationAsRead: (id: string) => void;
   markDoctorNotificationsAsRead: () => void;
@@ -123,7 +124,8 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
   const checkAndSetDoctorNotifications = useCallback((
     appointments: Appointment[],
     supportTickets: AdminSupportTicket[],
-    doctorPayments: DoctorPayment[]
+    doctorPayments: DoctorPayment[],
+    campaigns: any[] = []
   ) => {
     if (!user?.id || user.role !== 'doctor') return;
 
@@ -266,6 +268,27 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
         }
       });
 
+      // 4. Invitaciones a Jornadas de Salud
+      campaigns.forEach((camp: any) => {
+        const myInvite = (camp.doctors || []).find((d: any) => d.doctorId === user.id);
+        if (myInvite && !(camp.organizerRole === 'doctor' && camp.organizerId === user.id)) {
+          upsert({
+            id: `campaign-inv-${myInvite.id}`,
+            type: 'campaign_invitation',
+            title: myInvite.status === 'pending'
+              ? '🩺 Invitación a Jornada de Salud'
+              : myInvite.status === 'accepted'
+                ? '✅ Jornada de Salud Confirmada'
+                : 'Jornada de Salud (Rechazada)',
+            description: `${camp.organizerName} te invitó a "${camp.title}" (${camp.startDate} • ${camp.startTime}-${camp.endTime}).`,
+            date: myInvite.invitedAt || camp.createdAt || now.toISOString(),
+            createdAt: myInvite.invitedAt || camp.createdAt || now.toISOString(),
+            read: Boolean(myInvite.readByDoctor) || myInvite.status !== 'pending',
+            link: '/doctor/dashboard?view=health-campaigns',
+          });
+        }
+      });
+
       const merged = filterValidDoctorNotifications(
         Array.from(prevMap.values())
           .filter(n => !dismissed.has(n.id))
@@ -307,6 +330,13 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
     } else if (id.startsWith('support-')) {
       const ticketId = extractEntityId(id, 'support-');
       batchUpdateDoctorNotificationsAsRead([], [ticketId]).catch(console.error);
+    } else if (id.startsWith('campaign-inv-')) {
+      const invId = id.replace(/^campaign-inv-/, '');
+      fetch('/api/notifications/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'doctor', campaignInvitationIds: [invId] }),
+      }).catch(console.error);
     }
   }, [user]);
 
@@ -432,12 +462,18 @@ export function DoctorNotificationProvider({ children }: { children: ReactNode }
     async function fetchInitial() {
       try {
         const { getDoctorAppointments, getSupportTickets, getDoctorPayments } = await import('./supabaseService');
-        const [appointments, supportTickets, doctorPayments] = await Promise.all([
+        const [appointments, supportTickets, doctorPayments, campaignsRes] = await Promise.all([
           getDoctorAppointments(doctorId),
           getSupportTickets(),
-          getDoctorPayments()
+          getDoctorPayments(),
+          fetch(`/api/health-campaigns?doctorId=${doctorId}`).then(r => r.ok ? r.json() : []).catch(() => []),
         ]);
-        checkAndSetDoctorNotifications(appointments || [], supportTickets || [], doctorPayments || []);
+        checkAndSetDoctorNotifications(
+          appointments || [],
+          supportTickets || [],
+          doctorPayments || [],
+          Array.isArray(campaignsRes) ? campaignsRes : []
+        );
       } catch (err) {
         console.warn('⚠️ No se pudieron sincronizar las notificaciones del doctor:', err);
       }

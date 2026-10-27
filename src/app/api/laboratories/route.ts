@@ -189,10 +189,10 @@ export async function POST(request: NextRequest) {
             billing_months: Number(billingMonths || 1),
             subscription_fee: Number(subscriptionFee || 50),
             discount_percentage: Number(discountPercentage || 0),
-            free_months: Number(freeMonths || 0),
+            free_months: Number(freeMonths ?? 1),
             status: 'active',
             verification_status: isPublicRegistration ? 'pending' : 'verified',
-            subscription_status: isPublicRegistration ? 'pending_payment' : 'active',
+            subscription_status: 'active',
             accepted_insurances: acceptedInsurances || [],
             payment_settings: paymentSettings || {
                 cash: { enabled: true, description: 'Pago en taquilla en efectivo (USD o Bs. a tasa BCV)' },

@@ -2,23 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { ClinicService, ClinicBranch } from '@/lib/types';
-import { getClinicServices, addClinicService, updateClinicService, deleteClinicService, getClinicBranches, getClinicAppointments, getServiceAppointmentHistory } from '@/lib/supabaseService';
+import { ClinicService } from '@/lib/types';
+import { getClinicServices, addClinicService, updateClinicService, deleteClinicService, getClinicAppointments, getServiceAppointmentHistory } from '@/lib/supabaseService';
 import { Appointment } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-// import { Textarea } from '@/components/ui/textarea'; // If textarea exists
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Plus, Pencil, Trash2, Tag, Clock, DollarSign, Building2, BarChart3 } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Tag, Clock, DollarSign, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -26,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 export function ServicesTab() {
     const { user } = useAuth();
     const { toast } = useToast();
+    const isHospitalGratuito = user?.plan === 'hospital_gratuito';
     const [services, setServices] = useState<ClinicService[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -54,7 +52,6 @@ export function ServicesTab() {
     });
     const [activePreset, setActivePreset] = useState<string>('today');
 
-    // Handle preset clicks
     const handlePresetChange = (preset: string) => {
         setActivePreset(preset);
         const today = new Date();
@@ -62,10 +59,11 @@ export function ServicesTab() {
             case 'today':
                 setDateRange({ from: today, to: today });
                 break;
-            case 'yesterday':
+            case 'yesterday': {
                 const yest = subDays(today, 1);
                 setDateRange({ from: yest, to: yest });
                 break;
+            }
             case 'week':
                 setDateRange({ from: subDays(today, 7), to: today });
                 break;
@@ -75,13 +73,11 @@ export function ServicesTab() {
         }
     };
 
-    // Handle manual picker change
     const handleDateRangeChange = (range: DateRange | undefined) => {
         setDateRange(range);
         setActivePreset('custom');
     };
 
-    // Details Sheet Filter State
     const [detailsDateRange, setDetailsDateRange] = useState<DateRange | undefined>(undefined);
     const [detailsPreset, setDetailsPreset] = useState<string>('all');
 
@@ -108,12 +104,10 @@ export function ServicesTab() {
 
     const [todaysAppointments, setTodaysAppointments] = useState<Appointment[]>([]);
 
-
     const handleViewDetails = async (service: ClinicService) => {
         setSelectedServiceForStats(service);
         setDetailsDateRange(undefined);
         setDetailsPreset('all');
-        // Fetch handled by useEffect
     };
 
     useEffect(() => {
@@ -134,27 +128,21 @@ export function ServicesTab() {
             }
         };
         fetchHistory();
-    }, [selectedServiceForStats, detailsDateRange]);
+    }, [selectedServiceForStats, detailsDateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (user?.id) {
             loadData();
         }
-    }, [user?.id, dateRange]);
+    }, [user?.id, dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const loadData = async () => {
         if (!user?.id) return;
         try {
             setLoading(true);
-
-            // Format dates for API
             const startDateStr = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
             const endDateStr = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : startDateStr;
 
-            // First fetch main data if needed (services)
-            // Then fetch filtered appointments
-
-            // Wait, reusing existing logic:
             const servicesData = await getClinicServices(user.id);
             setServices(servicesData);
 
@@ -193,13 +181,17 @@ export function ServicesTab() {
     };
 
     const addItem = () => {
-        if (!newItemName || !newItemPrice) {
-            toast({ variant: "destructive", title: "Error", description: "Completa nombre y precio del ítem." });
+        if (!newItemName || (!isHospitalGratuito && !newItemPrice)) {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: isHospitalGratuito ? "Completa el nombre del ítem." : "Completa nombre y precio del ítem."
+            });
             return;
         }
         setFormData(prev => ({
             ...prev,
-            items: [...prev.items, { name: newItemName, price: Number(newItemPrice) }]
+            items: [...prev.items, { name: newItemName, price: isHospitalGratuito ? 0 : Number(newItemPrice) }]
         }));
         setNewItemName('');
         setNewItemPrice('');
@@ -223,15 +215,17 @@ export function ServicesTab() {
                 await updateClinicService(editingService.id, {
                     name: formData.name,
                     serviceCategory: formData.serviceCategory,
-                    price: formData.price,
+                    price: isHospitalGratuito ? 0 : formData.price,
                     duration: formData.duration,
                     description: formData.description,
-                    items: formData.items
+                    items: isHospitalGratuito ? formData.items.map(i => ({ ...i, price: 0 })) : formData.items
                 });
                 toast({ title: "Servicio actualizado", description: "Los cambios se guardaron correctamente." });
             } else {
                 await addClinicService({
                     ...formData,
+                    price: isHospitalGratuito ? 0 : formData.price,
+                    items: isHospitalGratuito ? formData.items.map(i => ({ ...i, price: 0 })) : formData.items,
                     clinicId: user.id,
                     branchId: user.id,
                     isActive: true
@@ -265,8 +259,6 @@ export function ServicesTab() {
 
     const handleToggleStatus = async (service: ClinicService) => {
         const newState = !service.isActive;
-
-        // Optimistic update
         setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: newState } : s));
 
         try {
@@ -277,7 +269,6 @@ export function ServicesTab() {
             });
         } catch (error) {
             console.error('Error updating status:', error);
-            // Revert
             setServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: service.isActive } : s));
             toast({ variant: "destructive", title: "Error", description: "No se pudo cambiar el estado." });
         }
@@ -292,7 +283,11 @@ export function ServicesTab() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Servicios</h2>
-                    <p className="text-muted-foreground">Administra los servicios ofrecidos en tu clínica.</p>
+                    <p className="text-muted-foreground">
+                        {isHospitalGratuito
+                            ? 'Administra los servicios gratuitos ofrecidos a los pacientes en tu hospital / centro.'
+                            : 'Administra los servicios ofrecidos en tu clínica.'}
+                    </p>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
@@ -311,7 +306,7 @@ export function ServicesTab() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Nombre del Servicio</Label>
-                                    <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Laboratorio, Enfermería" required />
+                                    <Input id="name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Laboratorio, Enfermería, Ecografía" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="category">Categoría</Label>
@@ -321,12 +316,20 @@ export function ServicesTab() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="price">Precio Base (Opcional)</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-2.5">$</span>
-                                        <Input id="price" type="number" className="pl-6" value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })} min="0" />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">O deja en 0 si depende de los ítems sub-servicios.</p>
+                                    <Label htmlFor="price">Costo del Servicio</Label>
+                                    {isHospitalGratuito ? (
+                                        <div className="h-10 px-3 flex items-center rounded-md border border-sky-200 bg-sky-50 text-xs font-bold text-sky-800">
+                                            🏥 Servicio 100% Gratuito ($0)
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-2.5">$</span>
+                                                <Input id="price" type="number" className="pl-6" value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })} min="0" />
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">O deja en 0 si es gratuito o depende de sub-servicios.</p>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="duration">Duración Estimada (min)</Label>
@@ -346,7 +349,7 @@ export function ServicesTab() {
                                     <Badge variant="secondary" className="text-xs">Opcional</Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                    Agrega opciones específicas. Ej: Para "Laboratorio", agrega "Hemograma", "Orina Completa".
+                                    Agrega opciones específicas. Ej: Para &quot;Laboratorio&quot;, agrega &quot;Hemograma&quot;, &quot;Orina Completa&quot;.
                                 </p>
 
                                 <div className="flex gap-2 items-end">
@@ -358,15 +361,17 @@ export function ServicesTab() {
                                             onChange={(e) => setNewItemName(e.target.value)}
                                         />
                                     </div>
-                                    <div className="w-24 space-y-1">
-                                        <Label className="text-xs">Precio</Label>
-                                        <Input
-                                            type="number"
-                                            placeholder="0"
-                                            value={newItemPrice}
-                                            onChange={(e) => setNewItemPrice(e.target.value)}
-                                        />
-                                    </div>
+                                    {!isHospitalGratuito && (
+                                        <div className="w-24 space-y-1">
+                                            <Label className="text-xs">Precio</Label>
+                                            <Input
+                                                type="number"
+                                                placeholder="0"
+                                                value={newItemPrice}
+                                                onChange={(e) => setNewItemPrice(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
                                     <Button type="button" size="sm" onClick={addItem} className="mb-0.5">
                                         <Plus className="h-4 w-4" />
                                     </Button>
@@ -377,7 +382,9 @@ export function ServicesTab() {
                                         <div key={idx} className="flex items-center justify-between bg-white p-2 border rounded shadow-sm text-sm">
                                             <span>{item.name}</span>
                                             <div className="flex items-center gap-3">
-                                                <span className="font-semibold text-green-700">${item.price}</span>
+                                                <span className="font-semibold text-green-700">
+                                                    {isHospitalGratuito || item.price === 0 ? 'Gratuito' : `$${item.price}`}
+                                                </span>
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -414,7 +421,7 @@ export function ServicesTab() {
                         <CardContent className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
                             <Tag className="h-12 w-12 mb-4 opacity-50" />
                             <h3 className="text-lg font-semibold">No hay servicios registrados</h3>
-                            <p className="mb-4">Comienza agregando los servicios que ofrece tu clínica.</p>
+                            <p className="mb-4">Comienza agregando los servicios que ofrece tu institución.</p>
                             <Button variant="outline" onClick={() => handleOpenDialog()}>Agregar Servicio</Button>
                         </CardContent>
                     </Card>
@@ -445,7 +452,13 @@ export function ServicesTab() {
                                         <Clock className="h-4 w-4" /> {service.duration} min
                                     </div>
                                     <div className="flex items-center gap-1 font-semibold text-green-600">
-                                        <DollarSign className="h-4 w-4" /> {service.price}
+                                        {isHospitalGratuito || service.price === 0 ? (
+                                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">Gratuito</Badge>
+                                        ) : (
+                                            <>
+                                                <DollarSign className="h-4 w-4" /> {service.price}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <p className="text-muted-foreground text-xs line-clamp-2">{service.description || 'Sin descripción'}</p>
@@ -486,14 +499,15 @@ export function ServicesTab() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Servicio</TableHead>
-                                    <TableHead className="text-center">Pacientes</TableHead>
-                                    <TableHead className="text-right">Ingresos</TableHead>
+                                    <TableHead className="text-center">Pacientes Atendidos</TableHead>
+                                    {!isHospitalGratuito && (
+                                        <TableHead className="text-right">Ingresos</TableHead>
+                                    )}
                                     <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {services.map((service) => {
-                                    // Match by clinicServiceId or if name matches (fallback)
                                     const serviceAppts = todaysAppointments.filter(a => a.clinicServiceId === service.id || a.serviceName === service.name);
                                     const income = serviceAppts.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
 
@@ -508,9 +522,11 @@ export function ServicesTab() {
                                             <TableCell className="text-center">
                                                 <Badge variant="secondary">{serviceAppts.length}</Badge>
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-green-700">
-                                                ${income.toLocaleString('en-US')}
-                                            </TableCell>
+                                            {!isHospitalGratuito && (
+                                                <TableCell className="text-right font-bold text-green-700">
+                                                    ${income.toLocaleString('en-US')}
+                                                </TableCell>
+                                            )}
                                             <TableCell className="text-right">
                                                 <Button size="sm" variant="outline" onClick={() => handleViewDetails(service)}>
                                                     Ver Detalles
@@ -531,12 +547,11 @@ export function ServicesTab() {
                     <SheetHeader>
                         <SheetTitle>Historial de {selectedServiceForStats?.name}</SheetTitle>
                         <SheetDescription>
-                            Historial completo de citas y rendimiento.
+                            Historial completo de citas y atención.
                         </SheetDescription>
                     </SheetHeader>
 
                     <div className="py-4 space-y-4">
-                        {/* Details Filter UI */}
                         <div className="flex flex-col sm:flex-row items-center gap-2 justify-between">
                             <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1">
                                 <Button variant={detailsPreset === 'all' ? "secondary" : "ghost"} size="sm" onClick={() => handleDetailsPresetChange('all')} className="text-xs">Todos</Button>
@@ -559,16 +574,18 @@ export function ServicesTab() {
                                             <div className="text-2xl font-bold">{serviceHistory.length}</div>
                                         </CardContent>
                                     </Card>
-                                    <Card>
-                                        <CardHeader className="p-4 pb-2">
-                                            <CardTitle className="text-sm font-medium">Ingresos</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="p-4 pt-0">
-                                            <div className="text-2xl font-bold">
-                                                ${serviceHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('en-US')}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                    {!isHospitalGratuito && (
+                                        <Card>
+                                            <CardHeader className="p-4 pb-2">
+                                                <CardTitle className="text-sm font-medium">Ingresos</CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="p-4 pt-0">
+                                                <div className="text-2xl font-bold">
+                                                    ${serviceHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString('en-US')}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
                                 </div>
 
                                 <div className="border rounded-md">
@@ -578,13 +595,13 @@ export function ServicesTab() {
                                                 <TableHead>Fecha</TableHead>
                                                 <TableHead>Paciente</TableHead>
                                                 <TableHead>Estado</TableHead>
-                                                <TableHead className="text-right">Monto</TableHead>
+                                                {!isHospitalGratuito && <TableHead className="text-right">Monto</TableHead>}
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {serviceHistory.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
+                                                    <TableCell colSpan={isHospitalGratuito ? 3 : 4} className="text-center py-4 text-muted-foreground">
                                                         No hay registros en este periodo.
                                                     </TableCell>
                                                 </TableRow>
@@ -599,7 +616,9 @@ export function ServicesTab() {
                                                         <TableCell>
                                                             <Badge variant="outline">{appt.attendance || 'Pendiente'}</Badge>
                                                         </TableCell>
-                                                        <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('en-US')}</TableCell>
+                                                        {!isHospitalGratuito && (
+                                                            <TableCell className="text-right">${(appt.totalPrice || 0).toLocaleString('en-US')}</TableCell>
+                                                        )}
                                                     </TableRow>
                                                 ))
                                             )}
@@ -611,8 +630,6 @@ export function ServicesTab() {
                     </div>
                 </SheetContent>
             </Sheet>
-
         </div>
     );
 }
-

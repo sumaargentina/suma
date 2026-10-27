@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import Link from "next/link";
-import { useSearchParams, useRouter } from 'next/navigation';
+import Image from "next/image";
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useSettings } from '@/lib/settings';
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Building2, CheckCircle2, MapPin, Eye, EyeOff, X } from "lucide-react";
+import { ArrowLeft, Loader2, Building2, Eye, EyeOff, Gift } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
@@ -30,10 +30,10 @@ const LocationPicker = dynamic(
 
 function RegisterClinicContent() {
     const { registerClinic } = useAuth();
-    const { cities, getCountryPricing } = useSettings();
+    const { getCountryPricing } = useSettings();
     const { toast } = useToast();
     const searchParams = useSearchParams();
-    const initialMonths = parseInt(searchParams.get('months') || '12'); // Default to 12
+    const initialMonths = parseInt(searchParams.get('months') || '1');
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -51,7 +51,7 @@ function RegisterClinicContent() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [billingMonths, setBillingMonths] = useState(initialMonths);
+    const [billingMonths, setBillingMonths] = useState([1, 3, 6, 12].includes(initialMonths) ? initialMonths : 1);
     const [isLoading, setIsLoading] = useState(false);
 
     const pricing = getCountryPricing(locationData.country);
@@ -107,8 +107,8 @@ function RegisterClinicContent() {
             });
 
             toast({
-                title: "¡Cuenta Creada!",
-                description: `Registro exitoso. Se ha generado una orden de pago por $${totalToPay.toLocaleString('en-US')} USD.`,
+                title: "¡Cuenta de Clínica Creada!",
+                description: `Disfruta de tu 1er Mes Gratis. Luego aplica tu ciclo seleccionado ($${totalToPay.toLocaleString('en-US')} USD).`,
             });
 
         } catch (error: any) {
@@ -129,25 +129,51 @@ function RegisterClinicContent() {
             {/* Sidebar / Info Section */}
             <div className="hidden md:flex flex-col w-1/3 bg-slate-900 text-white p-12 justify-between">
                 <div>
-                    <Link href="/" className="flex items-center gap-2 mb-8">
-                        <Building2 className="h-8 w-8 text-green-500" />
-                        <span className="font-bold text-2xl">Suma Clínica</span>
+                    <Link href="/landing-clinica" className="inline-flex items-center gap-2 text-slate-300 hover:text-white text-sm mb-6 transition-colors">
+                        <ArrowLeft className="h-4 w-4" />
+                        Volver a Planes de Clínica
                     </Link>
-                    <h2 className="text-3xl font-bold mb-6">Estás a un paso de transformar tu gestión</h2>
-                    <p className="text-slate-300 mb-8">
-                        Unete a las más de 500 clínicas que confían en nosotros.
+
+                    <div className="mb-8 flex items-center gap-3">
+                        <Link href="/" className="bg-white px-4 py-2 rounded-2xl shadow-md inline-flex items-center">
+                            <Image
+                                src="/images/logo_suma.png"
+                                alt="SUMA Logo"
+                                width={150}
+                                height={52}
+                                className="h-10 w-auto object-contain"
+                                priority
+                            />
+                        </Link>
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-4">
+                        <Building2 className="h-7 w-7 text-green-500" />
+                        <span className="font-bold text-2xl">SUMA Clínica</span>
+                    </div>
+                    <h2 className="text-3xl font-bold mb-4">Estás a un paso de transformar tu gestión</h2>
+                    <p className="text-slate-300 mb-6">
+                        Únete a las clínicas aliadas que confían en nuestra plataforma.
                     </p>
 
                     <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                        <div className="mb-4 bg-green-500/20 border border-green-400/40 rounded-lg p-3 flex items-center gap-2 text-green-300 text-xs font-bold">
+                            <Gift className="h-4 w-4 text-green-400 shrink-0" />
+                            <span>¡1er Mes 100% Gratis ($0 USD) Incluido!</span>
+                        </div>
                         <h3 className="text-lg font-bold mb-4 text-green-400">Resumen de tu Plan</h3>
                         <div className="space-y-3 text-sm">
+                            <div className="flex justify-between text-green-300 font-bold">
+                                <span>Primer Mes de Prueba</span>
+                                <span>GRATIS ($0 USD)</span>
+                            </div>
                             <div className="flex justify-between">
-                                <span>Plan Integral</span>
+                                <span>Plan Integral (luego del 1er mes)</span>
                                 <span className="font-mono">${basePrice} USD/mes ({pricing.flag})</span>
                             </div>
                             <div className="flex justify-between">
-                                <span>Duración</span>
-                                <span>{billingMonths} Meses</span>
+                                <span>Ciclo Seleccionado</span>
+                                <span>{billingMonths} {billingMonths === 1 ? 'Mes' : 'Meses'}</span>
                             </div>
                             {discount > 0 && (
                                 <div className="flex justify-between text-green-400 font-bold">
@@ -156,15 +182,15 @@ function RegisterClinicContent() {
                                 </div>
                             )}
                             <Separator className="bg-slate-600 my-2" />
-                            <div className="flex justify-between text-lg font-bold">
-                                <span>Total a Pagar</span>
+                            <div className="flex justify-between text-base font-bold">
+                                <span>Monto del Plan (post mes gratis)</span>
                                 <span>${totalToPay.toLocaleString('en-US')} USD ({pricing.currencySymbol} {(totalToPay * pricing.exchangeRate).toLocaleString('es-VE', { maximumFractionDigits: 2 })} a {pricing.rateLabel})</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="text-sm text-slate-500">
-                    © 2024 Suma Salud. Cancelación flexible.
+                    © SUMA Salud. Primer mes gratis incluido.
                 </div>
             </div>
 
@@ -172,12 +198,27 @@ function RegisterClinicContent() {
             <div className="flex-1 flex items-center justify-center p-4">
                 <Card className="mx-auto max-w-md w-full shadow-lg border-none">
                     <CardHeader>
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded uppercase">Plan Integral</span>
+                        <div className="flex justify-center mb-4">
+                            <Link href="/">
+                                <Image
+                                    src="/images/logo_suma.png"
+                                    alt="SUMA Logo"
+                                    width={160}
+                                    height={60}
+                                    className="h-12 w-auto object-contain"
+                                    priority
+                                />
+                            </Link>
+                        </div>
+                        <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                            <span className="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded uppercase">Plan Integral</span>
+                            <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                                🎁 1er Mes Gratis
+                            </span>
                         </div>
                         <CardTitle className="text-2xl font-bold">Configura tu Cuenta</CardTitle>
                         <CardDescription>
-                            Completa los datos de la institución para finalizar.
+                            Completa los datos de tu clínica para activar tu 1er mes gratis y configurar tu plan.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -311,7 +352,7 @@ function RegisterClinicContent() {
                             </div>
 
                             <div className="space-y-3 pt-4">
-                                <Label>Ciclo de Facturación Seleccionado</Label>
+                                <Label>Plan luego de tu 1er Mes Gratis</Label>
                                 <div className="grid grid-cols-4 gap-2">
                                     {[1, 3, 6, 12].map((m) => (
                                         <div
@@ -328,9 +369,9 @@ function RegisterClinicContent() {
                                 </div>
                             </div>
 
-                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg mt-6" disabled={isLoading}>
+                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-12 text-base font-bold mt-6" disabled={isLoading}>
                                 {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-                                Pagar ${totalToPay.toLocaleString('en-US')} USD y Crear Cuenta
+                                Activar 1er Mes Gratis y Crear Cuenta
                             </Button>
                         </form>
                     </CardContent>

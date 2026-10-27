@@ -42,6 +42,11 @@ export async function GET(request: NextRequest) {
                 evolution,
                 notes,
                 created_at,
+                campaign_id,
+                guest_patient_name,
+                guest_patient_cedula,
+                guest_patient_email,
+                guest_patient_phone,
                 doctors (
                     id,
                     name,
@@ -67,24 +72,29 @@ export async function GET(request: NextRequest) {
         }
 
         // Consultar datos básicos del paciente
-        let patientInfo: { name: string; cedula: string; email?: string; city?: string } = {
-            name: 'Paciente',
-            cedula: 'N/A'
+        let patientInfo: { name: string; cedula: string; email?: string; phone?: string; city?: string; isRegistered?: boolean } = {
+            name: record.guest_patient_name || 'Paciente',
+            cedula: record.guest_patient_cedula || 'N/A',
+            email: record.guest_patient_email || undefined,
+            phone: record.guest_patient_phone || undefined,
+            isRegistered: Boolean(record.patient_id),
         };
 
         if (record.patient_id) {
             const { data: patient } = await supabaseAdmin
                 .from('patients')
-                .select('name, cedula, email, city')
+                .select('name, cedula, email, phone, city')
                 .eq('id', record.patient_id)
                 .maybeSingle();
 
             if (patient) {
                 patientInfo = {
-                    name: patient.name || 'Paciente',
-                    cedula: patient.cedula || 'N/A',
-                    email: patient.email,
-                    city: patient.city
+                    name: patient.name || record.guest_patient_name || 'Paciente',
+                    cedula: patient.cedula || record.guest_patient_cedula || 'N/A',
+                    email: patient.email || record.guest_patient_email || undefined,
+                    phone: patient.phone || record.guest_patient_phone || undefined,
+                    city: patient.city,
+                    isRegistered: true,
                 };
             }
         }
@@ -92,11 +102,39 @@ export async function GET(request: NextRequest) {
         const recipeCode = `SUMA-REC-${record.id.slice(0, 8).toUpperCase()}`;
         const reportCode = `SUMA-INF-${record.id.slice(0, 8).toUpperCase()}`;
 
+        // Si el récipe proviene de una Jornada de Salud, consultar quién organizó el evento
+        let campaignInfo: {
+            id: string;
+            title: string;
+            organizerName: string;
+            organizerRole: string;
+            organizerLogo?: string | null;
+        } | null = null;
+
+        if (record.campaign_id) {
+            const { data: camp } = await supabaseAdmin
+                .from('health_campaigns')
+                .select('id, title, organizer_name, organizer_role, organizer_logo')
+                .eq('id', record.campaign_id)
+                .maybeSingle();
+
+            if (camp) {
+                campaignInfo = {
+                    id: camp.id,
+                    title: camp.title,
+                    organizerName: camp.organizer_name,
+                    organizerRole: camp.organizer_role,
+                    organizerLogo: camp.organizer_logo,
+                };
+            }
+        }
+
         return NextResponse.json({
             success: true,
             verified: true,
             recipeCode,
             reportCode,
+            campaign: campaignInfo,
             record: {
                 id: record.id,
                 doctorId: record.doctor_id,

@@ -424,6 +424,9 @@ export default function RegisterDoctorPage() {
           <CardDescription>
             Únete a nuestra plataforma y empieza a recibir pacientes.
           </CardDescription>
+          <div className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3.5 py-1 text-xs font-bold text-emerald-800">
+            🎁 ¡Primer Mes 100% Gratis Incluido!
+          </div>
           {referredBySellerName && (
             <div className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-teal-50 border border-teal-200 px-3.5 py-1.5 text-xs font-medium text-teal-800">
               <Stethoscope className="h-3.5 w-3.5 text-teal-600" />
