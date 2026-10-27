@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useAdminNotifications } from '@/lib/admin-notifications';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LayoutDashboard, Stethoscope, Briefcase, Users, DollarSign, Building2, FlaskConical, Pill, Megaphone, LifeBuoy, Settings, ClipboardList } from 'lucide-react';
 import { OverviewTab } from './tabs/overview-tab';
 import { DoctorsTab } from './tabs/doctors-tab';
 import { SellersTab } from './tabs/sellers-tab';
@@ -17,28 +17,34 @@ import { ClinicsTab } from './tabs/clinics-tab';
 import { PharmaciesTab } from './tabs/pharmacies-tab';
 import { LaboratoriesTab } from './tabs/laboratories-tab';
 import { Skeleton } from '../ui/skeleton';
-import { Button } from '../ui/button';
 import { BcvRateWidget } from './bcv-rate-widget';
+import { cn } from '@/lib/utils';
+
+const ADMIN_TABS = [
+  { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
+  { id: 'doctors', label: 'Médicos', icon: Stethoscope },
+  { id: 'clinics', label: 'Clínicas y Hospitales', icon: Building2 },
+  { id: 'laboratories', label: 'Laboratorios', icon: FlaskConical },
+  { id: 'pharmacies', label: 'Farmacias', icon: Pill },
+  { id: 'sellers', label: 'Vendedoras', icon: Briefcase },
+  { id: 'patients', label: 'Pacientes', icon: Users },
+  { id: 'finances', label: 'Finanzas', icon: DollarSign },
+  { id: 'marketing', label: 'Marketing', icon: Megaphone },
+  { id: 'support', label: 'Soporte', icon: LifeBuoy },
+  { id: 'settings', label: 'Configuración', icon: Settings },
+  { id: 'audit', label: 'Historial', icon: ClipboardList },
+];
 
 export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?: string }) {
   const { user, loading } = useAuth();
   const { } = useAdminNotifications();
   const router = useRouter();
 
-  // Verificar si el usuario es administrador
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
       router.push('/auth/login');
     }
   }, [user, loading, router]);
-
-  // Actualizar notificaciones cuando el usuario cambie
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      // Las notificaciones del administrador se actualizan automáticamente cada 30 segundos
-      // desde el AdminNotificationProvider
-    }
-  }, [user]);
 
   if (loading) {
     return (
@@ -68,7 +74,6 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
     );
   }
 
-  // Renderizar el contenido específico según el tab actual
   const renderContent = () => {
     switch (currentTab) {
       case 'overview':
@@ -99,32 +104,42 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
   };
 
   return (
-    <div className="flex-1 container py-12">
+    <div className="flex-1 container py-8 md:py-10">
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Panel de Administración</h1>
-            <p className="text-muted-foreground">
-              Gestiona tu plataforma médica desde aquí.
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Panel de Administración</h1>
+            <p className="text-sm text-muted-foreground">
+              Gestiona médicos, clínicas, hospitales, laboratorios, farmacias y finanzas desde aquí.
             </p>
           </div>
-          <div className="shrink-0 flex items-center">
+          <div className="shrink-0 flex items-center md:hidden">
             <BcvRateWidget />
           </div>
         </div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <Button variant={currentTab === 'overview' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=overview')}>Resumen</Button>
-          <Button variant={currentTab === 'doctors' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=doctors')}>Médicos</Button>
-          <Button variant={currentTab === 'sellers' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=sellers')}>Vendedoras</Button>
-          <Button variant={currentTab === 'patients' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=patients')}>Pacientes</Button>
-          <Button variant={currentTab === 'finances' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=finances')}>Finanzas</Button>
-          <Button variant={currentTab === 'clinics' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=clinics')}>Clínicas</Button>
-          <Button variant={currentTab === 'laboratories' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=laboratories')}>Laboratorios</Button>
-          <Button variant={currentTab === 'pharmacies' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=pharmacies')}>Farmacias</Button>
-          <Button variant={currentTab === 'marketing' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=marketing')}>Marketing</Button>
-          <Button variant={currentTab === 'support' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=support')}>Soporte</Button>
-          <Button variant={currentTab === 'settings' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=settings')}>Configuración</Button>
-          <Button variant={currentTab === 'audit' ? 'default' : 'outline'} onClick={() => router.push('/admin/dashboard?view=audit')}>Historial</Button>
+
+        {/* Barra de acceso rápido con diseño cápsula unificado */}
+        <div className="mt-5 flex flex-wrap items-center gap-1.5 bg-slate-100/90 dark:bg-slate-900/90 p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          {ADMIN_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = currentTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => router.push(`/admin/dashboard?view=${tab.id}`)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200",
+                  active
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/80"
+                )}
+              >
+                <Icon className={cn("h-3.5 w-3.5", active ? "text-white" : "text-teal-600")} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

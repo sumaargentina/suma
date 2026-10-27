@@ -68,6 +68,17 @@ import {
   Building2,
   Trash2,
   CheckCheck,
+  CalendarDays,
+  ChevronDown,
+  MapPin,
+  Video,
+  ShieldCheck,
+  Pill,
+  Landmark,
+  Settings,
+  FlaskConical,
+  Megaphone,
+  Briefcase,
 } from 'lucide-react';
 import { MobileMenuBackground } from "@/components/MobileMenuBackground";
 import { WorkspaceSwitcherHeader } from "@/components/doctor/workspace-switcher-header";
@@ -340,6 +351,8 @@ export function Header() {
   const { adminNotifications, adminUnreadCount, markAdminNotificationAsRead, markAdminNotificationsAsRead, clearReadAdminNotifications } = useAdminNotifications();
   const { unreadChatCount } = useChatNotifications();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentView = searchParams.get('view') || '';
 
   const [isMounted, setIsMounted] = useState(false);
 
@@ -413,20 +426,23 @@ export function Header() {
 
 
   const patientNavLinks = [
-    { href: "/find-a-doctor", label: "Buscar Médico" },
-    { href: "/jornadas", label: "Jornadas de Salud" },
-    { href: "/ai-assistant", label: "Asistente IA" },
+    { href: "/find-a-doctor", label: "Buscar Médico", icon: Search },
+    { href: "/jornadas", label: "Jornadas de Salud", icon: Heart },
+    { href: "/ai-assistant", label: "Asistente IA", icon: Bot },
   ];
 
   const adminNavLinks = [
-    { href: "/admin/dashboard?view=overview", label: "General" },
-    { href: "/admin/dashboard?view=doctors", label: "Médicos" },
-    { href: "/admin/dashboard?view=sellers", label: "Vendedoras" },
-    { href: "/admin/dashboard?view=patients", label: "Pacientes" },
-    { href: "/admin/dashboard?view=finances", label: "Finanzas" },
-    { href: "/admin/dashboard?view=marketing", label: "Marketing" },
-    { href: "/admin/dashboard?view=support", label: "Soporte" },
-    { href: "/admin/dashboard?view=settings", label: "Configuración" },
+    { href: "/admin/dashboard?view=overview", view: "overview", label: "Resumen", icon: LayoutDashboard },
+    { href: "/admin/dashboard?view=doctors", view: "doctors", label: "Médicos", icon: Stethoscope },
+    { href: "/admin/dashboard?view=clinics", view: "clinics", label: "Clínicas y Hospitales", icon: Building2 },
+    { href: "/admin/dashboard?view=laboratories", view: "laboratories", label: "Laboratorios", icon: FlaskConical },
+    { href: "/admin/dashboard?view=pharmacies", view: "pharmacies", label: "Farmacias", icon: Pill },
+    { href: "/admin/dashboard?view=sellers", view: "sellers", label: "Vendedoras", icon: Briefcase },
+    { href: "/admin/dashboard?view=patients", view: "patients", label: "Pacientes", icon: Users },
+    { href: "/admin/dashboard?view=finances", view: "finances", label: "Finanzas", icon: DollarSign },
+    { href: "/admin/dashboard?view=marketing", view: "marketing", label: "Marketing", icon: Megaphone },
+    { href: "/admin/dashboard?view=support", view: "support", label: "Soporte", icon: LifeBuoy },
+    { href: "/admin/dashboard?view=settings", view: "settings", label: "Configuración", icon: Settings },
   ];
 
   const isClinicDoctor = user?.role === 'doctor' && (
@@ -436,32 +452,49 @@ export function Header() {
     (!activeWorkspace && user?.isClinicEmployee)
   );
 
-  const doctorNavLinks = (isClinicDoctor
+  const doctorPrimaryLinks = isClinicDoctor
     ? [
-        { href: "/doctor/dashboard?view=appointments", label: "Citas" },
-        { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
-        { href: "/doctor/dashboard?view=health-campaigns", label: "Jornadas de Salud" },
-        ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", label: "Farmacias" }] : []),
-        { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
+        { href: "/doctor/dashboard?view=appointments", view: "appointments", label: "Citas", icon: CalendarDays },
+        { href: "/doctor/dashboard?view=patients", view: "patients", label: "Pacientes", icon: Users },
+        { href: "/doctor/dashboard?view=health-campaigns", view: "health-campaigns", label: "Jornadas", icon: Heart },
+        ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", view: "pharmacies", label: "Farmacias", icon: Pill }] : []),
+        { href: "/doctor/dashboard?view=chat", view: "chat", label: "Chat", icon: MessageSquare, unreadCount: unreadChatCount },
+        { href: "/doctor/dashboard?view=profile", view: "profile", label: "Mi Perfil", icon: User },
       ]
     : [
-        { href: "/doctor/dashboard?view=appointments", label: "Citas" },
-        { href: "/doctor/dashboard?view=patients", label: "Pacientes" },
-        { href: "/doctor/dashboard?view=health-campaigns", label: "Jornadas de Salud" },
-        { href: "/doctor/dashboard?view=finances", label: "Finanzas" },
-        { href: "/doctor/dashboard?view=addresses", label: "Consultorios" },
-        { href: "/doctor/dashboard?view=online-consultation", label: "Consultas Online" },
-        ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", label: "Farmacias y Patrocinios" }] : []),
-        { href: "/doctor/dashboard?view=chat", label: "Chat", unreadCount: unreadChatCount },
-        { href: "/doctor/dashboard?view=insurances", label: "Coberturas" },
-      ]);
+        { href: "/doctor/dashboard?view=appointments", view: "appointments", label: "Citas", icon: CalendarDays },
+        { href: "/doctor/dashboard?view=patients", view: "patients", label: "Pacientes", icon: Users },
+        { href: "/doctor/dashboard?view=health-campaigns", view: "health-campaigns", label: "Jornadas", icon: Heart },
+        { href: "/doctor/dashboard?view=finances", view: "finances", label: "Finanzas", icon: DollarSign },
+        { href: "/doctor/dashboard?view=chat", view: "chat", label: "Chat", icon: MessageSquare, unreadCount: unreadChatCount },
+      ];
+
+  const doctorPracticeGroupLinks = [
+    { href: "/doctor/dashboard?view=addresses", view: "addresses", label: "Consultorios y Sedes", icon: MapPin },
+    { href: "/doctor/dashboard?view=online-consultation", view: "online-consultation", label: "Consultas Online", icon: Video },
+    { href: "/doctor/dashboard?view=insurances", view: "insurances", label: "Coberturas y Seguros", icon: ShieldCheck },
+    ...(doctorCapabilities.hasPrescription ? [{ href: "/doctor/dashboard?view=pharmacies", view: "pharmacies", label: "Farmacias y Patrocinios", icon: Pill }] : []),
+  ];
+
+  const doctorAccountGroupLinks = [
+    { href: "/doctor/dashboard?view=profile", view: "profile", label: "Mi Perfil Profesional", icon: User },
+    { href: "/doctor/dashboard?view=bank-details", view: "bank-details", label: "Cuentas Bancarias", icon: Landmark },
+    { href: "/doctor/dashboard?view=coupons", view: "coupons", label: "Cupones de Descuento", icon: Ticket },
+    { href: "/doctor/dashboard?view=subscription", view: "subscription", label: "Suscripción SUMA", icon: CreditCard },
+    { href: "/doctor/dashboard?view=support", view: "support", label: "Soporte y Ayuda", icon: LifeBuoy },
+  ];
+
+  // Mantener lista plana para el drawer móvil
+  const doctorNavLinks: Array<{ href: string; view: string; label: string; icon: any; unreadCount?: number }> = isClinicDoctor
+    ? doctorPrimaryLinks
+    : [...doctorPrimaryLinks, ...doctorPracticeGroupLinks];
 
   const sellerNavLinks = [
-    { href: "/seller/dashboard?view=referrals", label: "Mis Referidos" },
-    { href: "/seller/dashboard?view=finances", label: "Finanzas" },
-    { href: "/seller/dashboard?view=accounts", label: "Cuentas" },
-    { href: "/seller/dashboard?view=marketing", label: "Marketing" },
-    { href: "/seller/dashboard?view=support", label: "Soporte" },
+    { href: "/seller/dashboard?view=referrals", view: "referrals", label: "Mis Referidos", icon: Users },
+    { href: "/seller/dashboard?view=finances", view: "finances", label: "Finanzas", icon: DollarSign },
+    { href: "/seller/dashboard?view=accounts", view: "accounts", label: "Cuentas", icon: Landmark },
+    { href: "/seller/dashboard?view=marketing", view: "marketing", label: "Marketing", icon: Megaphone },
+    { href: "/seller/dashboard?view=support", view: "support", label: "Soporte", icon: LifeBuoy },
   ];
 
   const dashboardHref = user?.role === 'doctor'
@@ -470,13 +503,27 @@ export function Header() {
       ? '/seller/dashboard?view=referrals'
       : user?.role === 'admin'
         ? '/admin/dashboard?view=overview'
-        : '/dashboard';
+        : user?.role === 'clinic' || user?.role === 'secretary'
+          ? '/clinic/dashboard'
+          : user?.role === 'pharmacy'
+            ? '/pharmacy/dashboard'
+            : user?.role === 'laboratory'
+              ? '/laboratory/dashboard'
+              : '/dashboard';
 
   const isPatient = user?.role === 'patient';
   const isAdmin = user?.role === 'admin';
   const isDoctor = user?.role === 'doctor';
   const isSeller = user?.role === 'seller';
   const isClinicOrSecretary = user?.role === 'clinic' || user?.role === 'secretary';
+
+  const navPillClass = (active: boolean) =>
+    cn(
+      "relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 whitespace-nowrap select-none",
+      active
+        ? "bg-teal-600 text-white shadow-xs"
+        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-800"
+    );
 
   // Prevent hydration mismatch by rendering a safe version first
   if (!isMounted) {
@@ -485,11 +532,9 @@ export function Header() {
         <div className="container flex h-16 items-center">
           <div className="flex items-center gap-2 font-bold text-lg">
             <Link href="/" className="flex items-center gap-2">
-              <Stethoscope className="h-6 w-6 text-primary" />
-              <span className="font-headline">SUMA</span>
+              <img src="/images/logo_suma.png" alt="SUMA" className="h-8 w-auto object-contain" />
             </Link>
           </div>
-          {/* Static buttons placeholder or empty */}
           <div className="hidden md:flex ml-auto items-center gap-1">
             <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse"></div>
           </div>
@@ -498,84 +543,287 @@ export function Header() {
     );
   }
 
+  const activeDoctorView = currentView || 'appointments';
+  const activeAdminView = currentView || 'overview';
+  const activeSellerView = currentView || 'referrals';
+
+  const isDoctorPracticeGroupActive = doctorPracticeGroupLinks.some(l => l.view === activeDoctorView);
+  const isDoctorAccountGroupActive = doctorAccountGroupLinks.some(l => l.view === activeDoctorView);
+
+  const adminAlliesLinks = [
+    { href: "/admin/dashboard?view=clinics", view: "clinics", label: "Clínicas y Hospitales", icon: Building2 },
+    { href: "/admin/dashboard?view=laboratories", view: "laboratories", label: "Laboratorios", icon: FlaskConical },
+    { href: "/admin/dashboard?view=pharmacies", view: "pharmacies", label: "Farmacias", icon: Pill },
+  ];
+  const adminUsersLinks = [
+    { href: "/admin/dashboard?view=sellers", view: "sellers", label: "Vendedoras", icon: Briefcase },
+    { href: "/admin/dashboard?view=patients", view: "patients", label: "Pacientes", icon: Users },
+  ];
+  const adminSystemLinks = [
+    { href: "/admin/dashboard?view=marketing", view: "marketing", label: "Marketing", icon: Megaphone },
+    { href: "/admin/dashboard?view=support", view: "support", label: "Soporte", icon: LifeBuoy },
+    { href: "/admin/dashboard?view=settings", view: "settings", label: "Configuración", icon: Settings },
+    { href: "/admin/dashboard?view=audit", view: "audit", label: "Historial / Auditoría", icon: ClipboardList },
+  ];
+
+  const isAdminAlliesActive = adminAlliesLinks.some(l => l.view === activeAdminView);
+  const isAdminUsersActive = adminUsersLinks.some(l => l.view === activeAdminView);
+  const isAdminSystemActive = adminSystemLinks.some(l => l.view === activeAdminView);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between gap-2 px-4 max-w-7xl">
-        <div className="flex items-center gap-2 font-bold text-lg shrink-0">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Stethoscope className="h-6 w-6 text-primary" />
-            <span className="font-headline">SUMA</span>
+    <header className="sticky top-0 z-50 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md shadow-2xs">
+      <div className="container flex h-16 items-center justify-between gap-3 px-4 max-w-7xl">
+        {/* Brand Logo */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-85 transition-opacity">
+            <img
+              src="/images/logo_suma.png"
+              alt="SUMA Logo"
+              className="h-9 w-auto object-contain"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
           </Link>
         </div>
 
-        {/* Center / Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 flex-nowrap overflow-x-auto no-scrollbar mx-2">
-          {user && user.role === 'admin' && (
-            pathname.startsWith('/admin') ? (
-              adminNavLinks.map((link) => (
-                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
-                  <Link href={link.href}>{link.label}</Link>
-                </Button>
-              ))
-            ) : (
-              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
-                <Link href="/admin/dashboard?view=overview">
-                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
-                  Panel Administrador
-                </Link>
-              </Button>
-            )
-          )}
+        {/* Unified Aesthetic Pill Menu for ALL Profiles (Zero Scrollbar) */}
+        <nav className="hidden md:flex items-center justify-center flex-1 mx-2">
+          <div className="inline-flex items-center gap-1 bg-slate-100/90 dark:bg-slate-900/90 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+            {/* 1. PERFIL MÉDICO EN SU PANEL */}
+            {user && user.role === 'doctor' && pathname.startsWith('/doctor') && (
+              <>
+                {doctorPrimaryLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = activeDoctorView === link.view;
+                  return (
+                    <Link key={link.href} href={link.href} className={navPillClass(isActive)}>
+                      <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-teal-600")} />
+                      <span>{link.label}</span>
+                      {link.unreadCount !== undefined && link.unreadCount > 0 && (
+                        <span className="ml-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                          {link.unreadCount}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
 
-          {user && user.role === 'doctor' && (
-            pathname.startsWith('/doctor') ? (
-              doctorNavLinks.map((link) => (
-                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="relative text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9 whitespace-nowrap">
-                  <Link href={link.href}>
-                    {link.label}
-                    {link.unreadCount !== undefined && link.unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
-                        {link.unreadCount}
-                      </span>
-                    )}
+                {!isClinicDoctor && (
+                  <>
+                    {/* Grupo Consultorio */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className={navPillClass(isDoctorPracticeGroupActive)}>
+                          <Building2 className={cn("h-3.5 w-3.5", isDoctorPracticeGroupActive ? "text-white" : "text-teal-600")} />
+                          <span>Consultorio</span>
+                          <ChevronDown className="h-3.5 w-3.5 opacity-75" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="center" className="w-56 p-1.5 rounded-xl shadow-lg border-slate-200">
+                        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate-400 px-2 py-1">
+                          Servicios y Atención
+                        </DropdownMenuLabel>
+                        {doctorPracticeGroupLinks.map((item) => {
+                          const ItemIcon = item.icon;
+                          const active = activeDoctorView === item.view;
+                          return (
+                            <DropdownMenuItem key={item.href} asChild className={cn("rounded-lg cursor-pointer py-2", active && "bg-teal-50 text-teal-800 font-semibold")}>
+                              <Link href={item.href} className="flex items-center gap-2.5">
+                                <ItemIcon className="h-4 w-4 text-teal-600" />
+                                <span>{item.label}</span>
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Grupo Administración y Cuenta */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className={navPillClass(isDoctorAccountGroupActive)}>
+                          <Settings className={cn("h-3.5 w-3.5", isDoctorAccountGroupActive ? "text-white" : "text-teal-600")} />
+                          <span>Gestión</span>
+                          <ChevronDown className="h-3.5 w-3.5 opacity-75" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="center" className="w-56 p-1.5 rounded-xl shadow-lg border-slate-200">
+                        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate-400 px-2 py-1">
+                          Administración de Cuenta
+                        </DropdownMenuLabel>
+                        {doctorAccountGroupLinks.map((item) => {
+                          const ItemIcon = item.icon;
+                          const active = activeDoctorView === item.view;
+                          return (
+                            <DropdownMenuItem key={item.href} asChild className={cn("rounded-lg cursor-pointer py-2", active && "bg-teal-50 text-teal-800 font-semibold")}>
+                              <Link href={item.href} className="flex items-center gap-2.5">
+                                <ItemIcon className="h-4 w-4 text-teal-600" />
+                                <span>{item.label}</span>
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* 2. PERFIL ADMINISTRADOR EN SU PANEL */}
+            {user && user.role === 'admin' && pathname.startsWith('/admin') && (
+              <>
+                <Link href="/admin/dashboard?view=overview" className={navPillClass(activeAdminView === 'overview')}>
+                  <LayoutDashboard className={cn("h-3.5 w-3.5", activeAdminView === 'overview' ? "text-white" : "text-teal-600")} />
+                  <span>Resumen</span>
+                </Link>
+                <Link href="/admin/dashboard?view=doctors" className={navPillClass(activeAdminView === 'doctors')}>
+                  <Stethoscope className={cn("h-3.5 w-3.5", activeAdminView === 'doctors' ? "text-white" : "text-teal-600")} />
+                  <span>Médicos</span>
+                </Link>
+
+                {/* Aliados B2B */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className={navPillClass(isAdminAlliesActive)}>
+                      <Building2 className={cn("h-3.5 w-3.5", isAdminAlliesActive ? "text-white" : "text-teal-600")} />
+                      <span>Aliados B2B</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-75" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="w-56 p-1.5 rounded-xl shadow-lg border-slate-200">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate-400 px-2 py-1">
+                      Instituciones y Sedes
+                    </DropdownMenuLabel>
+                    {adminAlliesLinks.map((item) => {
+                      const ItemIcon = item.icon;
+                      const active = activeAdminView === item.view;
+                      return (
+                        <DropdownMenuItem key={item.href} asChild className={cn("rounded-lg cursor-pointer py-2", active && "bg-teal-50 text-teal-800 font-semibold")}>
+                          <Link href={item.href} className="flex items-center gap-2.5">
+                            <ItemIcon className="h-4 w-4 text-teal-600" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Usuarios */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className={navPillClass(isAdminUsersActive)}>
+                      <Users className={cn("h-3.5 w-3.5", isAdminUsersActive ? "text-white" : "text-teal-600")} />
+                      <span>Usuarios</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-75" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="w-52 p-1.5 rounded-xl shadow-lg border-slate-200">
+                    {adminUsersLinks.map((item) => {
+                      const ItemIcon = item.icon;
+                      const active = activeAdminView === item.view;
+                      return (
+                        <DropdownMenuItem key={item.href} asChild className={cn("rounded-lg cursor-pointer py-2", active && "bg-teal-50 text-teal-800 font-semibold")}>
+                          <Link href={item.href} className="flex items-center gap-2.5">
+                            <ItemIcon className="h-4 w-4 text-teal-600" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Link href="/admin/dashboard?view=finances" className={navPillClass(activeAdminView === 'finances')}>
+                  <DollarSign className={cn("h-3.5 w-3.5", activeAdminView === 'finances' ? "text-white" : "text-teal-600")} />
+                  <span>Finanzas</span>
+                </Link>
+
+                {/* Sistema */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className={navPillClass(isAdminSystemActive)}>
+                      <Settings className={cn("h-3.5 w-3.5", isAdminSystemActive ? "text-white" : "text-teal-600")} />
+                      <span>Sistema</span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-75" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="w-56 p-1.5 rounded-xl shadow-lg border-slate-200">
+                    {adminSystemLinks.map((item) => {
+                      const ItemIcon = item.icon;
+                      const active = activeAdminView === item.view;
+                      return (
+                        <DropdownMenuItem key={item.href} asChild className={cn("rounded-lg cursor-pointer py-2", active && "bg-teal-50 text-teal-800 font-semibold")}>
+                          <Link href={item.href} className="flex items-center gap-2.5">
+                            <ItemIcon className="h-4 w-4 text-teal-600" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+
+            {/* 3. PERFIL VENDEDORA EN SU PANEL */}
+            {user && user.role === 'seller' && pathname.startsWith('/seller') && (
+              <>
+                {sellerNavLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = activeSellerView === link.view;
+                  return (
+                    <Link key={link.href} href={link.href} className={navPillClass(isActive)}>
+                      <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-teal-600")} />
+                      <span>{link.label}</span>
+                    </Link>
+                  );
+                })}
+              </>
+            )}
+
+            {/* 4. PERFIL PACIENTE O NAVEGACIÓN PÚBLICA / EXPLORACIÓN */}
+            {(!user || user.role === 'patient' || (!pathname.startsWith('/doctor') && !pathname.startsWith('/admin') && !pathname.startsWith('/seller'))) && (
+              <>
+                {user?.role === 'patient' && (
+                  <Link href="/dashboard" className={navPillClass(pathname === '/dashboard')}>
+                    <LayoutDashboard className={cn("h-3.5 w-3.5", pathname === '/dashboard' ? "text-white" : "text-teal-600")} />
+                    <span>Mi Panel</span>
                   </Link>
-                </Button>
-              ))
-            ) : (
-              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
-                <Link href="/doctor/dashboard">
-                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
-                  Mi Panel Médico
-                </Link>
-              </Button>
-            )
-          )}
-
-          {user && user.role === 'seller' && (
-            pathname.startsWith('/seller') ? (
-              sellerNavLinks.map((link) => (
-                <Button key={link.href} variant={pathname.includes(link.href) ? 'secondary' : 'ghost'} size="sm" asChild className="text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
-                  <Link href={link.href}>{link.label}</Link>
-                </Button>
-              ))
-            ) : (
-              <Button variant="default" size="sm" asChild className="text-xs lg:text-sm font-medium px-3 py-1.5 h-8 lg:h-9 shadow-sm">
-                <Link href="/seller/dashboard?view=referrals">
-                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
-                  Panel Vendedora
-                </Link>
-              </Button>
-            )
-          )}
-
-          {(!user || user.role === 'patient' || (!pathname.startsWith('/doctor') && !pathname.startsWith('/admin') && !pathname.startsWith('/seller'))) && patientNavLinks.map((link) => (
-            <Button key={link.href} variant="ghost" size="sm" asChild className="relative text-xs lg:text-sm font-medium px-2.5 py-1.5 h-8 lg:h-9">
-              <Link href={link.href}>
-                {link.label}
-              </Link>
-            </Button>
-          ))}
+                )}
+                {patientNavLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
+                  return (
+                    <Link key={link.href} href={link.href} className={navPillClass(isActive)}>
+                      <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-teal-600")} />
+                      <span>{link.label}</span>
+                    </Link>
+                  );
+                })}
+                {user?.role === 'patient' && (
+                  <>
+                    <Link href="/dashboard/family" className={navPillClass(pathname.startsWith('/dashboard/family'))}>
+                      <Users className={cn("h-3.5 w-3.5", pathname.startsWith('/dashboard/family') ? "text-white" : "text-teal-600")} />
+                      <span>Familia</span>
+                    </Link>
+                    <Link href="/favorites" className={navPillClass(pathname.startsWith('/favorites'))}>
+                      <Heart className={cn("h-3.5 w-3.5", pathname.startsWith('/favorites') ? "text-white" : "text-teal-600")} />
+                      <span>Favoritos</span>
+                    </Link>
+                  </>
+                )}
+                {user && user.role !== 'patient' && (
+                  <Link href={dashboardHref} className={navPillClass(false)}>
+                    <LayoutDashboard className="h-3.5 w-3.5 text-teal-600" />
+                    <span>Ir a mi Panel</span>
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
         </nav>
 
         {/* Right Side Controls (Workspace, Notifications, Avatar) */}

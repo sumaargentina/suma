@@ -447,64 +447,131 @@ export default function PharmacyDashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-teal-50/20">
       
-      {/* Barra Superior de la Farmacia */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+      {/* Barra Superior Unificada de la Farmacia */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           
-          {/* Logo y Nombre de Sede */}
-          <div className="flex items-center gap-3">
+          {/* Logo SUMA y Nombre de Sede */}
+          <div className="flex items-center gap-3 shrink-0">
             <img
               src="/images/logo_suma.png"
               alt="SUMA Logo"
-              className="h-9 w-auto object-contain hidden sm:block mr-1"
+              className="h-9 w-auto object-contain"
             />
-            <div className="h-10 w-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
-              <Pill className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base sm:text-lg text-slate-900 leading-tight">
+            <div className="hidden lg:flex flex-col border-l border-slate-200 pl-3">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm text-slate-900 leading-tight truncate max-w-[180px]">
                   {chainDisplayName || user?.name || 'Farmacia Aliada'}
                 </span>
                 {branchDisplayName && (
-                  <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-[11px] font-semibold">
-                    Sucursal {branchDisplayName}
+                  <Badge className="bg-teal-100 text-teal-800 border-teal-200 text-[10px] font-semibold px-1.5 py-0">
+                    {branchDisplayName}
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                <span className="flex items-center gap-1 font-medium text-slate-600">
-                  <MapPin className="h-3 w-3 text-teal-600" />
-                  {user?.city ? `${user.city}, Venezuela` : 'Portal de Validación'}
-                </span>
-                <span>•</span>
-                <span className="text-emerald-700 font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Mostrador Habilitado
-                </span>
-              </div>
+              <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Mostrador Activo
+              </span>
             </div>
           </div>
 
+          {/* Menú Central Tipo Cápsula (Idéntico a Médico, Admin, Paciente y Vendedora) */}
+          <nav className="hidden md:flex items-center justify-center flex-1 mx-2">
+            <div className="inline-flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab('search')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'search'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Search className={`h-3.5 w-3.5 ${activeTab === 'search' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Mostrador</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('b2b')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'b2b'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Handshake className={`h-3.5 w-3.5 ${activeTab === 'b2b' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Catálogo y Alianzas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('campaigns')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'campaigns'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <HeartHandshake className={`h-3.5 w-3.5 ${activeTab === 'campaigns' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Jornadas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('history');
+                  loadHistory();
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'history'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <FileText className={`h-3.5 w-3.5 ${activeTab === 'history' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Historial</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('location');
+                  loadPharmacyData();
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'location'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <MapPin className={`h-3.5 w-3.5 ${activeTab === 'location' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Mi Sede</span>
+              </button>
+            </div>
+          </nav>
+
           {/* Botones Plan Pro y Salir */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               type="button"
               size="sm"
               onClick={() => setIsProPlanModalOpen(true)}
-              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs shadow-sm"
+              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs rounded-xl h-8 px-3 shadow-xs"
             >
               <Crown className="h-3.5 w-3.5 mr-1.5" />
-              Plan Pro Alianza B2B
+              <span className="hidden sm:inline">Plan Pro Alianza B2B</span>
+              <span className="sm:hidden">Plan Pro</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={logout}
-              className="text-xs border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-rose-600"
+              className="text-xs rounded-xl h-8 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-rose-600"
             >
-              <LogOut className="h-3.5 w-3.5 mr-1.5" />
-              Cerrar Sesión
+              <LogOut className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Salir</span>
             </Button>
           </div>
 
@@ -514,88 +581,64 @@ export default function PharmacyDashboardPage() {
       {/* Contenido Principal */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
-        {/* Selector de Pestañas: Mostrador, Catálogo B2B, Historial, Mi Sede */}
-        <div className="flex flex-wrap items-center gap-2 bg-white/80 backdrop-blur-xs p-1.5 rounded-2xl border border-slate-200/80 shadow-xs w-fit">
-          <Button
+        {/* Selector de Pestañas Móvil (Solo visible en pantallas pequeñas) */}
+        <div className="flex md:hidden flex-wrap items-center gap-1.5 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <button
             type="button"
-            variant={activeTab === 'search' ? 'default' : 'ghost'}
-            size="sm"
             onClick={() => setActiveTab('search')}
-            className={`rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'search' 
-                ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'search' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            <Search className="h-3.5 w-3.5 mr-1.5" />
-            Mostrador de Búsqueda y Validación
-          </Button>
-
-          <Button
+            <Search className="h-3.5 w-3.5" />
+            Mostrador
+          </button>
+          <button
             type="button"
-            variant={activeTab === 'b2b' ? 'default' : 'ghost'}
-            size="sm"
             onClick={() => setActiveTab('b2b')}
-            className={`rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'b2b'
-                ? 'bg-gradient-to-r from-amber-500 to-teal-600 text-white shadow-xs'
-                : 'text-teal-800 bg-teal-50/70 hover:bg-teal-100'
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'b2b' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            <Handshake className="h-3.5 w-3.5 mr-1.5" />
-            Catálogo Excel, Promociones y Patrocinio Médicos
-          </Button>
-
-          <Button
+            <Handshake className="h-3.5 w-3.5" />
+            Catálogo B2B
+          </button>
+          <button
             type="button"
-            variant={activeTab === 'campaigns' ? 'default' : 'ghost'}
-            size="sm"
             onClick={() => setActiveTab('campaigns')}
-            className={`rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'campaigns'
-                ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'campaigns' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            <HeartHandshake className="h-3.5 w-3.5 mr-1.5" />
-            Jornadas de Salud
-          </Button>
-
-          <Button
+            <HeartHandshake className="h-3.5 w-3.5" />
+            Jornadas
+          </button>
+          <button
             type="button"
-            variant={activeTab === 'history' ? 'default' : 'ghost'}
-            size="sm"
             onClick={() => {
               setActiveTab('history');
               loadHistory();
             }}
-            className={`rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'history' 
-                ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'history' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            <FileText className="h-3.5 w-3.5 mr-1.5" />
-            Historial de Suministros Realizados
-          </Button>
-
-          <Button
+            <FileText className="h-3.5 w-3.5" />
+            Historial
+          </button>
+          <button
             type="button"
-            variant={activeTab === 'location' ? 'default' : 'ghost'}
-            size="sm"
             onClick={() => {
               setActiveTab('location');
               loadPharmacyData();
             }}
-            className={`rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'location' 
-                ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'location' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            <MapPin className="h-3.5 w-3.5 mr-1.5" />
-            Mi Sede y Panel Publicitario
-          </Button>
+            <MapPin className="h-3.5 w-3.5" />
+            Mi Sede
+          </button>
         </div>
 
         {activeTab === 'b2b' && user?.id && (
