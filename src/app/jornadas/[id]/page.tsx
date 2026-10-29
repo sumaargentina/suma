@@ -65,6 +65,42 @@ export default function PublicHealthCampaignPage({ params }: { params: Promise<{
   const [ticketCode, setTicketCode] = useState<string | null>(null);
   const [spotNumber, setSpotNumber] = useState<number | null>(null);
   const [ticketQrUrl, setTicketQrUrl] = useState<string>('');
+  const [isDoctorSubscribing, setIsDoctorSubscribing] = useState(false);
+
+  const handleDoctorSubscribe = async () => {
+    if (!user || user.role !== 'doctor' || !campaign) return;
+    try {
+      setIsDoctorSubscribing(true);
+      const res = await fetch('/api/health-campaigns', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'subscribe_doctor',
+          campaignId: campaign.id,
+          doctorId: user.id,
+          doctorName: user.name,
+          doctorEmail: user.email,
+          doctorSpecialty: user.specialty || 'Medicina General',
+          doctorProfileImage: user.profileImage || null,
+          status: 'accepted',
+        }),
+      });
+      if (!res.ok) throw new Error('No se pudo procesar tu suscripción a la jornada');
+      toast({
+        title: '🩺 ¡Te has suscrito a la Jornada de Salud!',
+        description: 'Ya puedes pasar tu consulta independiente con tu usuario en esta jornada.',
+      });
+      await fetchCampaign();
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: err.message || 'Ocurrió un problema al suscribirte a la jornada.',
+      });
+    } finally {
+      setIsDoctorSubscribing(false);
+    }
+  };
 
   const fetchCampaign = async () => {
     try {
@@ -371,6 +407,68 @@ export default function PublicHealthCampaignPage({ params }: { params: Promise<{
             </div>
           </div>
         </div>
+
+        {/* Banner de Acceso Médico Independiente (si el usuario conectado es Médico) */}
+        {user?.role === 'doctor' && (
+          <div className="container max-w-6xl mx-auto px-4 mt-6">
+            <div className="rounded-2xl border-2 border-teal-500 bg-gradient-to-r from-teal-50 via-white to-emerald-50 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-teal-600 text-white shrink-0">
+                  <Stethoscope className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                      Acceso para Especialistas SUMA: Dr(a). {user.name}
+                    </h3>
+                    {(campaign.organizerId === user.id ||
+                      campaign.doctors?.some(d => d.doctorId === user.id && d.status === 'accepted')) ? (
+                      <Badge className="bg-emerald-600 text-white text-xs">
+                        ✓ Suscrito en esta Jornada
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-teal-400 text-teal-800 text-xs">
+                        Suscripción Abierta para Médicos
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-600">
+                    {(campaign.organizerId === user.id ||
+                      campaign.doctors?.some(d => d.doctorId === user.id && d.status === 'accepted'))
+                      ? 'Ya estás suscrito a esta jornada. Puedes entrar directamente a tu consola médica para pasar tu consulta independiente con tu usuario y guardar cada atención en este evento.'
+                      : '¿Vas a atender pacientes en esta jornada médica? Suscríbete con un clic para aparecer en el equipo médico y habilitar tu consola de consulta independiente con tu usuario.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {(campaign.organizerId === user.id ||
+                  campaign.doctors?.some(d => d.doctorId === user.id && d.status === 'accepted')) ? (
+                  <Button asChild className="bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-xs">
+                    <Link href={`/doctor/dashboard?view=health-campaigns&campaignId=${campaign.id}`}>
+                      <Stethoscope className="h-4 w-4 mr-2" />
+                      Pasar Consulta en esta Jornada
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={isDoctorSubscribing}
+                    onClick={handleDoctorSubscribe}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs"
+                  >
+                    {isDoctorSubscribing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <UserCheck className="h-4 w-4 mr-2" />
+                    )}
+                    Suscribirme como Médico y Pasar Consulta
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Contenido Principal */}
         <div className="container max-w-6xl mx-auto px-4 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">

@@ -51,6 +51,36 @@ export async function POST(request: NextRequest) {
         const campaignTitle = campaign?.title || 'Jornada de Salud SUMA';
         const organizerName = campaign?.organizer_name || 'SUMA Salud';
 
+        // Asegurar que el médico que está pasando la consulta figure como participante confirmado en la jornada
+        try {
+            const { data: docInfo } = await supabaseAdmin
+                .from('doctors')
+                .select('id, name, email, specialty, profile_image')
+                .eq('id', doctorId)
+                .maybeSingle();
+
+            if (docInfo) {
+                await supabaseAdmin
+                    .from('health_campaign_doctors')
+                    .upsert(
+                        {
+                            campaign_id: campaignId,
+                            doctor_id: docInfo.id,
+                            doctor_name: doctorName || docInfo.name || 'Médico SUMA',
+                            doctor_email: docInfo.email || null,
+                            doctor_specialty: specialty || docInfo.specialty || 'Medicina General',
+                            doctor_profile_image: docInfo.profile_image || null,
+                            status: 'accepted',
+                            read_by_doctor: true,
+                            responded_at: new Date().toISOString(),
+                        },
+                        { onConflict: 'campaign_id,doctor_id' }
+                    );
+            }
+        } catch {
+            // Non-blocking
+        }
+
         // 2. Verificar si el paciente YA está registrado en SUMA (por cédula o por correo)
         const digitsOnly = String(patientCedula).replace(/\D/g, '');
         const cleanEmail = patientEmail ? String(patientEmail).toLowerCase().trim() : '';

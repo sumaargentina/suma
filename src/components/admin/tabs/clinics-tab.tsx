@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAdminClinics, updateClinicStatus, addClinic } from '@/lib/supabaseService';
+import { getAdminClinics, updateClinicStatus } from '@/lib/supabaseService';
 import { Clinic } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus, Trash2, Phone, MapPin } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -37,7 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { hashPassword } from '@/lib/password-utils';
+import { LocationSelector, type LocationData } from '@/components/ui/location-selector';
 
 export function ClinicsTab() {
     const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -54,14 +54,25 @@ export function ClinicsTab() {
     const [isCreating, setIsCreating] = useState(false);
     const [newClinicData, setNewClinicData] = useState({
         name: '',
+        legalName: '',
+        rif: '',
         adminEmail: '',
+        email: '',
         password: '',
         phone: '',
-        city: '',
+        whatsapp: '',
+        website: '',
+        country: 'VE',
+        state: 'Monagas',
+        city: 'Maturín',
+        sector: '',
         address: '',
         description: '',
         plan: 'integral' as string,
         billingCycle: 'monthly' as string,
+        billingMonths: 1 as number,
+        subscriptionFee: 0 as number,
+        subscriptionStatus: 'active' as 'active' | 'pending_payment' | 'inactive',
     });
 
     const loadClinics = async () => {
@@ -197,30 +208,42 @@ export function ClinicsTab() {
 
     // Función para crear clínica nueva
     const handleCreateClinic = async () => {
-        if (!newClinicData.name || !newClinicData.adminEmail || !newClinicData.password) {
+        if (!newClinicData.name.trim() || !newClinicData.adminEmail.trim() || !newClinicData.password.trim()) {
             toast({
                 variant: 'destructive',
                 title: 'Campos requeridos',
-                description: 'Nombre, email y contraseña son obligatorios.'
+                description: 'Nombre de la institución, email administrador y contraseña son obligatorios.'
             });
             return;
         }
 
         setIsCreating(true);
         try {
+            const isHospital = newClinicData.plan === 'hospital_gratuito';
             const res = await fetch('/api/clinics', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: newClinicData.name,
-                    adminEmail: newClinicData.adminEmail.toLowerCase(),
+                    name: newClinicData.name.trim(),
+                    legalName: newClinicData.legalName.trim() || null,
+                    rif: newClinicData.rif.trim() || null,
+                    adminEmail: newClinicData.adminEmail.toLowerCase().trim(),
+                    email: (newClinicData.email || newClinicData.adminEmail).toLowerCase().trim(),
                     password: newClinicData.password,
-                    phone: newClinicData.phone,
-                    city: newClinicData.city,
-                    address: newClinicData.address,
-                    description: newClinicData.description,
+                    phone: newClinicData.phone.trim(),
+                    whatsapp: (newClinicData.whatsapp || newClinicData.phone).trim(),
+                    website: newClinicData.website.trim() || null,
+                    country: newClinicData.country || 'VE',
+                    state: newClinicData.state || '',
+                    city: newClinicData.city || '',
+                    sector: newClinicData.sector || '',
+                    address: newClinicData.address || '',
+                    description: newClinicData.description.trim(),
                     plan: newClinicData.plan,
-                    billingCycle: newClinicData.billingCycle,
+                    billingCycle: isHospital ? 'free' : (newClinicData.billingMonths === 12 ? 'annual' : 'monthly'),
+                    billingMonths: isHospital ? 12 : newClinicData.billingMonths,
+                    subscriptionFee: isHospital ? 0 : Number(newClinicData.subscriptionFee) || 0,
+                    subscriptionStatus: isHospital ? 'active' : newClinicData.subscriptionStatus,
                     status: 'active',
                     verificationStatus: 'verified',
                 }),
@@ -229,21 +252,32 @@ export function ClinicsTab() {
             if (!res.ok) throw new Error(resData.error || 'No se pudo crear la clínica');
 
             toast({
-                title: 'Clínica creada',
-                description: `${newClinicData.name} ha sido creada exitosamente.`
+                title: 'Institución creada exitosamente',
+                description: `${newClinicData.name} ha sido registrada y activada en SUMA.`
             });
 
             // Limpiar y cerrar modal
             setNewClinicData({
                 name: '',
+                legalName: '',
+                rif: '',
                 adminEmail: '',
+                email: '',
                 password: '',
                 phone: '',
-                city: '',
+                whatsapp: '',
+                website: '',
+                country: 'VE',
+                state: 'Monagas',
+                city: 'Maturín',
+                sector: '',
                 address: '',
                 description: '',
                 plan: 'integral',
                 billingCycle: 'monthly',
+                billingMonths: 1,
+                subscriptionFee: 0,
+                subscriptionStatus: 'active',
             });
             setShowCreateModal(false);
 
@@ -284,10 +318,10 @@ export function ClinicsTab() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Nombre</TableHead>
-                                <TableHead>Plan</TableHead>
+                                <TableHead>Institución / RIF</TableHead>
+                                <TableHead>Plan / Ciclo</TableHead>
                                 <TableHead>Estado</TableHead>
-                                <TableHead>Email Admin</TableHead>
+                                <TableHead>Contacto / Ubicación</TableHead>
                                 <TableHead>Registro</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
@@ -302,23 +336,35 @@ export function ClinicsTab() {
                             ) : (
                                 clinics.map((clinic) => (
                                     <TableRow key={clinic.id}>
-                                        <TableCell className="font-medium">{clinic.name}</TableCell>
                                         <TableCell>
-                                            {clinic.plan === 'hospital_gratuito' ? (
-                                                <Badge className="bg-sky-100 text-sky-800 border-sky-300 uppercase text-xs font-semibold">
-                                                    🏥 Hospital Gratuito
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="uppercase text-xs" style={{
-                                                    borderColor: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue',
-                                                    color: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue'
-                                                }}>
-                                                    {clinic.plan || 'N/A'}
-                                                </Badge>
+                                            <p className="font-semibold text-slate-900">{clinic.name}</p>
+                                            {clinic.rif && (
+                                                <p className="text-xs text-muted-foreground font-mono">RIF/ID: {clinic.rif}</p>
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-start">
+                                                {clinic.plan === 'hospital_gratuito' ? (
+                                                    <Badge className="bg-sky-100 text-sky-800 border-sky-300 uppercase text-xs font-semibold">
+                                                        🏥 Hospital Gratuito
+                                                    </Badge>
+                                                ) : (
+                                                    <>
+                                                        <Badge variant="outline" className="uppercase text-xs" style={{
+                                                            borderColor: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue',
+                                                            color: clinic.plan === 'empresarial' ? 'purple' : clinic.plan === 'profesional' ? 'green' : 'blue'
+                                                        }}>
+                                                            {clinic.plan || 'Integral'}
+                                                        </Badge>
+                                                        <span className="text-[11px] text-muted-foreground">
+                                                            {clinic.billingMonths ? `${clinic.billingMonths} ${clinic.billingMonths === 1 ? 'mes' : 'meses'}` : (clinic.billingCycle === 'annual' ? '12 meses' : '1 mes')}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1 items-start">
                                                 <Badge className={clinic.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                                                     {clinic.status === 'active' ? 'Activa' : 'Inactiva'}
                                                 </Badge>
@@ -327,7 +373,23 @@ export function ClinicsTab() {
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell>{clinic.adminEmail}</TableCell>
+                                        <TableCell>
+                                            <div className="text-xs space-y-0.5">
+                                                <p className="font-medium text-slate-800">{clinic.adminEmail}</p>
+                                                {(clinic.phone || clinic.whatsapp) && (
+                                                    <p className="text-teal-700 flex items-center gap-1 font-medium">
+                                                        <Phone className="h-3 w-3" />
+                                                        {clinic.phone || clinic.whatsapp}
+                                                    </p>
+                                                )}
+                                                {(clinic.city || clinic.state) && (
+                                                    <p className="text-muted-foreground flex items-center gap-1">
+                                                        <MapPin className="h-3 w-3" />
+                                                        {[clinic.city, clinic.state].filter(Boolean).join(', ')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-sm text-muted-foreground">
                                             {clinic.createdAt ? format(new Date(clinic.createdAt), 'dd/MM/yyyy', { locale: es }) : '-'}
                                         </TableCell>
@@ -362,7 +424,7 @@ export function ClinicsTab() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <DialogTitle className="text-xl">{selectedClinic?.name}</DialogTitle>
-                                <DialogDescription>Información completa de la clínica</DialogDescription>
+                                <DialogDescription>Información completa de la clínica o institución</DialogDescription>
                             </div>
                             {!isEditing ? (
                                 <Button variant="outline" size="sm" onClick={handleEditClick}>
@@ -385,18 +447,18 @@ export function ClinicsTab() {
                     </DialogHeader>
 
                     {selectedClinic && (
-                        <ScrollArea className="max-h-[60vh] pr-4">
+                        <ScrollArea className="max-h-[65vh] pr-4">
                             <Tabs defaultValue="general" className="w-full">
                                 <TabsList className="grid w-full grid-cols-3">
-                                    <TabsTrigger value="general">General</TabsTrigger>
+                                    <TabsTrigger value="general">General y Ubicación</TabsTrigger>
                                     <TabsTrigger value="contact">Contacto</TabsTrigger>
-                                    <TabsTrigger value="config">Configuración</TabsTrigger>
+                                    <TabsTrigger value="config">Plan y Configuración</TabsTrigger>
                                 </TabsList>
 
                                 <TabsContent value="general" className="space-y-4 mt-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Nombre</Label>
+                                            <Label>Nombre Comercial</Label>
                                             {isEditing ? (
                                                 <Input
                                                     value={editData.name || ''}
@@ -407,7 +469,34 @@ export function ClinicsTab() {
                                             )}
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Slug (URL)</Label>
+                                            <Label>RIF / CUIT / Identificación Fiscal</Label>
+                                            {isEditing ? (
+                                                <Input
+                                                    value={editData.rif || ''}
+                                                    onChange={(e) => handleInputChange('rif', e.target.value)}
+                                                    placeholder="Ej: J-12345678-9"
+                                                />
+                                            ) : (
+                                                <p className="text-sm p-2 bg-muted rounded font-mono">{selectedClinic.rif || '-'}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Razón Social / Nombre Legal</Label>
+                                            {isEditing ? (
+                                                <Input
+                                                    value={editData.legalName || ''}
+                                                    onChange={(e) => handleInputChange('legalName', e.target.value)}
+                                                    placeholder="Razón social..."
+                                                />
+                                            ) : (
+                                                <p className="text-sm p-2 bg-muted rounded">{selectedClinic.legalName || '-'}</p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Slug (URL Pública)</Label>
                                             {isEditing ? (
                                                 <Input
                                                     value={editData.slug || ''}
@@ -432,30 +521,41 @@ export function ClinicsTab() {
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Dirección</Label>
-                                            {isEditing ? (
-                                                <Input
-                                                    value={editData.address || ''}
-                                                    onChange={(e) => handleInputChange('address', e.target.value)}
-                                                />
-                                            ) : (
+                                    {isEditing ? (
+                                        <div className="border-t pt-3">
+                                            <Label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Ubicación Geográfica</Label>
+                                            <LocationSelector
+                                                country={editData.country || selectedClinic.country || 'VE'}
+                                                state={editData.state || selectedClinic.state || ''}
+                                                city={editData.city || selectedClinic.city || ''}
+                                                sector={editData.sector || selectedClinic.sector || ''}
+                                                address={editData.address || selectedClinic.address || ''}
+                                                onLocationChange={(loc: LocationData) => {
+                                                    setEditData(prev => ({
+                                                        ...prev,
+                                                        country: loc.country,
+                                                        state: loc.state,
+                                                        city: loc.city,
+                                                        sector: loc.sector,
+                                                        address: loc.address,
+                                                    }));
+                                                }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>País / Estado / Ciudad / Sector</Label>
+                                                <p className="text-sm p-2 bg-muted rounded">
+                                                    {[selectedClinic.country, selectedClinic.state, selectedClinic.city, selectedClinic.sector].filter(Boolean).join(' • ') || '-'}
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Dirección</Label>
                                                 <p className="text-sm p-2 bg-muted rounded">{selectedClinic.address || '-'}</p>
-                                            )}
+                                            </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>Ciudad</Label>
-                                            {isEditing ? (
-                                                <Input
-                                                    value={editData.city || ''}
-                                                    onChange={(e) => handleInputChange('city', e.target.value)}
-                                                />
-                                            ) : (
-                                                <p className="text-sm p-2 bg-muted rounded">{selectedClinic.city || '-'}</p>
-                                            )}
-                                        </div>
-                                    </div>
+                                    )}
 
                                     <div className="space-y-2">
                                         <Label>ID del Sistema</Label>
@@ -493,7 +593,7 @@ export function ClinicsTab() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Teléfono</Label>
+                                            <Label>Teléfono Principal</Label>
                                             {isEditing ? (
                                                 <Input
                                                     value={editData.phone || ''}
@@ -536,7 +636,7 @@ export function ClinicsTab() {
                                             <Label>Tipo / Plan</Label>
                                             {isEditing ? (
                                                 <Select
-                                                    value={editData.plan || 'esencial'}
+                                                    value={editData.plan || 'integral'}
                                                     onValueChange={(value) => {
                                                         handleInputChange('plan', value);
                                                         if (value === 'hospital_gratuito') {
@@ -557,34 +657,86 @@ export function ClinicsTab() {
                                                 </Select>
                                             ) : (
                                                 <Badge variant="outline" className="uppercase">
-                                                    {selectedClinic.plan === 'hospital_gratuito' ? '🏥 Hospital Gratuito' : (selectedClinic.plan || 'Sin plan')}
+                                                    {selectedClinic.plan === 'hospital_gratuito' ? '🏥 Hospital Gratuito' : (selectedClinic.plan || 'Integral')}
                                                 </Badge>
                                             )}
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Ciclo de Facturación</Label>
+                                            <Label>Duración del Plan (Meses)</Label>
                                             {isEditing ? (
                                                 <Select
-                                                    value={editData.billingCycle || 'monthly'}
-                                                    onValueChange={(value) => handleInputChange('billingCycle', value)}
+                                                    value={String(editData.billingMonths || (editData.billingCycle === 'annual' ? 12 : 1))}
+                                                    onValueChange={(value) => {
+                                                        const m = Number(value);
+                                                        setEditData(prev => ({
+                                                            ...prev,
+                                                            billingMonths: m,
+                                                            billingCycle: m === 12 ? 'annual' : 'monthly',
+                                                        }));
+                                                    }}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="monthly">Mensual</SelectItem>
-                                                        <SelectItem value="annual">Anual</SelectItem>
+                                                        <SelectItem value="1">1 Mes (Mensual)</SelectItem>
+                                                        <SelectItem value="3">3 Meses (Trimestral)</SelectItem>
+                                                        <SelectItem value="6">6 Meses (Semestral)</SelectItem>
+                                                        <SelectItem value="12">12 Meses (Anual)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             ) : (
-                                                <p className="text-sm p-2 bg-muted rounded capitalize">{selectedClinic.billingCycle || 'Mensual'}</p>
+                                                <p className="text-sm p-2 bg-muted rounded">
+                                                    {selectedClinic.plan === 'hospital_gratuito'
+                                                        ? 'Exento ($0)'
+                                                        : `${selectedClinic.billingMonths || (selectedClinic.billingCycle === 'annual' ? 12 : 1)} ${(selectedClinic.billingMonths || 1) === 1 ? 'Mes' : 'Meses'}`}
+                                                </p>
                                             )}
                                         </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Estado</Label>
+                                            <Label>Estado de Suscripción</Label>
+                                            {isEditing ? (
+                                                <Select
+                                                    value={editData.subscriptionStatus || 'active'}
+                                                    onValueChange={(value: any) => handleInputChange('subscriptionStatus', value)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="active">Activa / Al día</SelectItem>
+                                                        <SelectItem value="pending_payment">Pago en Revisión</SelectItem>
+                                                        <SelectItem value="inactive">Vencida / Inactiva</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Badge className={selectedClinic.subscriptionStatus === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}>
+                                                    {selectedClinic.subscriptionStatus === 'active' ? 'Suscripción Activa' : selectedClinic.subscriptionStatus === 'pending_payment' ? 'Pago en Revisión' : 'Suscripción Inactiva'}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Monto de Suscripción ($ USD)</Label>
+                                            {isEditing ? (
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={editData.subscriptionFee ?? 0}
+                                                    onChange={(e) => setEditData(prev => ({ ...prev, subscriptionFee: Number(e.target.value) || 0 }))}
+                                                />
+                                            ) : (
+                                                <p className="text-sm p-2 bg-muted rounded font-mono">${selectedClinic.subscriptionFee || 0} USD</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Estado de Cuenta</Label>
                                             {isEditing ? (
                                                 <Select
                                                     value={editData.status || 'inactive'}
@@ -631,24 +783,6 @@ export function ClinicsTab() {
                                                 </Badge>
                                             )}
                                         </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Calificación</Label>
-                                            <p className="text-sm p-2 bg-muted rounded">{selectedClinic.rating?.toFixed(1) || '0.0'} ⭐</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Reseñas</Label>
-                                            <p className="text-sm p-2 bg-muted rounded">{selectedClinic.reviewCount || 0}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>Fecha de Registro</Label>
-                                        <p className="text-sm p-2 bg-muted rounded">
-                                            {selectedClinic.createdAt ? format(new Date(selectedClinic.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '-'}
-                                        </p>
                                     </div>
 
                                     {/* Password Change Section */}
@@ -710,133 +844,230 @@ export function ClinicsTab() {
 
             {/* Modal para crear clínica nueva */}
             <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-2xl max-h-[90vh]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Building2 className="h-5 w-5" />
-                            Nueva Clínica o Hospital
+                            <Building2 className="h-5 w-5 text-teal-600" />
+                            Registrar Nueva Clínica o Hospital
                         </DialogTitle>
                         <DialogDescription>
-                            Crea la cuenta de una clínica privada o de un hospital / centro de atención gratuita.
+                            Completa los datos fiscales, de contacto, ubicación geográfica y plan en meses para crear la cuenta institucional.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                        <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-4 max-h-[68vh] overflow-y-auto pr-2">
+                        {/* Datos de Identificación */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nombre de la Institución *</Label>
+                                <Label>Nombre de la Clínica / Hospital *</Label>
                                 <Input
                                     value={newClinicData.name}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder="Ej: Hospital Central / Clínica XYZ"
+                                    placeholder="Ej: Clínica Santa Sofía / Hospital Central"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Email Admin *</Label>
+                                <Label>RIF / CUIT / Identificación Fiscal</Label>
+                                <Input
+                                    value={newClinicData.rif}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, rif: e.target.value }))}
+                                    placeholder="Ej: J-12345678-9"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Razón Social / Nombre Legal (Opcional)</Label>
+                                <Input
+                                    value={newClinicData.legalName}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, legalName: e.target.value }))}
+                                    placeholder="Ej: Centro Clínico Santa Sofía C.A."
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Sitio Web (Opcional)</Label>
+                                <Input
+                                    value={newClinicData.website}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, website: e.target.value }))}
+                                    placeholder="https://..."
+                                />
+                            </div>
+                        </div>
+
+                        {/* Credenciales de Acceso y Contacto */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
+                            <div className="space-y-2">
+                                <Label>Email Administrador (Inicio de Sesión) *</Label>
                                 <Input
                                     type="email"
                                     value={newClinicData.adminEmail}
                                     onChange={(e) => setNewClinicData(prev => ({ ...prev, adminEmail: e.target.value }))}
-                                    placeholder="admin@institucion.com"
+                                    placeholder="admin@clinica.com"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Contraseña de Acceso *</Label>
+                                <Input
+                                    type="password"
+                                    value={newClinicData.password}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, password: e.target.value }))}
+                                    placeholder="Mínimo 8 caracteres"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label>Contraseña *</Label>
-                            <Input
-                                type="password"
-                                value={newClinicData.password}
-                                onChange={(e) => setNewClinicData(prev => ({ ...prev, password: e.target.value }))}
-                                placeholder="Contraseña segura"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Teléfono</Label>
+                                <Label>Teléfono de Contacto *</Label>
                                 <Input
                                     value={newClinicData.phone}
-                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, phone: e.target.value }))}
+                                    onChange={(e) => setNewClinicData(prev => ({
+                                        ...prev,
+                                        phone: e.target.value,
+                                        whatsapp: prev.whatsapp || e.target.value,
+                                    }))}
                                     placeholder="+58 414 123-4567"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Ciudad</Label>
+                                <Label>WhatsApp de Atención</Label>
                                 <Input
-                                    value={newClinicData.city}
-                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, city: e.target.value }))}
-                                    placeholder="Maturín"
+                                    value={newClinicData.whatsapp}
+                                    onChange={(e) => setNewClinicData(prev => ({ ...prev, whatsapp: e.target.value }))}
+                                    placeholder="+58 414 123-4567"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label>Dirección</Label>
-                            <Input
-                                value={newClinicData.address}
-                                onChange={(e) => setNewClinicData(prev => ({ ...prev, address: e.target.value }))}
-                                placeholder="Av. Principal..."
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Descripción</Label>
-                            <Textarea
-                                value={newClinicData.description}
-                                onChange={(e) => setNewClinicData(prev => ({ ...prev, description: e.target.value }))}
-                                placeholder="Descripción de la clínica u hospital..."
-                                rows={3}
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Tipo / Plan</Label>
-                                <Select
-                                    value={newClinicData.plan}
-                                    onValueChange={(value) => setNewClinicData(prev => ({
+                        {/* Ubicación Geográfica Completa */}
+                        <div className="pt-2 border-t space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Ubicación Geográfica de la Sede Principal
+                            </Label>
+                            <LocationSelector
+                                country={newClinicData.country}
+                                state={newClinicData.state}
+                                city={newClinicData.city}
+                                sector={newClinicData.sector}
+                                address={newClinicData.address}
+                                onLocationChange={(loc: LocationData) => {
+                                    setNewClinicData(prev => ({
                                         ...prev,
-                                        plan: value,
-                                        billingCycle: value === 'hospital_gratuito' ? 'free' : (prev.billingCycle === 'free' ? 'monthly' : prev.billingCycle)
-                                    }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="hospital_gratuito">🏥 Hospital / Centro Gratuito (100% Gratis)</SelectItem>
-                                        <SelectItem value="integral">Clínica - Plan Integral</SelectItem>
-                                        <SelectItem value="esencial">Clínica - Plan Esencial</SelectItem>
-                                        <SelectItem value="profesional">Clínica - Plan Profesional</SelectItem>
-                                        <SelectItem value="empresarial">Clínica - Plan Empresarial</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {newClinicData.plan !== 'hospital_gratuito' ? (
+                                        country: loc.country || 'VE',
+                                        state: loc.state || '',
+                                        city: loc.city || '',
+                                        sector: loc.sector || '',
+                                        address: loc.address || '',
+                                    }));
+                                }}
+                            />
+                        </div>
+
+                        {/* Plan y Meses de Suscripción */}
+                        <div className="pt-2 border-t space-y-3">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Configuración de Plan y Meses de Pago
+                            </Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Ciclo de Facturación</Label>
+                                    <Label>Tipo de Institución / Plan *</Label>
                                     <Select
-                                        value={newClinicData.billingCycle}
-                                        onValueChange={(value) => setNewClinicData(prev => ({ ...prev, billingCycle: value }))}
+                                        value={newClinicData.plan}
+                                        onValueChange={(value) => setNewClinicData(prev => ({
+                                            ...prev,
+                                            plan: value,
+                                            billingCycle: value === 'hospital_gratuito' ? 'free' : (prev.billingMonths === 12 ? 'annual' : 'monthly'),
+                                        }))}
                                     >
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="monthly">Mensual</SelectItem>
-                                            <SelectItem value="annual">Anual</SelectItem>
+                                            <SelectItem value="integral">🏢 Clínica Privada - Plan Integral</SelectItem>
+                                            <SelectItem value="esencial">🏢 Clínica Privada - Plan Esencial</SelectItem>
+                                            <SelectItem value="profesional">🏢 Clínica Privada - Plan Profesional</SelectItem>
+                                            <SelectItem value="empresarial">🏢 Clínica Privada - Plan Empresarial</SelectItem>
+                                            <SelectItem value="hospital_gratuito">🏥 Hospital / Centro Gratuito (100% Gratis)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    <Label>Facturación</Label>
-                                    <div className="h-10 px-3 flex items-center rounded-md border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-800">
-                                        Exento de Mensualidad ($0)
+
+                                {newClinicData.plan !== 'hospital_gratuito' ? (
+                                    <div className="space-y-2">
+                                        <Label>Plan de Pago en Meses *</Label>
+                                        <Select
+                                            value={String(newClinicData.billingMonths)}
+                                            onValueChange={(value) => {
+                                                const m = Number(value);
+                                                setNewClinicData(prev => ({
+                                                    ...prev,
+                                                    billingMonths: m,
+                                                    billingCycle: m === 12 ? 'annual' : 'monthly',
+                                                }));
+                                            }}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="1">1 Mes (Mensual)</SelectItem>
+                                                <SelectItem value="3">3 Meses (Trimestral)</SelectItem>
+                                                <SelectItem value="6">6 Meses (Semestral)</SelectItem>
+                                                <SelectItem value="12">12 Meses (1 Año)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Label>Facturación</Label>
+                                        <div className="h-10 px-3 flex items-center rounded-md border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-800">
+                                            Exento de Mensualidad ($0)
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {newClinicData.plan !== 'hospital_gratuito' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Estado Inicial de Suscripción</Label>
+                                        <Select
+                                            value={newClinicData.subscriptionStatus}
+                                            onValueChange={(value: any) => setNewClinicData(prev => ({ ...prev, subscriptionStatus: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="active">Activa (Habilitada inmediatamente)</SelectItem>
+                                                <SelectItem value="pending_payment">Pendiente de Pago</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Monto Acordado del Plan ($ USD)</Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={newClinicData.subscriptionFee}
+                                            onChange={(e) => setNewClinicData(prev => ({ ...prev, subscriptionFee: Number(e.target.value) || 0 }))}
+                                            placeholder="Ej: 50.00"
+                                        />
                                     </div>
                                 </div>
                             )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Descripción / Especialidades Principales</Label>
+                            <Textarea
+                                value={newClinicData.description}
+                                onChange={(e) => setNewClinicData(prev => ({ ...prev, description: e.target.value }))}
+                                placeholder="Descripción de la clínica u hospital, servicios que ofrece..."
+                                rows={2}
+                            />
                         </div>
 
                         {newClinicData.plan === 'hospital_gratuito' && (
@@ -851,9 +1082,9 @@ export function ClinicsTab() {
                         <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={isCreating}>
                             Cancelar
                         </Button>
-                        <Button onClick={handleCreateClinic} disabled={isCreating}>
+                        <Button onClick={handleCreateClinic} disabled={isCreating} className="bg-teal-600 hover:bg-teal-700 text-white">
                             {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                            {newClinicData.plan === 'hospital_gratuito' ? 'Crear Hospital Gratuito' : 'Crear Clínica'}
+                            {newClinicData.plan === 'hospital_gratuito' ? 'Crear Hospital Gratuito' : 'Registrar Clínica'}
                         </Button>
                     </div>
                 </DialogContent>

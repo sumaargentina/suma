@@ -6,7 +6,7 @@ import { updateDoctorWorkspace, unlinkClinicDoctor } from '@/lib/supabaseService
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Building2, Stethoscope, Landmark, CheckCircle2, ShieldAlert, ArrowRight, BellRing, XCircle, Loader2, UserMinus } from 'lucide-react';
+import { Building2, Stethoscope, Landmark, CheckCircle2, ShieldAlert, ArrowRight, BellRing, XCircle, Loader2, UserMinus, Lock, CreditCard } from 'lucide-react';
 import type { DoctorWorkspace } from '@/lib/types';
 
 export function WorkspaceSelectorModal() {
@@ -112,22 +112,29 @@ export function WorkspaceSelectorModal() {
 
   const getWorkspaceBadge = (workspace: DoctorWorkspace) => {
     if (workspace.workspaceType === 'private') {
+      if (workspace.subscriptionLocked) {
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+            <Lock className="w-3 h-3" /> Inactivo por Mensualidad • Ficha Oculta
+          </span>
+        );
+      }
       return (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          Consultorio Particular • Finanzas Propias
+          Consultorio Particular Activo • Finanzas Propias
         </span>
       );
     }
     if (workspace.workspaceType === 'public_hospital' || workspace.clinicPlan === 'hospital_gratuito') {
       return (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
-          Salud Pública / Hospital • Atención Gratuita
+          Salud Pública / Hospital • Espacio Gratuito
         </span>
       );
     }
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-        Clínica / Sanatorio • Citas Asignadas
+        Clínica / Sanatorio • Cubierto por la Clínica
       </span>
     );
   };
@@ -210,6 +217,7 @@ export function WorkspaceSelectorModal() {
         <div className="grid gap-3.5 my-2">
           {activeWorkspaces.map((ws) => {
             const isSelected = activeWorkspace?.id === ws.id;
+            const isLocked = Boolean(ws.subscriptionLocked);
             const title = ws.customName || ws.clinicName || (ws.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional');
 
             return (
@@ -217,15 +225,23 @@ export function WorkspaceSelectorModal() {
                 key={ws.id}
                 onClick={() => handleSelectWorkspace(ws)}
                 className={`relative group flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-                  isSelected
+                  isLocked
+                    ? 'border-amber-200 bg-amber-50/40 hover:border-amber-400'
+                    : isSelected
                     ? 'border-primary bg-primary/5 shadow-md ring-2 ring-primary/20'
                     : 'border-gray-200 hover:border-primary/50 hover:bg-gray-50/80 dark:border-gray-800 dark:hover:bg-gray-800/50'
                 }`}
               >
                 <div className={`p-3 rounded-xl flex-shrink-0 ${
-                  ws.workspaceType === 'private' ? 'bg-primary/10' : ws.workspaceType === 'public_hospital' ? 'bg-emerald-50' : 'bg-blue-50'
+                  isLocked
+                    ? 'bg-amber-100 text-amber-700'
+                    : ws.workspaceType === 'private'
+                    ? 'bg-primary/10'
+                    : ws.workspaceType === 'public_hospital'
+                    ? 'bg-emerald-50'
+                    : 'bg-blue-50'
                 }`}>
-                  {getWorkspaceIcon(ws.workspaceType)}
+                  {isLocked ? <Lock className="w-6 h-6 text-amber-600" /> : getWorkspaceIcon(ws.workspaceType)}
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -238,10 +254,12 @@ export function WorkspaceSelectorModal() {
 
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                     {ws.workspaceType === 'private'
-                      ? 'Administras tu agenda completa, pacientes particulares, cobros directos a tus cuentas y finanzas.'
+                      ? isLocked
+                        ? (ws.lockReason || 'Tu consultorio privado y tu ficha pública en el directorio general están desactivados por falta de pago de mensualidad. Tus espacios en Hospitales o Clínicas siguen activos.')
+                        : 'Administras tu agenda completa, pacientes particulares, cobros directos a tus cuentas y finanzas.'
                       : ws.workspaceType === 'public_hospital' || ws.clinicPlan === 'hospital_gratuito'
-                      ? `Atención gratuita de pacientes en ${title}. Sin costos de consulta ni mensualidad.`
-                      : `Atención de pacientes citados por la institución. Las finanzas y cobros son administrados por ${title}.`}
+                      ? `Atención gratuita de pacientes en ${title}. Espacio 100% gratuito cubierto por el hospital (sigues apareciendo dentro del hospital).`
+                      : `Atención de pacientes citados por la institución. Cubierto por ${title} (sigues apareciendo dentro de la clínica).`}
                   </p>
 
                   {ws.clinicAddress && (
@@ -300,7 +318,15 @@ export function WorkspaceSelectorModal() {
                 </div>
 
                 <div className="flex items-center self-center pl-2">
-                  {isSelected ? (
+                  {isLocked ? (
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+                    >
+                      <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                      Activar / Pagar
+                    </Button>
+                  ) : isSelected ? (
                     <div className="flex items-center gap-1 text-xs font-bold text-primary bg-white dark:bg-gray-900 px-3 py-1.5 rounded-full border border-primary/30 shadow-sm">
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Activo</span>

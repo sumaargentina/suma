@@ -61,6 +61,7 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(currentTab);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [initialOrderSearchCedula, setInitialOrderSearchCedula] = useState('');
 
     useEffect(() => {
         setActiveTab(currentTab);
@@ -79,7 +80,7 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
 
     const primaryItems = [
         { icon: LayoutDashboard, label: 'Resumen', value: 'overview' },
-        { icon: FileCheck, label: 'Órdenes', value: 'orders' },
+        { icon: FileCheck, label: 'Mostrador / Órdenes', value: 'orders' },
         { icon: CalendarDays, label: 'Agenda', value: 'agenda' },
         { icon: Users, label: 'Pacientes', value: 'patients' },
         { icon: HeartHandshake, label: 'Jornadas', value: 'health-campaigns' },
@@ -120,10 +121,15 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
                 : "text-slate-600 hover:text-slate-900 hover:bg-white/80"
         );
 
+    const handleSearchCedulaFromOverview = (cedula: string) => {
+        setInitialOrderSearchCedula(cedula);
+        handleTabChange('orders');
+    };
+
     const renderContent = () => {
         switch (activeTab) {
-            case 'overview': return <LaboratoryOverviewTab onNavigateTab={handleTabChange} />;
-            case 'orders': return <LaboratoryOrdersTab />;
+            case 'overview': return <LaboratoryOverviewTab onNavigateTab={handleTabChange} onSearchCedula={handleSearchCedulaFromOverview} />;
+            case 'orders': return <LaboratoryOrdersTab initialQuery={initialOrderSearchCedula} />;
             case 'agenda': return <LaboratoryAgendaTab />;
             case 'services': return <LaboratoryServicesTab />;
             case 'patients': return <PatientsTab />;
@@ -145,7 +151,7 @@ export function LaboratoryDashboardClient({ currentTab = 'overview' }: { current
             case 'subscription': return <SubscriptionTab />;
             case 'settings': return <LaboratorySettingsTab />;
             case 'support': return <SupportTab />;
-            default: return <LaboratoryOverviewTab onNavigateTab={handleTabChange} />;
+            default: return <LaboratoryOverviewTab onNavigateTab={handleTabChange} onSearchCedula={handleSearchCedulaFromOverview} />;
         }
     };
 

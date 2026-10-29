@@ -140,6 +140,7 @@ export default function DoctorProfile() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [consultationType, setConsultationType] = useState<'presencial' | 'online'>('presencial');
   const [clinic, setClinic] = useState<Clinic | null>(null); // Clínica asociada al médico (si aplica)
+  const [isPrivateProfileUnavailable, setIsPrivateProfileUnavailable] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<number>(65.50);
   const [cashCurrency, setCashCurrency] = useState<'USD' | 'VES'>('USD');
 
@@ -177,9 +178,10 @@ export default function DoctorProfile() {
       const fetchDoctorAndAppointments = async () => {
         setIsLoading(true);
         try {
-          const [docData, docAppointments] = await Promise.all([
+          const [docData, docAppointments, docWorkspaces] = await Promise.all([
             supabaseService.getDoctor(id),
             supabaseService.getDoctorAppointments(id),
+            supabaseService.getDoctorWorkspaces(id),
           ]);
 
           if (docData) {
@@ -188,6 +190,40 @@ export default function DoctorProfile() {
               setSelectedAddressId(docData.addresses[0].id);
             }
             setAppointments(docAppointments);
+
+            // Verificar si el Consultorio Privado del médico tiene la mensualidad activa
+            const hasActivePrivateConsultorio =
+              docData.status === 'active' &&
+              docData.subscriptionStatus === 'active' &&
+              (!docData.isClinicEmployee || Boolean(docData.lastPaymentDate));
+
+            const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+            const requestedClinicId = urlParams?.get('clinicId') || null;
+
+            // Espacios institucionales activos (Hospital Público gratis o Clínica pagada por la clínica)
+            const activeInstitutionalWorkspaces = (docWorkspaces || []).filter(
+              w => w.status === 'active' && w.workspaceType !== 'private' && !w.subscriptionLocked && w.clinicId
+            );
+
+            // Determinar si el paciente está agendando a través de un Hospital o Clínica
+            let targetClinicId: string | null = null;
+            if (requestedClinicId) {
+              const matchesWorkspace = activeInstitutionalWorkspaces.some(w => w.clinicId === requestedClinicId);
+              if (matchesWorkspace || docData.clinicId === requestedClinicId) {
+                targetClinicId = requestedClinicId;
+              }
+            } else if (!hasActivePrivateConsultorio) {
+              // Si su consultorio privado no está activo pero pertenece a un Hospital o Clínica activo,
+              // mostrar su ficha dentro del contexto de ese Hospital o Clínica.
+              if (activeInstitutionalWorkspaces.length > 0) {
+                targetClinicId = activeInstitutionalWorkspaces[0].clinicId || null;
+              } else if (docData.clinicId) {
+                targetClinicId = docData.clinicId;
+              } else {
+                // No tiene mensualidad privada activa ni pertenece a ningún Hospital/Clínica activo
+                setIsPrivateProfileUnavailable(true);
+              }
+            }
 
             // Cargar cupones: Plataforma + Clínica (si aplica)
             try {
@@ -208,20 +244,23 @@ export default function DoctorProfile() {
                 allCoupons = [...allCoupons, ...doctorCoupons];
               }
 
-              // Si es médico de clínica, agregar cupones de la clínica
-              if (docData.clinicId) {
-                const clinicData = await supabaseService.getClinic(docData.clinicId);
-                if (clinicData && clinicData.coupons) {
-                  // Asegurar que los cupones de clínica apliquen a este doctor si no tienen scope definido
-                  const clinicCoupons = clinicData.coupons.map((c: any) => {
-                    if (!c.scopeType && !c.scope) {
-                      return { ...c, scopeType: 'specific', scopeDoctors: [docData.id] };
-                    }
-                    return c;
-                  });
-                  allCoupons = [...allCoupons, ...clinicCoupons];
+              // Si la consulta es en una clínica/hospital, cargar datos y cupones de la institución
+              if (targetClinicId) {
+                const clinicData = await supabaseService.getClinic(targetClinicId);
+                if (clinicData && clinicData.status !== 'inactive') {
+                  if (clinicData.coupons) {
+                    const clinicCoupons = clinicData.coupons.map((c: any) => {
+                      if (!c.scopeType && !c.scope) {
+                        return { ...c, scopeType: 'specific', scopeDoctors: [docData.id] };
+                      }
+                      return c;
+                    });
+                    allCoupons = [...allCoupons, ...clinicCoupons];
+                  }
+                  setClinic(clinicData);
+                } else if (!hasActivePrivateConsultorio) {
+                  setIsPrivateProfileUnavailable(true);
                 }
-                if (clinicData) setClinic(clinicData); // Ensure clinic is set
               }
 
               setCoupons(allCoupons.filter(c => c.isActive !== false));
@@ -360,6 +399,21 @@ export default function DoctorProfile() {
   const currentAddress = useMemo(() => {
     if (!doctor) return null;
 
+    // Si se está agendando dentro de un Hospital o Clínica, usar la sede y tarifa de esa institución
+    if (clinic) {
+      const isPublicHospital = clinic.plan === 'hospital_gratuito';
+      return {
+        id: `clinic-${clinic.id}`,
+        name: clinic.name,
+        address: clinic.address || doctor.address,
+        city: clinic.city || doctor.city,
+        schedule: doctor.schedule,
+        consultationFee: isPublicHospital ? 0 : (doctor.consultationFee || 0),
+        services: isPublicHospital ? [] : doctor.services,
+        slotDuration: doctor.slotDuration || 30
+      };
+    }
+
     // Si es consulta online, retornar configuración online
     if (consultationType === 'online' && doctor.onlineConsultation?.enabled) {
       return {
@@ -388,7 +442,7 @@ export default function DoctorProfile() {
       services: doctor.services,
       slotDuration: doctor.slotDuration || 30
     };
-  }, [doctor, selectedAddressId, consultationType]);
+  }, [doctor, clinic, selectedAddressId, consultationType]);
 
   const finalPrice = useMemo(() => {
     if (!doctor) return 0;
@@ -702,7 +756,7 @@ export default function DoctorProfile() {
         doctorId: doctor.id,
         doctorName: doctor.name,
         specialty: doctor.specialty,
-        clinicId: doctor.clinicId || undefined,
+        clinicId: clinic?.id || doctor.clinicId || undefined,
         consultationFee: (currentAddress && currentAddress.consultationFee !== undefined) ? currentAddress.consultationFee : (doctor.consultationFee || 0),
         date: selectedDate.toISOString().split('T')[0],
         time: selectedTime,
@@ -1079,8 +1133,8 @@ export default function DoctorProfile() {
                     )}
                   </div>
 
-                  {/* Selector de consultorio (solo para presencial) */}
-                  {consultationType === 'presencial' && doctor.addresses && doctor.addresses.length > 1 && (
+                  {/* Selector de consultorio (solo para presencial en consultorio privado) */}
+                  {!clinic && consultationType === 'presencial' && doctor.addresses && doctor.addresses.length > 1 && (
                     <div className="mb-6">
                       <Label className="mb-2 block font-medium">Selecciona el Consultorio:</Label>
                       <div className="flex flex-wrap gap-2">
@@ -1756,24 +1810,23 @@ export default function DoctorProfile() {
     );
   }
 
-  if (!doctor) {
+  if (!doctor || (isPrivateProfileUnavailable && user?.id !== doctor.id && user?.role !== 'admin')) {
     return (
       <div className="flex flex-col min-h-screen bg-background">
         <HeaderWrapper />
         <main className="flex-1 py-8 md:py-12 bg-muted/40 pb-20 md:pb-0">
           <div className="container max-w-4xl mx-auto">
             <Card className="mb-8 overflow-hidden">
-              <div className="relative">
-                <Image
-                  src='https://placehold.co/1200x400.png'
-                  alt="Doctor no encontrado"
-                  width={1200}
-                  height={400}
-                  className="w-full h-48 object-cover filter grayscale"
-                />
-              </div>
-              <div className="pt-20 px-8 pb-6 text-center">
-                <h2 className="text-2xl font-bold">Médico no encontrado</h2>
+              <div className="py-12 px-8 text-center space-y-3">
+                <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
+                <h2 className="text-2xl font-bold">
+                  {isPrivateProfileUnavailable ? 'Consultorio Privado No Disponible' : 'Médico no encontrado'}
+                </h2>
+                {isPrivateProfileUnavailable && (
+                  <p className="text-muted-foreground max-w-md mx-auto text-sm">
+                    La ficha de consultas privadas de este profesional no se encuentra activa en este momento.
+                  </p>
+                )}
               </div>
             </Card>
             <Card>
@@ -1824,10 +1877,10 @@ export default function DoctorProfile() {
                     <span className="text-sm font-semibold">Verificado</span>
                   </div>
                 )}
-                {doctor.clinicId && (
+                {(clinic || doctor.clinicId) && (
                   <div className="flex items-center gap-1.5 bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full">
                     <Building2 className="h-4 w-4" />
-                    <span className="text-sm font-semibold">Clínica</span>
+                    <span className="text-sm font-semibold">{clinic?.name || 'Clínica / Hospital'}</span>
                   </div>
                 )}
               </div>

@@ -84,12 +84,18 @@ interface ClinicRegistrationData {
   email: string;
   password: string;
   phone: string;
+  rif?: string;
   country?: string;
   state?: string;
   city?: string;
   sector?: string;
   address?: string;
-  billingCycle?: 'monthly' | 'annual';
+  billingCycle?: 'monthly' | 'annual' | 'free';
+  billingMonths?: number;
+  subscriptionFee?: number;
+  discountPercentage?: number;
+  freeMonths?: number;
+  plan?: string;
   lat?: number;
   lng?: number;
 }
@@ -334,22 +340,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedActiveStr = localStorage.getItem('activeWorkspace');
 
       const activeOnlyList = list.filter(w => w.status === 'active');
+      const unlockedActiveList = activeOnlyList.filter(w => !w.subscriptionLocked);
+
+      const toActiveWorkspace = (ws: DoctorWorkspace): ActiveWorkspace => ({
+        id: ws.id,
+        workspaceType: ws.workspaceType,
+        name: ws.customName || ws.clinicName || (ws.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
+        clinicId: ws.clinicId || null,
+        roleInWorkplace: ws.roleInWorkplace || undefined,
+        canManageFinances: ws.canManageFinances,
+        canManageSchedule: ws.canManageSchedule,
+        subscriptionLocked: ws.subscriptionLocked,
+        lockReason: ws.lockReason,
+      });
 
       if (storedActiveStr) {
         try {
           const parsed = JSON.parse(storedActiveStr);
-          // Verify if it still belongs to active workspaces
           const exists = activeOnlyList.find(w => w.id === parsed.id);
           if (exists) {
-            chosenActive = {
-              id: exists.id,
-              workspaceType: exists.workspaceType,
-              name: exists.customName || exists.clinicName || (exists.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
-              clinicId: exists.clinicId || null,
-              roleInWorkplace: exists.roleInWorkplace || undefined,
-              canManageFinances: exists.canManageFinances,
-              canManageSchedule: exists.canManageSchedule,
-            };
+            // Si el espacio guardado está bloqueado por falta de pago y el médico tiene otro espacio disponible (ej. Hospital o Clínica), cambiar automáticamente al disponible
+            if (exists.subscriptionLocked && unlockedActiveList.length > 0) {
+              const fallback = unlockedActiveList.find(w => w.isDefault) || unlockedActiveList[0];
+              chosenActive = toActiveWorkspace(fallback);
+            } else {
+              chosenActive = toActiveWorkspace(exists);
+            }
           }
         } catch {
           // ignore corrupted JSON
@@ -357,16 +373,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!chosenActive && activeOnlyList.length > 0) {
-        const def = activeOnlyList.find(w => w.isDefault) || activeOnlyList[0];
-        chosenActive = {
-          id: def.id,
-          workspaceType: def.workspaceType,
-          name: def.customName || def.clinicName || (def.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional'),
-          clinicId: def.clinicId || null,
-          roleInWorkplace: def.roleInWorkplace || undefined,
-          canManageFinances: def.canManageFinances,
-          canManageSchedule: def.canManageSchedule,
-        };
+        const pool = unlockedActiveList.length > 0 ? unlockedActiveList : activeOnlyList;
+        const def = pool.find(w => w.isDefault) || pool[0];
+        chosenActive = toActiveWorkspace(def);
       }
 
       setActiveWorkspace(chosenActive);
@@ -399,6 +408,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roleInWorkplace: target.roleInWorkplace || undefined,
       canManageFinances: target.canManageFinances,
       canManageSchedule: target.canManageSchedule,
+      subscriptionLocked: target.subscriptionLocked,
+      lockReason: target.lockReason,
     };
 
     setActiveWorkspace(newActive);
@@ -406,6 +417,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Update session token with current workspace clinicId
     await setAuthToken(user.id, user.email, user.role, user.name, newActive.clinicId || undefined);
+
+    if (target.subscriptionLocked && target.workspaceType === 'private') {
+      toast({
+        variant: 'destructive',
+        title: 'Consultorio Privado Inactivo',
+        description: 'Tu mensualidad de consultorio privado no está activa. Reporta tu pago en Suscripción para habilitarlo.',
+      });
+      router.push('/doctor/dashboard?view=subscription');
+      return;
+    }
 
     toast({
       title: 'Espacio de trabajo cambiado',
@@ -800,7 +821,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       status: 'active', lastPaymentDate: null,
-      whatsapp: phone, lat: doctorData.lat || 0, lng: doctorData.lng || 0,
+      phone: phone, whatsapp: phone, lat: doctorData.lat || 0, lng: doctorData.lng || 0,
       joinDate: joinDateArgentina,
       subscriptionStatus: 'active', nextPaymentDate: paymentDateArgentina,
       coupons: [], expenses: [],
@@ -821,8 +842,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const registerClinic = async (clinicData: ClinicRegistrationData) => {
-    const { name, email, password, phone, country, state, city, billingCycle, sector, address } = clinicData;
-    const normalizedEmail = email.toLowerCase();
+    const {
+      name,
+      email,
+      password,
+      phone,
+      rif,
+      country,
+      state,
+      city,
+      billingCycle,
+      billingMonths,
+      subscriptionFee,
+      discountPercentage,
+      freeMonths,
+      plan,
+      sector,
+      address,
+    } = clinicData;
+    const normalizedEmail = email.toLowerCase().trim();
 
     // Check existing user
     const existingUser = await supabaseService.findUserByEmail(normalizedEmail);
@@ -836,23 +874,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Generate slug
     const slug = name.toLowerCase()
       .trim()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/[\s_-]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+
+    const joinDateArgentina = getCurrentDateInArgentina();
+    const paymentDateArgentina = getPaymentDateInArgentina(new Date());
+    const resolvedMonths = billingMonths || (billingCycle === 'annual' ? 12 : 1);
 
     const newClinicData: Omit<Clinic, 'id' | 'createdAt'> = {
       name,
       adminEmail: normalizedEmail,
+      email: normalizedEmail,
       slug: `${slug}-${Date.now().toString().slice(-4)}`,
       password: hashedPassword,
       phone,
+      whatsapp: phone,
+      rif: rif || null,
       country: country || 'VE',
       state: state || '',
-      city,
-      sector,
-      address,
-      billingCycle: billingCycle || 'monthly',
-      plan: 'integral',
+      city: city || '',
+      sector: sector || '',
+      address: address || '',
+      billingCycle: billingCycle || (resolvedMonths === 12 ? 'annual' : 'monthly'),
+      billingMonths: resolvedMonths,
+      subscriptionFee: subscriptionFee || 0,
+      discountPercentage: discountPercentage || 0,
+      freeMonths: freeMonths ?? 1,
+      plan: plan || 'integral',
+      status: 'active',
+      verificationStatus: 'pending',
+      subscriptionStatus: 'active',
+      lastPaymentDate: joinDateArgentina,
+      nextPaymentDate: paymentDateArgentina,
     } as any;
 
     await supabaseService.addClinic({

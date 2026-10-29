@@ -139,6 +139,16 @@ export async function POST(request: NextRequest) {
             cleanInsert.recipe_status = 'active';
         }
 
+        // Asegurar que el reposo SOLA Y EXCLUSIVAMENTE se guarde si el médico indicó requires_rest = true
+        if (!cleanInsert.requires_rest) {
+            cleanInsert.requires_rest = false;
+            cleanInsert.rest_days = 0;
+            cleanInsert.rest_start_date = null;
+            cleanInsert.rest_end_date = null;
+            cleanInsert.rest_type = null;
+            cleanInsert.rest_justification = null;
+        }
+
         logSecurityEvent('MEDICAL_RECORD_CREATE', {
             userId: authResult.user?.id || resolvedDoctorId,
             role: authResult.user?.role || 'doctor',

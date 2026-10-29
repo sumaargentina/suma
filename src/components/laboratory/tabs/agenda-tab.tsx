@@ -39,16 +39,21 @@ export function LaboratoryAgendaTab() {
     // New Sample / Walk-in Modal
     const [showNewModal, setShowNewModal] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
+    const [isSearchingCedula, setIsSearchingCedula] = useState(false);
+    const [foundPatientId, setFoundPatientId] = useState<string | null>(null);
+    const [foundDoctorOrders, setFoundDoctorOrders] = useState<any[]>([]);
+    const [selectedDoctorOrder, setSelectedDoctorOrder] = useState<any | null>(null);
     const [newAppointmentData, setNewAppointmentData] = useState({
         patientName: '',
         patientPhone: '',
         patientCedula: '',
         serviceId: '',
+        customServiceName: '',
         date: format(new Date(), 'yyyy-MM-dd'),
-        time: '08:00',
+        time: format(new Date(), 'HH:mm'),
         paymentMethod: 'efectivo',
         paymentStatus: 'Pagado' as const,
-        reason: 'Toma de muestra de laboratorio'
+        reason: 'Toma de muestra de laboratorio (Sin Cita)'
     });
 
     const effectiveLabId = user?.role === 'secretary' ? (user.laboratoryId || user.id) : user?.id;
@@ -131,6 +136,84 @@ export function LaboratoryAgendaTab() {
         }
     };
 
+    // Buscar paciente y órdenes médicas por Cédula cuando llega sin cita
+    const handleSearchPatientByCedula = async () => {
+        const cleanCedula = newAppointmentData.patientCedula.trim();
+        if (!cleanCedula) {
+            toast({
+                variant: 'destructive',
+                title: 'Cédula requerida',
+                description: 'Ingresa el número de cédula del paciente para consultar sus órdenes médicas.'
+            });
+            return;
+        }
+
+        try {
+            setIsSearchingCedula(true);
+            setFoundDoctorOrders([]);
+            setSelectedDoctorOrder(null);
+
+            const res = await fetch('/api/laboratory/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: cleanCedula })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Error al consultar la cédula.');
+            }
+
+            if (data.patient) {
+                setFoundPatientId(data.patient.id || null);
+                setNewAppointmentData(prev => ({
+                    ...prev,
+                    patientName: data.patient.name || prev.patientName,
+                    patientPhone: data.patient.phone || prev.patientPhone,
+                }));
+
+                const orders = data.orders || [];
+                setFoundDoctorOrders(orders);
+
+                if (orders.length > 0) {
+                    const latestOrder = orders[0];
+                    setSelectedDoctorOrder(latestOrder);
+                    setNewAppointmentData(prev => ({
+                        ...prev,
+                        patientName: data.patient.name || prev.patientName,
+                        patientPhone: data.patient.phone || prev.patientPhone,
+                        customServiceName: latestOrder.requested_studies || prev.customServiceName,
+                        reason: `Sin Cita — Orden de Dr(a). ${latestOrder.doctor_name}: ${latestOrder.requested_studies}`
+                    }));
+                    toast({
+                        title: 'Paciente y Exámenes Encontrados',
+                        description: `Se cargaron los exámenes indicados por Dr(a). ${latestOrder.doctor_name}.`
+                    });
+                } else {
+                    toast({
+                        title: 'Paciente Encontrado',
+                        description: `${data.patient.name} está registrado en SUMA (sin órdenes médicas pendientes).`
+                    });
+                }
+            } else {
+                setFoundPatientId(null);
+                toast({
+                    variant: 'destructive',
+                    title: 'No encontrado por Cédula',
+                    description: 'No se encontró cuenta con esa cédula. Puedes escribir sus datos manualmente.'
+                });
+            }
+        } catch (err: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Error de búsqueda',
+                description: err.message
+            });
+        } finally {
+            setIsSearchingCedula(false);
+        }
+    };
+
     // Handle Create Walk-in Sample Collection
     const handleCreateAppointment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -146,16 +229,21 @@ export function LaboratoryAgendaTab() {
         }
 
         const selectedService = services.find(s => s.id === newAppointmentData.serviceId);
+        const resolvedServiceName = selectedService?.name
+            || newAppointmentData.customServiceName.trim()
+            || selectedDoctorOrder?.requested_studies
+            || 'Examen de Laboratorio';
 
         try {
             setIsCreating(true);
             const insertPayload = {
                 laboratory_id: effectiveLabId,
                 laboratory_service_id: selectedService?.id || null,
-                service_name: selectedService?.name || 'Examen de Laboratorio',
-                patient_id: user?.id, // User creating the record
+                service_name: resolvedServiceName.slice(0, 180),
+                patient_id: foundPatientId || user?.id,
                 patient_name: newAppointmentData.patientName.trim(),
                 patient_phone: newAppointmentData.patientPhone.trim() || null,
+                doctor_name: selectedDoctorOrder?.doctor_name || null,
                 date: newAppointmentData.date,
                 time: newAppointmentData.time,
                 total_price: selectedService?.price || 0,
@@ -164,7 +252,7 @@ export function LaboratoryAgendaTab() {
                 payment_status: newAppointmentData.paymentStatus,
                 attendance: 'Atendido',
                 patient_confirmation_status: 'Confirmada',
-                reason: newAppointmentData.reason || 'Toma de muestra en taquilla',
+                reason: newAppointmentData.reason || 'Toma de muestra en taquilla (Sin Cita)',
                 created_at: new Date().toISOString()
             };
 
@@ -174,22 +262,47 @@ export function LaboratoryAgendaTab() {
 
             if (error) throw error;
 
+            // Si seleccionó una orden médica del doctor, actualizar la orden en laboratory_orders como "in_progress"
+            if (selectedDoctorOrder?.record_id) {
+                await fetch('/api/laboratory/attend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        record_id: selectedDoctorOrder.record_id,
+                        order_id: selectedDoctorOrder.order_id,
+                        patient_id: foundPatientId || selectedDoctorOrder.patient_id,
+                        patient_name: newAppointmentData.patientName.trim(),
+                        patient_cedula: newAppointmentData.patientCedula.trim(),
+                        patient_phone: newAppointmentData.patientPhone.trim(),
+                        doctor_id: selectedDoctorOrder.doctor_id,
+                        doctor_name: selectedDoctorOrder.doctor_name,
+                        requested_studies: selectedDoctorOrder.requested_studies,
+                        laboratory_id: effectiveLabId,
+                        laboratory_name: user.name
+                    })
+                }).catch((e) => console.warn('Warning updating lab order attend status:', e));
+            }
+
             toast({
-                title: 'Muestra Registrada',
-                description: `Paciente ${newAppointmentData.patientName} registrado exitosamente.`
+                title: 'Paciente Atendido Ahorita (Sin Cita)',
+                description: `Paciente ${newAppointmentData.patientName} registrado exitosamente con sus exámenes.`
             });
 
             setShowNewModal(false);
+            setFoundPatientId(null);
+            setFoundDoctorOrders([]);
+            setSelectedDoctorOrder(null);
             setNewAppointmentData({
                 patientName: '',
                 patientPhone: '',
                 patientCedula: '',
                 serviceId: '',
+                customServiceName: '',
                 date: format(new Date(), 'yyyy-MM-dd'),
-                time: '08:00',
+                time: format(new Date(), 'HH:mm'),
                 paymentMethod: 'efectivo',
                 paymentStatus: 'Pagado',
-                reason: 'Toma de muestra de laboratorio'
+                reason: 'Toma de muestra de laboratorio (Sin Cita)'
             });
             await loadData();
         } catch (err: any) {
@@ -398,20 +511,100 @@ export function LaboratoryAgendaTab() {
                 </CardContent>
             </Card>
 
-            {/* Modal: Registrar Paciente / Toma de Muestra */}
+            {/* Modal: Registrar Paciente / Toma de Muestra (Sin Cita por Cédula) */}
             <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <FlaskConical className="h-5 w-5 text-teal-600" />
-                            Registrar Toma de Muestra en Taquilla
+                            Atender Paciente en Taquilla (Sin Cita / Por Cédula)
                         </DialogTitle>
                         <DialogDescription>
-                            Registra rápidamente a un paciente que asiste al laboratorio para realizarse análisis.
+                            Ingresa la cédula del paciente para consultar automáticamente qué exámenes le mandó a hacer el médico y registrarlo como atendido ahorita.
                         </DialogDescription>
                     </DialogHeader>
 
                     <form onSubmit={handleCreateAppointment} className="space-y-4 pt-2">
+                        {/* Buscador por Cédula en Mostrador */}
+                        <div className="p-3.5 rounded-xl bg-teal-50/70 border border-teal-200 space-y-2.5">
+                            <Label htmlFor="patient-cedula" className="text-xs font-bold uppercase tracking-wider text-teal-900 flex items-center gap-1.5">
+                                <Search className="h-3.5 w-3.5 text-teal-600" />
+                                Consultar Cédula del Paciente (Pacientes Sin Cita)
+                            </Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="patient-cedula"
+                                    placeholder="Ej. 15890123 o V-15890123"
+                                    value={newAppointmentData.patientCedula}
+                                    onChange={(e) => setNewAppointmentData({ ...newAppointmentData, patientCedula: e.target.value })}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleSearchPatientByCedula();
+                                        }
+                                    }}
+                                    className="bg-white border-teal-300 font-semibold"
+                                />
+                                <Button
+                                    type="button"
+                                    onClick={handleSearchPatientByCedula}
+                                    disabled={isSearchingCedula}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white shrink-0 gap-1.5"
+                                >
+                                    {isSearchingCedula ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                                    Buscar Cédula
+                                </Button>
+                            </div>
+                            <p className="text-[11px] text-teal-800">
+                                Al colocar la cédula verás de inmediato los exámenes que le mandó el médico en SUMA.
+                            </p>
+
+                            {/* Exámenes encontrados del médico */}
+                            {foundDoctorOrders.length > 0 && (
+                                <div className="mt-2 pt-2.5 border-t border-teal-200/80 space-y-2">
+                                    <p className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                                        <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                                        Exámenes Solicitados por el Médico ({foundDoctorOrders.length}):
+                                    </p>
+                                    <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                                        {foundDoctorOrders.map((ord) => {
+                                            const isSelected = selectedDoctorOrder?.record_id === ord.record_id;
+                                            return (
+                                                <div
+                                                    key={ord.record_id}
+                                                    onClick={() => {
+                                                        setSelectedDoctorOrder(ord);
+                                                        setNewAppointmentData(prev => ({
+                                                            ...prev,
+                                                            customServiceName: ord.requested_studies || prev.customServiceName,
+                                                            reason: `Sin Cita — Orden de Dr(a). ${ord.doctor_name}: ${ord.requested_studies}`
+                                                        }));
+                                                    }}
+                                                    className={`p-2.5 rounded-lg border cursor-pointer transition-all text-xs ${
+                                                        isSelected
+                                                            ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400'
+                                                            : 'bg-white border-slate-200 hover:border-teal-300'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                        <span className="font-bold text-slate-900">
+                                                            Dr(a). {ord.doctor_name}
+                                                        </span>
+                                                        <Badge variant="outline" className="text-[10px] bg-white">
+                                                            {ord.visit_date ? new Date(ord.visit_date).toLocaleDateString('es-ES') : 'Reciente'}
+                                                        </Badge>
+                                                    </div>
+                                                    <p className="font-semibold text-teal-900 whitespace-pre-wrap">
+                                                        {ord.requested_studies}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="space-y-2">
                             <Label htmlFor="patient-name">Nombre Completo del Paciente *</Label>
                             <Input
@@ -434,13 +627,23 @@ export function LaboratoryAgendaTab() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="select-service">Prueba o Análisis</Label>
+                            <Label htmlFor="custom-service">Exámenes a Realizar (Orden del Médico o Manual)</Label>
+                            <Input
+                                id="custom-service"
+                                placeholder="Ej. Hematología completa, Perfil 20, Glicemia..."
+                                value={newAppointmentData.customServiceName}
+                                onChange={(e) => setNewAppointmentData({ ...newAppointmentData, customServiceName: e.target.value })}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="select-service">Vincular a Prueba del Catálogo (Opcional para Precio)</Label>
                             <Select 
                                 value={newAppointmentData.serviceId} 
                                 onValueChange={(val) => setNewAppointmentData({ ...newAppointmentData, serviceId: val })}
                             >
                                 <SelectTrigger id="select-service">
-                                    <SelectValue placeholder="Seleccionar prueba del catálogo" />
+                                    <SelectValue placeholder="Seleccionar prueba del catálogo (opcional)" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {services.map((svc) => (
@@ -523,8 +726,8 @@ export function LaboratoryAgendaTab() {
                                 className="bg-teal-600 hover:bg-teal-700 text-white gap-2"
                                 disabled={isCreating}
                             >
-                                {isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
-                                Registrar Muestra
+                                {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                Lo Atendimos Ahorita
                             </Button>
                         </DialogFooter>
                     </form>

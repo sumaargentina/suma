@@ -158,7 +158,7 @@ export function FinancesTab() {
       await supabaseService.updateDoctorPaymentStatus(selectedPayment.id, status);
       // Si el pago es aprobado, actualizar el doctor a subscriptionStatus: 'active'
       if (status === 'Paid') {
-        await supabaseService.updateDoctor(selectedPayment.doctorId, { subscriptionStatus: 'active' });
+        await supabaseService.updateDoctor(selectedPayment.doctorId, { subscriptionStatus: 'active', status: 'active', isClinicEmployee: false, lastPaymentDate: selectedPayment.date });
       }
       toast({
         title: status === 'Paid' ? "Pago Aprobado" : "Pago Rechazado",

@@ -14,7 +14,8 @@ export async function POST(request: NextRequest) {
             city,
             pharmacistName,
             pharmacistLicense,
-            notes
+            notes,
+            medicationsDelivered
         } = body;
 
         if (!recordId) {
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
                 : 'fecha previa';
 
             return NextResponse.json({
-                error: `⚠️ BLOQUEADO: Este récipe ya fue suministrado por "${record.dispensed_by_pharmacy_name || 'otra farmacia aliada'}" el ${formattedDate}. Está prohibido despacharlo nuevamente.`,
+                error: `⛔ YA NO SE PUEDE ENTREGAR MÁS ESTE MEDICAMENTO: Este récipe ya fue entregado en "${record.dispensed_by_pharmacy_name || 'otra farmacia aliada'}" el ${formattedDate}. Por tratarse de medicamentos delicados bajo récipe, está prohibida su doble entrega.`,
                 alreadyDispensed: true,
                 dispensedBy: record.dispensed_by_pharmacy_name,
                 dispensedAt: record.dispensed_at
@@ -78,6 +79,18 @@ export async function POST(request: NextRequest) {
 
         const now = new Date().toISOString();
 
+        const notesParts: string[] = [];
+        if (Array.isArray(medicationsDelivered) && medicationsDelivered.length > 0) {
+            notesParts.push(`Medicamentos entregados: ${medicationsDelivered.join(' | ')}`);
+        }
+        if (pharmacistName) {
+            notesParts.push(`Atendido por: ${pharmacistName}${pharmacistLicense ? ` (Mat: ${pharmacistLicense})` : ''}`);
+        }
+        if (notes) {
+            notesParts.push(notes);
+        }
+        const finalDispensationNotes = notesParts.length > 0 ? notesParts.join(' — ') : null;
+
         // 5. Actualizar el registro médico a 'dispensed'
         const { error: updateError } = await supabaseAdmin
             .from('medical_records')
@@ -86,7 +99,7 @@ export async function POST(request: NextRequest) {
                 dispensed_by_pharmacy_id: pharmacyId,
                 dispensed_by_pharmacy_name: fullDispenserName,
                 dispensed_at: now,
-                dispensation_notes: notes || null
+                dispensation_notes: finalDispensationNotes
             })
             .eq('id', recordId);
 
@@ -125,9 +138,10 @@ export async function POST(request: NextRequest) {
                     pharmacy_id: pharmacyId,
                     pharmacy_name: fullDispenserName,
                     branch_name: branchName || null,
+                    medications_dispensed: Array.isArray(medicationsDelivered) ? medicationsDelivered : [record.prescription || ''],
                     pharmacist_name: pharmacistName || 'Farmacéutico en mostrador',
                     pharmacist_license: pharmacistLicense || 'N/A',
-                    notes: notes || null,
+                    notes: finalDispensationNotes,
                     dispensed_at: now,
                     created_at: now
                 });

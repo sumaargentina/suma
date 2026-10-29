@@ -10,6 +10,9 @@ export async function POST(request: NextRequest) {
             orderId,
             orderNumber,
             patientId,
+            doctorId,
+            studies,
+            diagnosis,
             laboratoryId,
             laboratoryName,
             resultsSummary,
@@ -65,21 +68,27 @@ export async function POST(request: NextRequest) {
             } else {
                 // Puede ser que orderId provenga de un medical_record_id
                 // Crear una orden completada directamente en laboratory_orders
+                const insertPayload: Record<string, any> = {
+                    patient_id: patientId,
+                    order_number: orderNumber || `SUMA-LAB-${Date.now().toString().slice(-6)}`,
+                    studies: [{ name: studies || fileName || 'Estudios de Laboratorio' }],
+                    diagnosis: diagnosis || '',
+                    clinical_indications: studies || '',
+                    status: 'completed',
+                    results_available: true,
+                    results_url: resultsUrl || null,
+                    laboratory_notes: finalNotes,
+                    laboratory_id: laboratoryId || null,
+                    completed_date: now,
+                    results_uploaded_at: now,
+                    valid_from: now
+                };
+                if (doctorId) {
+                    insertPayload.doctor_id = doctorId;
+                }
                 const { data: insertRes, error: insertErr } = await supabaseAdmin
                     .from('laboratory_orders')
-                    .insert([{
-                        patient_id: patientId,
-                        order_number: orderNumber || `SUMA-LAB-${Date.now().toString().slice(-6)}`,
-                        studies: [{ name: fileName || 'Estudios de Laboratorio' }],
-                        status: 'completed',
-                        results_available: true,
-                        results_url: resultsUrl || null,
-                        laboratory_notes: finalNotes,
-                        laboratory_id: laboratoryId || null,
-                        completed_date: now,
-                        results_uploaded_at: now,
-                        valid_from: now
-                    }])
+                    .insert([insertPayload])
                     .select()
                     .single();
 

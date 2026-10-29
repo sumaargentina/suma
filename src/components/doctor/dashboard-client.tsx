@@ -9,7 +9,7 @@ import { createWalkInAppointmentAction, sendMessageAction } from '@/app/actions'
 import { EXPENSE_CATEGORIES, DOCUMENT_TYPES, DocumentType, Doctor, Appointment, AdminSupportTicket, DoctorPayment, Expense, Service, BankDetail, Coupon } from '@/lib/types';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus, Clock, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle, Loader2, MessageCircle, CreditCard, Send, AlertCircle, Info, ArrowDown, UserPlus, Clock, ShieldCheck, XCircle, Lock, Building2 } from 'lucide-react';
 import { useSettings } from '@/lib/settings';
 import { useDoctorNotifications } from '@/lib/doctor-notifications';
 import { useChatNotifications } from '@/lib/chat-notifications';
@@ -671,6 +671,76 @@ ID Transacción: ${transactionId}`;
     }
 
     const subscriptionFee = cityFeesMap.get(doctorData?.city) || 0;
+
+    // Determinar si el Consultorio Privado está bloqueado por falta de pago de mensualidad
+    const hasActivePrivateSubscription =
+        doctorData.status === 'active' &&
+        doctorData.subscriptionStatus === 'active' &&
+        (!doctorData.isClinicEmployee || Boolean(doctorData.lastPaymentDate));
+
+    const isPrivateWorkspaceLocked = !isClinicDoctor && (
+        Boolean(activeWorkspace?.subscriptionLocked) || !hasActivePrivateSubscription
+    );
+
+    const availableInstitutionalWorkspaces = (workspaces || []).filter(
+        w => w.status === 'active' && w.workspaceType !== 'private' && !w.subscriptionLocked
+    );
+
+    const renderPrivateWorkspaceLockedCard = () => (
+        <div className="rounded-2xl border-2 border-amber-200 bg-white p-6 md:p-10 text-center max-w-2xl mx-auto shadow-sm my-4">
+            <div className="mx-auto w-14 h-14 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
+                <Lock className="h-7 w-7" />
+            </div>
+            <h2 className="text-lg md:text-2xl font-bold text-slate-900 mb-2">
+                Espacio de Consultorio Privado No Disponible
+            </h2>
+            <p className="text-sm md:text-base text-slate-600 mb-4 leading-relaxed">
+                Tu espacio de trabajo de <strong>Consultas Privadas</strong> no está disponible y tu <strong>ficha pública en el directorio general</strong> no aparece actualmente porque la mensualidad de tu consultorio particular no está activa.
+            </p>
+            {availableInstitutionalWorkspaces.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6 text-left text-xs md:text-sm text-emerald-900">
+                    <p className="font-bold flex items-center gap-1.5 mb-1">
+                        <Building2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        Tus espacios institucionales siguen 100% activos:
+                    </p>
+                    <p className="text-emerald-800">
+                        Sigues apareciendo dentro de <strong>{availableInstitutionalWorkspaces.map(w => w.customName || w.clinicName || 'tu Hospital / Clínica').join(', ')}</strong> y puedes atender pacientes allí normalmente sin pagar mensualidad personal.
+                    </p>
+                </div>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                    type="button"
+                    onClick={() => setIsPaymentReportOpen(true)}
+                    className="bg-primary hover:bg-primary/90 text-white font-semibold gap-2"
+                >
+                    <CreditCard className="h-4 w-4" />
+                    Reportar Pago y Activar Consultorio Privado
+                </Button>
+                {currentTab !== 'subscription' && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => window.location.assign('/doctor/dashboard?view=subscription')}
+                    >
+                        Ver Estado de Mensualidad
+                    </Button>
+                )}
+                {availableInstitutionalWorkspaces.length > 0 && (
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setShowWorkspaceModal(true)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-2"
+                    >
+                        <Building2 className="h-4 w-4" />
+                        Cambiar a Hospital / Clínica
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <div className="flex flex-col min-h-screen bg-background">
             <HeaderWrapper />
@@ -777,33 +847,84 @@ ID Transacción: ${transactionId}`;
                             </div>
                         </div>
                     )}
+                    {isPrivateWorkspaceLocked && (
+                        <div className="mb-4 rounded-xl border-2 border-amber-300 bg-amber-50/95 p-4 text-amber-950 shadow-sm">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shrink-0 mt-0.5">
+                                        <Lock className="h-5 w-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-sm md:text-base flex items-center gap-2 flex-wrap">
+                                            Consultorio Privado Inactivo por Mensualidad • Ficha Oculta en Búsqueda General
+                                        </h3>
+                                        <p className="text-xs md:text-sm text-amber-900 leading-relaxed">
+                                            Tu espacio de consultas privadas está bloqueado y tu ficha individual no aparece en el buscador hasta activar tu mensualidad.
+                                            {availableInstitutionalWorkspaces.length > 0
+                                                ? ` Sin embargo, sigues apareciendo y puedes atender con total normalidad dentro de: ${availableInstitutionalWorkspaces.map(w => w.customName || w.clinicName).join(', ')}.`
+                                                : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                    {availableInstitutionalWorkspaces.length > 0 && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() => setShowWorkspaceModal(true)}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+                                        >
+                                            Ir a Hospital / Clínica
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={() => setIsPaymentReportOpen(true)}
+                                        className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+                                    >
+                                        Pagar Mensualidad
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="mt-3 md:mt-6">
                         {/* Tabs y contenido */}
                         {currentTab === "appointments" && (
-                            <AppointmentsTab
-                                appointments={appointments}
-                                onOpenDialog={handleOpenAppointmentDialog}
-                                onOpenWalkInDialog={!isClinicDoctor ? handleOpenWalkIn : undefined}
-                                offices={isClinicDoctor ? [] : uniqueOffices}
-                                doctorAddresses={isClinicDoctor ? [] : (doctorData?.addresses || [])}
-                            />
+                            isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                <AppointmentsTab
+                                    appointments={appointments}
+                                    onOpenDialog={handleOpenAppointmentDialog}
+                                    onOpenWalkInDialog={!isClinicDoctor ? handleOpenWalkIn : undefined}
+                                    offices={isClinicDoctor ? [] : uniqueOffices}
+                                    doctorAddresses={isClinicDoctor ? [] : (doctorData?.addresses || [])}
+                                />
+                            )
                         )}
                         {currentTab === "patients" && (
-                            <PatientsTab appointments={appointments} />
+                            isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                <PatientsTab appointments={appointments} />
+                            )
                         )}
                         {currentTab === "finances" && (
                             !isClinicDoctor ? (
-                                <FinancesTab doctorData={doctorData} appointments={appointments} currentBcvRate={settings?.bcvRate || 65.50} onOpenExpenseDialog={(exp) => { setEditingExpense(exp); setIsExpenseDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <FinancesTab doctorData={doctorData} appointments={appointments} currentBcvRate={settings?.bcvRate || 65.50} onOpenExpenseDialog={(exp) => { setEditingExpense(exp); setIsExpenseDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
                         )}
                         {currentTab === "subscription" && (
-                            !isClinicDoctor ? (
+                            <div className="space-y-4">
+                                {isClinicDoctor && (
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs md:text-sm text-emerald-900">
+                                        <strong>Nota sobre Espacios de Trabajo:</strong> Tu espacio actual ({activeWorkspace?.name || 'Hospital / Clínica'}) está cubierto por la institución o es gratuito. La suscripción que ves abajo corresponde exclusivamente si deseas activar adicionalmente tu <strong>Consultorio Privado Independiente</strong> y aparecer con tu propia ficha en el buscador general.
+                                    </div>
+                                )}
                                 <SubscriptionTab doctorData={doctorData} doctorPayments={doctorPayments} onOpenPaymentDialog={() => setIsPaymentReportOpen(true)} subscriptionFee={subscriptionFee} />
-                            ) : (
-                                <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
-                            )
+                            </div>
                         )}
                         {currentTab === "profile" && (
                             <ProfileTab
@@ -815,14 +936,18 @@ ID Transacción: ${transactionId}`;
 
                         {currentTab === "addresses" && (
                             !isClinicDoctor ? (
-                                <AddressesTab doctorData={doctorData} onUpdate={fetchData} />
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <AddressesTab doctorData={doctorData} onUpdate={fetchData} />
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
                         )}
                         {currentTab === "insurances" && (
                             !isClinicDoctor ? (
-                                <InsurancesTab />
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <InsurancesTab />
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Las coberturas y convenios son administrados directamente por la clínica.</div>
                             )
@@ -837,38 +962,49 @@ ID Transacción: ${transactionId}`;
                                 organizerName={doctorData.name}
                                 organizerLogo={doctorData.profileImage}
                                 defaultDoctorSpecialty={doctorData.specialty}
+                                initialCampaignId={searchParams.get('campaignId')}
                             />
                         )}
                         {currentTab === "bank-details" && (
                             !isClinicDoctor ? (
-                                <div className="space-y-6">
-                                    {(doctorData.country === 'AR' || doctorData.country === 'Argentina') ? (
-                                        <>
-                                            <PaymentIntegrationsTab doctorId={user.id} />
-                                            <div className="border-t pt-6">
-                                                <h3 className="text-lg font-semibold mb-4">Cuentas Bancarias (Para transferencias manuales)</h3>
-                                                <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
-                                    )}
-                                </div>
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <div className="space-y-6">
+                                        {(doctorData.country === 'AR' || doctorData.country === 'Argentina') ? (
+                                            <>
+                                                <PaymentIntegrationsTab doctorId={user.id} />
+                                                <div className="border-t pt-6">
+                                                    <h3 className="text-lg font-semibold mb-4">Cuentas Bancarias (Para transferencias manuales)</h3>
+                                                    <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <BankDetailsTab bankDetails={doctorData.bankDetails || []} onOpenDialog={handleOpenBankDetailDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                        )}
+                                    </div>
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
                         )}
                         {currentTab === "coupons" && (
                             !isClinicDoctor ? (
-                                <CouponsTab coupons={doctorData.coupons || []} doctorId={doctorData.id} onOpenDialog={(c) => { setEditingCoupon(c); setIsCouponDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <CouponsTab coupons={doctorData.coupons || []} doctorId={doctorData.id} onOpenDialog={(c) => { setEditingCoupon(c); setIsCouponDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )
                         )}
-                        {currentTab === "chat" && <ChatTab appointments={appointments} onOpenChat={(appointment) => handleOpenAppointmentDialog('chat', appointment)} initialPatientId={chatPatientIdParam} initialPatientName={chatPatientName} />}
+                        {currentTab === "chat" && (
+                            isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                <ChatTab appointments={appointments} onOpenChat={(appointment) => handleOpenAppointmentDialog('chat', appointment)} initialPatientId={chatPatientIdParam} initialPatientName={chatPatientName} />
+                            )
+                        )}
                         {currentTab === "online-consultation" && (
                             !isClinicDoctor ? (
-                                <OnlineConsultationTab doctorData={doctorData} onUpdate={fetchData} />
+                                isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
+                                    <OnlineConsultationTab doctorData={doctorData} onUpdate={fetchData} />
+                                )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
                             )

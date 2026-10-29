@@ -43,6 +43,8 @@ export async function GET(request: Request) {
             whatsapp: clinic.whatsapp,
             website: clinic.website,
             description: clinic.description,
+            rif: clinic.rif,
+            legalName: clinic.legal_name,
             country: clinic.country || 'VE',
             state: clinic.state,
             sector: clinic.sector,
@@ -55,7 +57,13 @@ export async function GET(request: Request) {
             status: clinic.status,
             plan: clinic.plan,
             billingCycle: clinic.billing_cycle,
+            billingMonths: clinic.billing_months || 1,
+            institutionType: clinic.institution_type || (clinic.plan === 'hospital_gratuito' ? 'public_hospital' : 'private_clinic'),
             verificationStatus: clinic.verification_status,
+            subscriptionStatus: clinic.subscription_status,
+            subscriptionFee: clinic.subscription_fee ? Number(clinic.subscription_fee) : 0,
+            lastPaymentDate: clinic.last_payment_date,
+            nextPaymentDate: clinic.next_payment_date,
             rating: clinic.rating,
             reviewCount: clinic.review_count,
             createdAt: clinic.created_at,
@@ -85,18 +93,54 @@ export async function POST(request: Request) {
             );
         }
 
+        // Verificar si ya existe una clínica con este correo administrador
+        const { data: existingByEmail } = await supabaseAdmin
+            .from('clinics')
+            .select('id')
+            .ilike('admin_email', targetEmail)
+            .limit(1);
+
+        if (existingByEmail && existingByEmail.length > 0) {
+            return NextResponse.json(
+                { error: 'Ya existe una clínica o institución registrada con este correo electrónico.' },
+                { status: 400 }
+            );
+        }
+
         const hashedPassword = rawPassword.startsWith('$2')
             ? rawPassword
             : await bcrypt.hash(rawPassword, 10);
 
-        const slug = body.slug || (
-            name
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4)
-        );
+        const baseSlug = (body.slug || name)
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)+/g, '');
+
+        const { data: existingBySlug } = await supabaseAdmin
+            .from('clinics')
+            .select('id')
+            .eq('slug', baseSlug)
+            .limit(1);
+
+        const slug = (existingBySlug && existingBySlug.length > 0)
+            ? `${baseSlug}-${Date.now().toString().slice(-4)}`
+            : baseSlug;
+
+        const isHospital = body.plan === 'hospital_gratuito' || body.institutionType === 'public_hospital';
+        const billingMonths = isHospital ? 12 : (Number(body.billingMonths) || (body.billingCycle === 'annual' ? 12 : 1));
+        const subscriptionStatus = body.subscriptionStatus || 'active';
+
+        let lastPaymentDate = body.lastPaymentDate || null;
+        let nextPaymentDate = body.nextPaymentDate || null;
+        if (!isHospital && subscriptionStatus === 'active' && !nextPaymentDate) {
+            const now = new Date();
+            lastPaymentDate = now.toISOString().split('T')[0];
+            const next = new Date(now);
+            next.setMonth(next.getMonth() + billingMonths);
+            nextPaymentDate = next.toISOString().split('T')[0];
+        }
 
         const insertData: Record<string, any> = {
             name,
@@ -105,13 +149,23 @@ export async function POST(request: Request) {
             password: hashedPassword,
             phone: body.phone || null,
             whatsapp: body.whatsapp || body.phone || null,
+            website: body.website || null,
+            rif: body.rif || null,
+            legal_name: body.legalName || body.legal_name || null,
             city: body.city || null,
             state: body.state || null,
+            sector: body.sector || null,
             country: body.country || 'VE',
             address: body.address || null,
             description: body.description || null,
-            plan: body.plan || 'integral',
-            billing_cycle: body.billingCycle || 'monthly',
+            plan: isHospital ? 'hospital_gratuito' : (body.plan || 'integral'),
+            billing_cycle: isHospital ? 'free' : (body.billingCycle || (billingMonths === 12 ? 'annual' : 'monthly')),
+            billing_months: billingMonths,
+            institution_type: isHospital ? 'public_hospital' : 'private_clinic',
+            subscription_fee: isHospital ? 0 : (Number(body.subscriptionFee) || 0),
+            subscription_status: subscriptionStatus,
+            last_payment_date: lastPaymentDate,
+            next_payment_date: nextPaymentDate,
             slug,
             status: body.status || 'active',
             verification_status: body.verificationStatus || 'verified',
@@ -181,11 +235,19 @@ export async function PATCH(request: Request) {
         if (body.status !== undefined) dbData.status = body.status;
         if (body.whatsapp !== undefined) dbData.whatsapp = body.whatsapp;
         if (body.website !== undefined) dbData.website = body.website;
+        if (body.rif !== undefined) dbData.rif = body.rif;
+        if (body.legalName !== undefined) dbData.legal_name = body.legalName;
         if (body.adminEmail !== undefined) dbData.admin_email = body.adminEmail;
         if (body.acceptedInsurances !== undefined) dbData.accepted_insurances = body.acceptedInsurances;
         if (body.verificationStatus !== undefined) dbData.verification_status = body.verificationStatus;
+        if (body.subscriptionStatus !== undefined) dbData.subscription_status = body.subscriptionStatus;
+        if (body.subscriptionFee !== undefined) dbData.subscription_fee = Number(body.subscriptionFee) || 0;
+        if (body.lastPaymentDate !== undefined) dbData.last_payment_date = body.lastPaymentDate;
+        if (body.nextPaymentDate !== undefined) dbData.next_payment_date = body.nextPaymentDate;
         if (body.plan !== undefined) dbData.plan = body.plan;
         if (body.billingCycle !== undefined) dbData.billing_cycle = body.billingCycle;
+        if (body.billingMonths !== undefined) dbData.billing_months = Number(body.billingMonths) || 1;
+        if (body.institutionType !== undefined) dbData.institution_type = body.institutionType;
         if (body.email !== undefined) dbData.email = body.email;
         if (body.lat !== undefined) dbData.lat = body.lat;
         if (body.lng !== undefined) dbData.lng = body.lng;

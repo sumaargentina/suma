@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DoctorCard } from "@/components/doctor-card";
 import { ClinicCard } from "@/components/clinic/clinic-card";
-import { PharmacyCard } from "@/components/pharmacy/pharmacy-card";
-import { Search, Stethoscope, Heart, Activity, Sparkles, Pill } from "lucide-react";
+import { AlliedPharmaciesSection } from "@/components/pharmacy/pharmacy-card";
+import { Search, Stethoscope, Heart, Activity, Sparkles } from "lucide-react";
 import { getDoctors, getClinics, getPharmacies, getSettings } from "@/lib/supabaseService";
 import { Doctor, Clinic, Pharmacy } from "@/lib/types";
 
@@ -100,9 +100,14 @@ export default async function FindDoctorPage({
 
   // Filter Logic - Doctores (ya aislados por país)
   const filteredDoctors = doctors.filter(doctor => {
-    // Exclude doctors that belong to a clinic
-    const isClinicDoctor = doctor.clinicId || doctor.isClinicEmployee;
-    if (isClinicDoctor) return false;
+    // La ficha individual del médico aparece en el buscador general SOLO si su Consultorio Privado
+    // tiene su mensualidad activa. Si no paga su mensualidad (o solo atiende en Hospital/Clínica sin pagar consultorio privado),
+    // no aparece aquí (pero sigue apareciendo dentro de su Hospital o Clínica).
+    const hasActivePrivateConsultorio =
+      doctor.status === 'active' &&
+      doctor.subscriptionStatus === 'active' &&
+      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate));
+    if (!hasActivePrivateConsultorio) return false;
 
     // Búsqueda en múltiples campos
     const insurancesString = doctor.acceptedInsurances?.join(' ') || '';
@@ -196,8 +201,11 @@ export default async function FindDoctorPage({
 
   // Doctores y Clínicas para el Mapa (Dentro del país activo)
   const mapDoctors = doctors.filter(doctor => {
-    const isClinicDoctor = doctor.clinicId || doctor.isClinicEmployee;
-    if (isClinicDoctor) return false;
+    const hasActivePrivateConsultorio =
+      doctor.status === 'active' &&
+      doctor.subscriptionStatus === 'active' &&
+      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate));
+    if (!hasActivePrivateConsultorio) return false;
 
     const insurancesString = doctor.acceptedInsurances?.join(' ') || '';
     const servicesString = doctor.services?.map(s => s.name).join(' ') || '';
@@ -421,32 +429,12 @@ export default async function FindDoctorPage({
               </div>
             )}
 
-            {/* 4. FARMACIAS ALIADAS */}
+            {/* 4. FARMACIAS ALIADAS (Minitarjetas en 1 línea + desplegable + modal) */}
             {filteredPharmacies.length > 0 && viewMode !== 'doctors' && viewMode !== 'clinics' && (
-              <div className="space-y-3 md:space-y-6">
-                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="p-1.5 md:p-2 bg-emerald-500/10 rounded-lg">
-                      <Pill className="h-4 w-4 md:h-6 md:w-6 text-emerald-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Farmacias Aliadas</h2>
-                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">
-                        Dispensación y validación oficial de récipes médicos SUMA
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] md:text-sm font-semibold bg-emerald-50 text-emerald-700 px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-emerald-100">
-                    {filteredPharmacies.length}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                  {filteredPharmacies.map((pharmacy, index) => (
-                    <PharmacyCard key={pharmacy.id} pharmacy={pharmacy} priority={index < 3} />
-                  ))}
-                </div>
-              </div>
+              <AlliedPharmaciesSection
+                pharmacies={filteredPharmacies}
+                defaultExpanded={viewMode === 'pharmacies'}
+              />
             )}
 
             {/* Mensaje cuando no hay resultados en ninguna categoría */}

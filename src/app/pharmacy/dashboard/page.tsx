@@ -98,6 +98,7 @@ export default function PharmacyDashboardPage() {
   // Modal para Suministrar Medicamentos
   const [isDispenseModalOpen, setIsDispenseModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<PrescriptionRecord | null>(null);
+  const [selectedMedsToDispense, setSelectedMedsToDispense] = useState<string[]>([]);
   const [pharmacistName, setPharmacistName] = useState('');
   const [pharmacistLicense, setPharmacistLicense] = useState('');
   const [dispensationNotes, setDispensationNotes] = useState('');
@@ -107,6 +108,7 @@ export default function PharmacyDashboardPage() {
   const [activeTab, setActiveTab] = useState<'search' | 'b2b' | 'campaigns' | 'history' | 'location'>('search');
   const [historyRecords, setHistoryRecords] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
 
   // Modal Plan Pro Alianza B2B
   const [isProPlanModalOpen, setIsProPlanModalOpen] = useState(false);
@@ -369,8 +371,18 @@ export default function PharmacyDashboardPage() {
     }
   };
 
+  const parseMedicationLines = (prescriptionText: string): string[] => {
+    if (!prescriptionText) return [];
+    return prescriptionText
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean);
+  };
+
   const handleOpenDispenseModal = (record: PrescriptionRecord) => {
     setSelectedRecord(record);
+    const lines = parseMedicationLines(record.prescription);
+    setSelectedMedsToDispense(lines);
     setPharmacistName('');
     setPharmacistLicense('');
     setDispensationNotes('');
@@ -398,7 +410,8 @@ export default function PharmacyDashboardPage() {
           city: user.city || undefined,
           pharmacistName: pharmacistName.trim() || undefined,
           pharmacistLicense: pharmacistLicense.trim() || undefined,
-          notes: dispensationNotes.trim() || undefined
+          notes: dispensationNotes.trim() || undefined,
+          medicationsDelivered: selectedMedsToDispense
         })
       });
 
@@ -409,16 +422,17 @@ export default function PharmacyDashboardPage() {
       }
 
       toast({
-        title: '✅ Medicamentos Suministrados',
-        description: 'El récipe ha sido marcado como despachado y bloqueado para evitar doble entrega.',
+        title: '✅ Medicamentos Entregados y Récipe Bloqueado',
+        description: `Se registró la entrega en el historial de la farmacia con los datos del médico Dr(a). ${selectedRecord.doctor?.name || 'Tratante'}. Ya no podrá ser entregado nuevamente.`,
         className: 'bg-emerald-50 border-emerald-200 text-emerald-900'
       });
 
       setIsDispenseModalOpen(false);
       setSelectedRecord(null);
 
-      // Refrescar la búsqueda para reflejar el estado en tiempo real
+      // Refrescar la búsqueda y el historial para reflejar el estado en tiempo real
       handleSearch();
+      loadHistory();
 
     } catch (error: any) {
       console.error('Error en dispensación:', error);
@@ -897,14 +911,73 @@ export default function PharmacyDashboardPage() {
                           </div>
                         </div>
 
-                        {/* Listado de Medicamentos */}
-                        <div className="space-y-2">
-                          <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                            <Pill className="h-3.5 w-3.5 text-teal-600" />
-                            Medicamentos Prescritos
-                          </Label>
-                          <div className="bg-teal-50/30 border border-teal-200/70 rounded-xl p-4 text-slate-900 text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                            {rec.prescription}
+                        {/* Listado de Medicamentos Uno por Uno con Control Estricto de Récipe */}
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                              <Pill className="h-3.5 w-3.5 text-teal-600" />
+                              Medicamentos Prescritos (Bajo Control de Récipe)
+                            </Label>
+                            <Badge variant="outline" className="text-[10px] border-teal-200 bg-teal-50 text-teal-900 font-semibold">
+                              <Lock className="h-3 w-3 mr-1 text-teal-700" />
+                              Medicamentos Delicados • Entrega Única
+                            </Badge>
+                          </div>
+
+                          <div className="space-y-2">
+                            {parseMedicationLines(rec.prescription).map((medLine, mIdx) => {
+                              const cleanMedLine = medLine.replace(/\s*\[SOLO CON R[EÉ]CIPE\s*\-\s*ENTREGA [UÚ]NICA\]/gi, '').trim();
+                              return (
+                                <div
+                                  key={mIdx}
+                                  className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                                    isDispensed
+                                      ? 'bg-amber-50/70 border-amber-300'
+                                      : 'bg-teal-50/30 border-teal-200/80'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-2.5">
+                                    <span className={`h-6 w-6 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                                      isDispensed ? 'bg-amber-600 text-white' : 'bg-teal-600 text-white'
+                                    }`}>
+                                      {mIdx + 1}
+                                    </span>
+                                    <div>
+                                      <p className={`text-sm font-bold ${isDispensed ? 'text-amber-950 line-through decoration-amber-600/60' : 'text-slate-900'}`}>
+                                        {cleanMedLine.replace(/^\d+[\.\)\-]\s*/, '')}
+                                      </p>
+                                      {isDispensed ? (
+                                        <p className="text-xs font-bold text-rose-700 mt-1 flex items-center gap-1">
+                                          <Lock className="h-3.5 w-3.5 shrink-0" />
+                                          ⛔ Ya no se puede entregar más este medicamento porque ya se entregó en: {rec.dispensedByPharmacyName || 'Farmacia Aliada'} ({formattedDispensedDate})
+                                        </p>
+                                      ) : (
+                                        <p className="text-[11px] text-teal-800 mt-0.5 flex items-center gap-1">
+                                          <Lock className="h-3 w-3 text-teal-600" />
+                                          Sujeto a récipe médico • Al marcarse entregado quedará bloqueado en todas las farmacias
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0 self-end sm:self-center">
+                                    {isDispensed ? (
+                                      <Badge className="bg-rose-600 hover:bg-rose-600 text-white text-[10px] font-bold">
+                                        ⛔ Entregado — Bloqueado
+                                      </Badge>
+                                    ) : isExpired ? (
+                                      <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px]">
+                                        Récipe Vencido
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 text-[10px] font-semibold">
+                                        Disponible para entregar
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -917,18 +990,18 @@ export default function PharmacyDashboardPage() {
 
                         {/* ALERTA: Si ya fue suministrado (CONTROL ANTI-DOBLE ENTREGA) */}
                         {isDispensed && (
-                          <div className="bg-amber-100/80 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3 text-amber-950">
-                            <AlertTriangle className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
+                          <div className="bg-amber-100/90 border-2 border-amber-400 rounded-xl p-4 flex items-start gap-3 text-amber-950 shadow-xs">
+                            <AlertTriangle className="h-5 w-5 text-amber-800 shrink-0 mt-0.5" />
                             <div className="space-y-1 text-xs">
-                              <p className="font-bold text-amber-900 text-sm">
-                                ⛔ RÉCIPE YA SUMINISTRADO — PROHIBIDO DESPACHAR NUEVAMENTE
+                              <p className="font-extrabold text-amber-950 text-sm uppercase">
+                                ⛔ YA NO SE PUEDE ENTREGAR MÁS ESTE MEDICAMENTO — RÉCIPE YA DESPACHADO
                               </p>
                               <p className="leading-relaxed">
-                                Este medicamento ya fue entregado por: <strong>{rec.dispensedByPharmacyName || 'Farmacia Aliada'}</strong> el <strong>{formattedDispensedDate}</strong>.
+                                Este récipe (emitido por <strong>Dr(a). {rec.doctor.name}</strong>) ya fue entregado en: <strong>{rec.dispensedByPharmacyName || 'Farmacia Aliada'}</strong> el <strong>{formattedDispensedDate}</strong>.
                               </p>
                               {rec.dispensationNotes && (
-                                <p className="text-amber-800/90 italic">
-                                  Nota de entrega previa: &quot;{rec.dispensationNotes}&quot;
+                                <p className="text-amber-900 font-medium bg-white/70 px-2.5 py-1.5 rounded-lg border border-amber-300 mt-1">
+                                  Detalle de entrega registrada: &quot;{rec.dispensationNotes}&quot;
                                 </p>
                               )}
                             </div>
@@ -997,106 +1070,266 @@ export default function PharmacyDashboardPage() {
       </div>
     )}
 
-        {/* Tab Historial de Suministros */}
-        {activeTab === 'history' && (
-          <div className="space-y-4 animate-in fade-in-50">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-teal-600" />
-                  Historial de Récipes Suministrados por esta Sede
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Auditoría completa de medicamentos despachados por tu establecimiento.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadHistory}
-                disabled={loadingHistory}
-                className="text-xs border-slate-200"
-              >
-                {loadingHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                Actualizar
-              </Button>
-            </div>
+        {/* Tab Historial de Suministros y Estadísticas de Médicos */}
+        {activeTab === 'history' && (() => {
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const todayDeliveries = historyRecords.filter(r => r.dispensedAt && r.dispensedAt.startsWith(todayStr)).length;
+          const uniquePatientsCount = new Set(historyRecords.map(r => r.patientCedula !== 'N/A' ? r.patientCedula : r.patientName)).size;
 
-            <Card className="shadow-xs border-slate-200 overflow-hidden bg-white">
-              <CardContent className="p-0">
-                {loadingHistory ? (
-                  <div className="flex items-center justify-center p-12 text-muted-foreground text-sm">
-                    <Loader2 className="h-5 w-5 animate-spin mr-2 text-teal-600" />
-                    Cargando historial de suministros...
-                  </div>
-                ) : historyRecords.length === 0 ? (
-                  <div className="text-center p-12">
-                    <Pill className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                    <h4 className="font-semibold text-slate-800 text-sm">Aún no hay récipes despachados</h4>
-                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                      Cuando valides y suministres medicamentos en el mostrador, se listarán automáticamente aquí para control y auditoría.
-                    </p>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader className="bg-slate-50">
-                      <TableRow>
-                        <TableHead className="font-semibold text-slate-700">Fecha y Hora</TableHead>
-                        <TableHead className="font-semibold text-slate-700">Código Récipe</TableHead>
-                        <TableHead className="font-semibold text-slate-700">Paciente</TableHead>
-                        <TableHead className="font-semibold text-slate-700">Médico Tratante</TableHead>
-                        <TableHead className="font-semibold text-slate-700">Medicamentos Entregados</TableHead>
-                        <TableHead className="font-semibold text-slate-700">Notas / Lote</TableHead>
-                        <TableHead className="font-semibold text-slate-700 text-right">Récipe</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {historyRecords.map((item) => (
-                        <TableRow key={item.id} className="hover:bg-slate-50/80">
-                          <TableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">
-                            {item.dispensedAt ? format(parseISO(item.dispensedAt), "dd/MM/yyyy 'a las' hh:mm a") : 'N/A'}
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-xs font-bold bg-teal-50 text-teal-900 border border-teal-200 px-2 py-0.5 rounded">
-                              {item.recipeCode}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium text-slate-900 text-xs">{item.patientName}</div>
-                            <div className="text-[11px] text-slate-500 font-mono">C.I.: {item.patientCedula}</div>
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-700">
-                            Dr(a). {item.doctorName}
-                            {item.doctorSpecialty && (
-                              <span className="block text-[11px] text-slate-500">{item.doctorSpecialty}</span>
+          // Agrupar estadísticas por Médico Prescriptor
+          const doctorStatsMap = new Map<string, {
+            name: string;
+            specialty: string;
+            license: string;
+            city: string;
+            count: number;
+            lastDispensedAt: string;
+          }>();
+
+          historyRecords.forEach((item) => {
+            const key = item.doctorId || item.doctorName || 'Médico Tratante';
+            const existing = doctorStatsMap.get(key);
+            if (existing) {
+              existing.count += 1;
+              if (item.dispensedAt && item.dispensedAt > existing.lastDispensedAt) {
+                existing.lastDispensedAt = item.dispensedAt;
+              }
+            } else {
+              doctorStatsMap.set(key, {
+                name: item.doctorName || 'Médico Tratante',
+                specialty: item.doctorSpecialty || 'Especialista',
+                license: item.doctorLicense || '',
+                city: item.doctorCity || '',
+                count: 1,
+                lastDispensedAt: item.dispensedAt || ''
+              });
+            }
+          });
+
+          const doctorStatsList = Array.from(doctorStatsMap.values()).sort((a, b) => b.count - a.count);
+
+          const filteredHistory = historyRecords.filter((item) => {
+            if (!historySearch.trim()) return true;
+            const q = historySearch.toLowerCase();
+            return (
+              (item.patientName || '').toLowerCase().includes(q) ||
+              (item.patientCedula || '').toLowerCase().includes(q) ||
+              (item.doctorName || '').toLowerCase().includes(q) ||
+              (item.doctorSpecialty || '').toLowerCase().includes(q) ||
+              (item.recipeCode || '').toLowerCase().includes(q) ||
+              (item.prescription || '').toLowerCase().includes(q)
+            );
+          });
+
+          return (
+            <div className="space-y-6 animate-in fade-in-50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-teal-600" />
+                    Historial de Récipes Entregados y Estadísticas Médicas
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Control estricto de medicamentos entregados bajo récipe, pacientes atendidos y médicos prescriptores.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadHistory}
+                  disabled={loadingHistory}
+                  className="text-xs border-slate-200 self-start sm:self-auto"
+                >
+                  {loadingHistory ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Actualizar Estadísticas
+                </Button>
+              </div>
+
+              {/* KPI Cards de Estadísticas de la Farmacia */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border-teal-200 bg-white shadow-2xs">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase text-slate-500 block">Total Récipes Entregados</span>
+                      <span className="text-2xl font-extrabold text-teal-900 mt-1 block">{historyRecords.length}</span>
+                      <span className="text-[11px] text-teal-700 font-medium">Auditados y bloqueados</span>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
+                      <Pill className="h-5 w-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-emerald-200 bg-white shadow-2xs">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase text-slate-500 block">Entregados Hoy</span>
+                      <span className="text-2xl font-extrabold text-emerald-900 mt-1 block">{todayDeliveries}</span>
+                      <span className="text-[11px] text-emerald-700 font-medium">Jornada del día</span>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-blue-200 bg-white shadow-2xs">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase text-slate-500 block">Médicos Prescriptores</span>
+                      <span className="text-2xl font-extrabold text-blue-900 mt-1 block">{doctorStatsList.length}</span>
+                      <span className="text-[11px] text-blue-700 font-medium">Con récipes recibidos</span>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                      <Stethoscope className="h-5 w-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-indigo-200 bg-white shadow-2xs">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase text-slate-500 block">Pacientes Atendidos</span>
+                      <span className="text-2xl font-extrabold text-indigo-900 mt-1 block">{uniquePatientsCount}</span>
+                      <span className="text-[11px] text-indigo-700 font-medium">Pacientes únicos</span>
+                    </div>
+                    <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                      <User className="h-5 w-5" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Estadísticas por Médico Prescriptor */}
+              {doctorStatsList.length > 0 && (
+                <Card className="border-slate-200 bg-white shadow-xs overflow-hidden">
+                  <CardHeader className="py-3.5 px-5 bg-slate-50 border-b border-slate-100">
+                    <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Stethoscope className="h-4 w-4 text-teal-600" />
+                      Estadísticas de Récipes por Médico Tratante ({doctorStatsList.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {doctorStatsList.map((docStat, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 truncate">
+                              Dr(a). {docStat.name}
+                            </p>
+                            <p className="text-[11px] text-teal-700 font-medium truncate">
+                              {docStat.specialty}
+                              {docStat.license ? ` • M.P.: ${docStat.license}` : ''}
+                            </p>
+                            {docStat.lastDispensedAt && (
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                Última entrega: {format(parseISO(docStat.lastDispensedAt), 'dd/MM/yyyy')}
+                              </p>
                             )}
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-800 max-w-xs truncate" title={item.prescription}>
-                            {item.prescription}
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-600 max-w-[150px] truncate" title={item.dispensationNotes || ''}>
-                            {item.dispensationNotes || '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => window.open(`/ver-recipe/${item.id}`, '_blank')}
-                              className="text-xs text-teal-700 hover:text-teal-800 hover:bg-teal-50 h-7 px-2"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                          </div>
+                          <Badge className="bg-teal-600 hover:bg-teal-600 text-white font-bold text-xs px-2.5 py-1 shrink-0">
+                            {docStat.count} {docStat.count === 1 ? 'récipe' : 'récipes'}
+                          </Badge>
+                        </div>
                       ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Buscador en el Historial */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Filtrar historial por cédula, paciente, médico tratante, código de récipe o medicamento..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="pl-10 bg-white border-slate-200 h-10 text-xs"
+                />
+              </div>
+
+              <Card className="shadow-xs border-slate-200 overflow-hidden bg-white">
+                <CardContent className="p-0">
+                  {loadingHistory ? (
+                    <div className="flex items-center justify-center p-12 text-muted-foreground text-sm">
+                      <Loader2 className="h-5 w-5 animate-spin mr-2 text-teal-600" />
+                      Cargando historial de suministros...
+                    </div>
+                  ) : filteredHistory.length === 0 ? (
+                    <div className="text-center p-12">
+                      <Pill className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                      <h4 className="font-semibold text-slate-800 text-sm">No se encontraron récipes en el historial</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        Cuando valides y suministres medicamentos en el mostrador, se guardarán aquí junto con el médico que los emitió.
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="font-semibold text-slate-700">Fecha y Hora</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Código Récipe</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Paciente</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Médico Prescriptor</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Medicamentos Entregados</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Detalle / Auditoría</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-right">Récipe</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredHistory.map((item) => (
+                          <TableRow key={item.id} className="hover:bg-slate-50/80">
+                            <TableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">
+                              {item.dispensedAt ? format(parseISO(item.dispensedAt), "dd/MM/yyyy 'a las' hh:mm a") : 'N/A'}
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-xs font-bold bg-teal-50 text-teal-900 border border-teal-200 px-2 py-0.5 rounded">
+                                {item.recipeCode}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium text-slate-900 text-xs">{item.patientName}</div>
+                              <div className="text-[11px] text-slate-500 font-mono">C.I.: {item.patientCedula}</div>
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-700">
+                              <div className="font-bold text-slate-900">Dr(a). {item.doctorName}</div>
+                              {item.doctorSpecialty && (
+                                <span className="block text-[11px] text-teal-700 font-medium">{item.doctorSpecialty}</span>
+                              )}
+                              {item.doctorLicense && (
+                                <span className="block text-[10px] text-slate-500 font-mono">M.P.: {item.doctorLicense}</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-800 max-w-xs whitespace-pre-wrap">
+                              {item.prescription?.replace(/\s*\[SOLO CON R[EÉ]CIPE\s*\-\s*ENTREGA [UÚ]NICA\]/gi, '')}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 max-w-[180px]" title={item.dispensationNotes || ''}>
+                              <span className="line-clamp-2">{item.dispensationNotes || 'Entregado y bloqueado'}</span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => window.open(`/ver-recipe/${item.id}`, '_blank')}
+                                className="text-xs text-teal-700 hover:text-teal-800 hover:bg-teal-50 h-7 px-2"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
 
         {/* Tab Mi Sede y Ubicación en Mapa */}
         {activeTab === 'location' && (
@@ -1507,14 +1740,59 @@ export default function PharmacyDashboardPage() {
 
           <div className="space-y-4 pt-2">
             {/* Attribution Banner */}
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 space-y-1">
               <span className="font-bold block uppercase tracking-wider text-[10px] text-emerald-800">
-                Atribución y Auditoría:
+                Atribución y Auditoría del Récipe:
               </span>
-              <p className="mt-0.5">
-                Se registrará a nombre de: <strong>{chainDisplayName || user?.name} {branchDisplayName ? `(Sucursal ${branchDisplayName})` : ''}</strong> en <strong>{user?.city || 'Venezuela'}</strong>.
+              <p>
+                Farmacia: <strong>{chainDisplayName || user?.name} {branchDisplayName ? `(Sucursal ${branchDisplayName})` : ''}</strong> ({user?.city || 'Venezuela'}).
               </p>
+              {selectedRecord?.doctor && (
+                <p>
+                  Médico Prescriptor: <strong>Dr(a). {selectedRecord.doctor.name}</strong> ({selectedRecord.doctor.specialty})
+                </p>
+              )}
+              {patient && (
+                <p>
+                  Paciente: <strong>{patient.name}</strong> (C.I.: {patient.cedula})
+                </p>
+              )}
             </div>
+
+            {/* Selección de medicamentos entregados bajo récipe */}
+            {selectedRecord && parseMedicationLines(selectedRecord.prescription).length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-800">
+                  Medicamentos bajo Récipe a Entregar (Selecciona los que estás entregando):
+                </Label>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto p-2 rounded-xl border border-slate-200 bg-slate-50/60">
+                  {parseMedicationLines(selectedRecord.prescription).map((line, idx) => {
+                    const cleanLine = line.replace(/\s*\[SOLO CON R[EÉ]CIPE\s*\-\s*ENTREGA [UÚ]NICA\]/gi, '').trim();
+                    const checked = selectedMedsToDispense.includes(line);
+                    return (
+                      <label
+                        key={idx}
+                        className="flex items-start gap-2.5 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:border-teal-300 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedMedsToDispense(prev => [...prev, line]);
+                            } else {
+                              setSelectedMedsToDispense(prev => prev.filter(item => item !== line));
+                            }
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="font-semibold text-slate-800 flex-1">{cleanLine}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-800">
@@ -1532,15 +1810,15 @@ export default function PharmacyDashboardPage() {
                 Notas de Entrega / Lote (Opcional)
               </Label>
               <Textarea
-                placeholder="Ej: Entregadas 2 cajas lote #A124. Presentación de 500mg sustituida por autorización médica..."
+                placeholder="Ej: Entregado lote #A124 bajo control estricto de récipe..."
                 value={dispensationNotes}
                 onChange={(e) => setDispensationNotes(e.target.value)}
                 className="text-xs"
               />
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 leading-tight">
-              🔒 <strong>Aviso de Seguridad:</strong> Al confirmar, este récipe quedará inmediatamente bloqueado en el sistema SUMA para evitar que sea surtido por otra sede o farmacia aliada.
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-950 leading-tight">
+              🔒 <strong>Control Estricto de Medicamentos por Récipe:</strong> Al confirmar, este medicamento quedará marcado como <strong>&quot;Ya entregado en {chainDisplayName || user?.name}&quot;</strong> y ninguna otra farmacia podrá volver a entregarlo.
             </div>
           </div>
 

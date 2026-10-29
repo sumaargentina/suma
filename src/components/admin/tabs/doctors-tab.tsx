@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from '@/lib/supabaseService';
-import { Loader2, User, Pencil, Trash2, Search, History, CheckCircle, XCircle, Clock, ShieldCheck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Pill } from 'lucide-react';
+import { Loader2, User, Pencil, Trash2, Search, History, CheckCircle, XCircle, Clock, ShieldCheck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Pill, Phone, Mail, MessageCircle } from 'lucide-react';
 import { z } from 'zod';
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -216,8 +216,10 @@ export function DoctorsTab() {
       consultationFee: formData.get('consultationFee') as string,
     };
 
-    // Get medicalLicense separately as it's not in the schema
-    const medicalLicense = formData.get('medicalLicense') as string;
+    // Get medicalLicense, whatsapp/phone and cedula separately
+    const medicalLicense = (formData.get('medicalLicense') as string) || '';
+    const whatsapp = ((formData.get('whatsapp') as string) || '').trim();
+    const cedula = ((formData.get('cedula') as string) || '').trim();
 
     const result = DoctorFormSchema.safeParse(dataToValidate);
 
@@ -242,6 +244,9 @@ export function DoctorsTab() {
       const updateData: Partial<Doctor> = {
         name: result.data.name,
         email: normalizedEmail,
+        cedula: cedula || editingDoctor.cedula || '',
+        whatsapp: whatsapp,
+        phone: whatsapp,
         profession: formProfession,
         specialty: result.data.specialty,
         hasMedicalRecord: formHasMedicalRecord,
@@ -289,7 +294,8 @@ export function DoctorsTab() {
         hasPrescription: formHasPrescription,
         email: normalizedEmail,
         password: hashedPassword,
-        cedula: '', // Vacío por defecto, el doctor lo completará después
+        cedula: cedula || '',
+        medicalLicense: medicalLicense || '',
         sector: '',
         rating: 0,
         reviewCount: 0,
@@ -309,8 +315,8 @@ export function DoctorsTab() {
           sunday: { active: false, slots: [] },
         },
         status: 'active',
-        // lastPaymentDate: null, // Dejar que la base de datos maneje el valor por defecto (NULL)
-        whatsapp: '',
+        whatsapp: whatsapp,
+        phone: whatsapp,
         lat: 0,
         lng: 0,
         joinDate: getCurrentDateInArgentina(),
@@ -346,11 +352,15 @@ export function DoctorsTab() {
 
     const searchLower = searchTerm.toLowerCase();
     const assignedSeller = sellers.find(s => s.id === doctor.sellerId);
+    const docPhone = (doctor.whatsapp || doctor.phone || '').toLowerCase();
+    const docCedula = (doctor.cedula || '').toLowerCase();
     return (
       doctor.name.toLowerCase().includes(searchLower) ||
       doctor.email.toLowerCase().includes(searchLower) ||
       doctor.specialty.toLowerCase().includes(searchLower) ||
       doctor.city.toLowerCase().includes(searchLower) ||
+      docPhone.includes(searchLower) ||
+      docCedula.includes(searchLower) ||
       (assignedSeller && assignedSeller.name.toLowerCase().includes(searchLower))
     );
   });
@@ -403,7 +413,7 @@ export function DoctorsTab() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar médicos por nombre, email, especialidad, ciudad o vendedora..."
+                placeholder="Buscar médicos por nombre, email, teléfono, cédula, especialidad, ciudad o vendedora..."
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-10"
@@ -476,13 +486,58 @@ export function DoctorsTab() {
 
           <div className="hidden md:block">
             <Table>
-              <TableHeader><TableRow><TableHead>Especialista</TableHead><TableHead>Profesión / Especialidad</TableHead><TableHead>Módulos Clínicos (Clic para editar)</TableHead><TableHead>Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Especialista / Contacto</TableHead><TableHead>Teléfono / WhatsApp</TableHead><TableHead>Profesión / Especialidad</TableHead><TableHead>Módulos Clínicos (Clic para editar)</TableHead><TableHead>Matrícula</TableHead><TableHead>Ubicación</TableHead><TableHead>Vendedora</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
               <TableBody>
                 {paginatedDoctors.map((doctor) => {
                   const caps = resolveDoctorCapabilities(doctor, professionsCatalog);
+                  const displayPhone = (doctor.whatsapp || doctor.phone || '').trim();
+                  const cleanDigits = displayPhone.replace(/\D/g, '');
                   return (
                   <TableRow key={doctor.id}>
-                    <TableCell className="font-medium">{doctor.name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-slate-900">{doctor.name}</span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                          {doctor.email}
+                        </span>
+                        {doctor.cedula && (
+                          <span className="text-[11px] font-medium text-slate-500">
+                            Cédula / DNI: <strong className="text-slate-700">{doctor.cedula}</strong>
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {displayPhone ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                            {displayPhone}
+                          </span>
+                          {cleanDigits.length >= 7 && (
+                            <a
+                              href={`https://wa.me/${cleanDigits}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline w-fit"
+                            >
+                              <MessageCircle className="h-3 w-3 text-emerald-600" />
+                              Abrir WhatsApp
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setEditingDoctor(doctor); setIsDoctorDialogOpen(true); }}
+                          className="text-xs text-amber-700 hover:underline font-medium flex items-center gap-1"
+                        >
+                          <Phone className="h-3 w-3" />
+                          Sin teléfono (Clic para agregar)
+                        </button>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700">
@@ -583,12 +638,41 @@ export function DoctorsTab() {
             </Table>
           </div>
           <div className="space-y-4 md:hidden">
-            {paginatedDoctors.map((doctor) => (
+            {paginatedDoctors.map((doctor) => {
+              const displayPhone = (doctor.whatsapp || doctor.phone || '').trim();
+              const cleanDigits = displayPhone.replace(/\D/g, '');
+              return (
               <div key={doctor.id} className="p-4 border rounded-lg space-y-3">
                 <div className="flex justify-between items-start">
-                  <div>
+                  <div className="space-y-0.5">
                     <p className="font-semibold">{doctor.name}</p>
                     <p className="text-sm text-muted-foreground">{doctor.specialty} - {doctor.city}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Mail className="h-3 w-3 shrink-0" />
+                      {doctor.email}
+                    </p>
+                    <p className="text-xs font-medium text-teal-800 flex items-center gap-1">
+                      <Phone className="h-3 w-3 text-teal-600 shrink-0" />
+                      {displayPhone ? (
+                        cleanDigits.length >= 7 ? (
+                          <a
+                            href={`https://wa.me/${cleanDigits}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline font-semibold"
+                          >
+                            {displayPhone} (WhatsApp)
+                          </a>
+                        ) : (
+                          displayPhone
+                        )
+                      ) : (
+                        <span className="text-amber-700">Sin teléfono registrado</span>
+                      )}
+                    </p>
+                    {doctor.cedula && (
+                      <p className="text-xs text-muted-foreground">Cédula/DNI: {doctor.cedula}</p>
+                    )}
                     <p className="text-xs text-muted-foreground mt-0.5">Matrícula: {doctor.medicalLicense || 'No indicada'}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1.5">
@@ -633,7 +717,8 @@ export function DoctorsTab() {
                   <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(doctor)}><Trash2 className="mr-2 h-4 w-4" /> Eliminar</Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Controles de paginación */}
@@ -715,17 +800,43 @@ export function DoctorsTab() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">Correo Electrónico</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  defaultValue={editingDoctor?.email}
-                  required
-                  className="w-full"
-                  placeholder="doctor@ejemplo.com"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-medium">Correo Electrónico</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    defaultValue={editingDoctor?.email}
+                    required
+                    className="w-full"
+                    placeholder="doctor@ejemplo.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="whatsapp" className="text-sm font-medium">Teléfono / WhatsApp</Label>
+                  <Input
+                    id="whatsapp"
+                    name="whatsapp"
+                    type="tel"
+                    defaultValue={editingDoctor?.whatsapp || editingDoctor?.phone || ''}
+                    className="w-full"
+                    placeholder="Ej: +58 412 1234567"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cedula" className="text-sm font-medium">Cédula / DNI</Label>
+                  <Input
+                    id="cedula"
+                    name="cedula"
+                    defaultValue={editingDoctor?.cedula || ''}
+                    className="w-full"
+                    placeholder="Ej: V-12345678"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

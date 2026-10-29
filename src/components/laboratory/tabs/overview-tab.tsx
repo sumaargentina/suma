@@ -8,6 +8,7 @@ import type { LaboratoryService, Appointment } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { 
     Loader2, 
     FlaskConical, 
@@ -19,18 +20,22 @@ import {
     CheckCircle2, 
     Plus,
     Activity,
-    ArrowUpRight
+    ArrowUpRight,
+    Search,
+    UserCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface LaboratoryOverviewTabProps {
     onNavigateTab?: (tab: string) => void;
+    onSearchCedula?: (cedula: string) => void;
 }
 
-export function LaboratoryOverviewTab({ onNavigateTab }: LaboratoryOverviewTabProps) {
+export function LaboratoryOverviewTab({ onNavigateTab, onSearchCedula }: LaboratoryOverviewTabProps) {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
+    const [quickCedula, setQuickCedula] = useState('');
     const [services, setServices] = useState<LaboratoryService[]>([]);
     const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
     const [stats, setStats] = useState({
@@ -129,11 +134,11 @@ export function LaboratoryOverviewTab({ onNavigateTab }: LaboratoryOverviewTabPr
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
                     <Button 
-                        onClick={() => onNavigateTab?.('services')}
+                        onClick={() => onNavigateTab?.('orders')}
                         className="bg-white text-teal-900 hover:bg-teal-50 font-semibold shadow-sm gap-1.5"
                     >
-                        <Plus className="h-4 w-4" />
-                        Nueva Prueba
+                        <Search className="h-4 w-4" />
+                        Mostrador por Cédula
                     </Button>
                     <Button 
                         onClick={() => onNavigateTab?.('agenda')}
@@ -144,6 +149,57 @@ export function LaboratoryOverviewTab({ onNavigateTab }: LaboratoryOverviewTabPr
                     </Button>
                 </div>
             </div>
+
+            {/* Módulo Rápido de Mostrador por Cédula (Pacientes Sin Cita) */}
+            <Card className="border-2 border-teal-200 bg-gradient-to-r from-teal-50/80 via-white to-teal-50/50 shadow-sm">
+                <CardContent className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <Badge className="bg-teal-600 text-white text-[10px]">
+                                <UserCheck className="h-3 w-3 mr-1" />
+                                Atención Directa Sin Cita
+                            </Badge>
+                            <span className="text-xs font-bold text-teal-900 uppercase tracking-wider">
+                                Mostrador de Laboratorio SUMA
+                            </span>
+                        </div>
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                            ¿Llegó un paciente sin cita? Ingresa su Cédula aquí
+                        </h3>
+                        <p className="text-xs text-slate-600">
+                            Al colocar la cédula verás automáticamente cuáles exámenes le mandó a hacer el médico, quién fue el doctor y podrás marcar <strong>&ldquo;Lo Atendimos Ahorita&rdquo;</strong>.
+                        </p>
+                    </div>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            if (quickCedula.trim()) {
+                                onSearchCedula?.(quickCedula.trim());
+                            } else {
+                                onNavigateTab?.('orders');
+                            }
+                        }}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-[300px] lg:min-w-[400px]"
+                    >
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-teal-600" />
+                            <Input
+                                placeholder="Ingresa la Cédula del paciente..."
+                                value={quickCedula}
+                                onChange={(e) => setQuickCedula(e.target.value)}
+                                className="pl-9 bg-white border-teal-300 font-semibold text-sm h-10"
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            className="bg-teal-600 hover:bg-teal-700 text-white font-bold h-10 px-4 gap-1.5 shrink-0"
+                        >
+                            <Search className="h-4 w-4" />
+                            Consultar Exámenes
+                        </Button>
+                    </form>
+                </CardContent>
+            </Card>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

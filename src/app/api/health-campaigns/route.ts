@@ -349,21 +349,32 @@ export async function GET(request: NextRequest) {
         }
 
         let campaignIdsFilter: string[] | null = null;
+        let prioritizedCampaignIds = new Set<string>();
         if (doctorId) {
-            const { data: docLinks } = await supabaseAdmin
-                .from('health_campaign_doctors')
-                .select('campaign_id')
-                .eq('doctor_id', doctorId);
+            const [docLinksRes, ownCampaignsRes, activeCampaignsRes] = await Promise.all([
+                supabaseAdmin
+                    .from('health_campaign_doctors')
+                    .select('campaign_id')
+                    .eq('doctor_id', doctorId),
+                supabaseAdmin
+                    .from('health_campaigns')
+                    .select('id')
+                    .eq('organizer_id', doctorId),
+                supabaseAdmin
+                    .from('health_campaigns')
+                    .select('id')
+                    .in('status', ['upcoming', 'active']),
+            ]);
 
-            const invitedIds = (docLinks || []).map((d: any) => d.campaign_id);
+            const invitedIds = (docLinksRes.data || []).map((d: any) => d.campaign_id);
+            const ownIds = (ownCampaignsRes.data || []).map((c: any) => c.id);
+            const activeIds = (activeCampaignsRes.data || []).map((c: any) => c.id);
 
-            const { data: ownCampaigns } = await supabaseAdmin
-                .from('health_campaigns')
-                .select('id')
-                .eq('organizer_id', doctorId);
+            for (const cid of [...invitedIds, ...ownIds]) {
+                prioritizedCampaignIds.add(cid);
+            }
 
-            const ownIds = (ownCampaigns || []).map((c: any) => c.id);
-            campaignIdsFilter = Array.from(new Set([...invitedIds, ...ownIds]));
+            campaignIdsFilter = Array.from(new Set([...invitedIds, ...ownIds, ...activeIds]));
 
             if (campaignIdsFilter.length === 0) {
                 return NextResponse.json([]);
@@ -430,6 +441,15 @@ export async function GET(request: NextRequest) {
                 attsByCampaign.get(c.id) || []
             )
         );
+
+        if (doctorId && prioritizedCampaignIds.size > 0) {
+            result.sort((a, b) => {
+                const aPrio = prioritizedCampaignIds.has(a.id) ? 0 : 1;
+                const bPrio = prioritizedCampaignIds.has(b.id) ? 0 : 1;
+                if (aPrio !== bPrio) return aPrio - bPrio;
+                return (b.startDate || '').localeCompare(a.startDate || '');
+            });
+        }
 
         return NextResponse.json(result);
     } catch (error: any) {
@@ -619,27 +639,64 @@ export async function PATCH(request: NextRequest) {
         const { action, id, campaignId } = body;
         const targetCampaignId = id || campaignId;
 
-        // 1. Médico acepta o rechaza invitación a la Jornada
-        if (action === 'respond_invitation') {
-            const { doctorId, status } = body;
-            if (!targetCampaignId || !doctorId || !['accepted', 'declined'].includes(status)) {
+        // 1. Médico se suscribe a la Jornada o acepta/rechaza invitación
+        if (action === 'respond_invitation' || action === 'subscribe_doctor') {
+            const { doctorId, status = 'accepted' } = body;
+            const resolvedStatus = action === 'subscribe_doctor' ? 'accepted' : status;
+            if (!targetCampaignId || !doctorId || !['accepted', 'declined'].includes(resolvedStatus)) {
                 return NextResponse.json({ error: 'Datos de respuesta inválidos' }, { status: 400 });
             }
 
+            // Buscar información del médico en doctors para poder suscribirlo aunque no haya sido pre-invitado
+            const { data: docProfile } = await supabaseAdmin
+                .from('doctors')
+                .select('id, name, email, specialty, profile_image')
+                .eq('id', doctorId)
+                .maybeSingle();
+
+            const doctorName = body.doctorName || docProfile?.name || 'Médico SUMA';
+            const doctorEmail = body.doctorEmail || docProfile?.email || null;
+            const doctorSpecialty = body.doctorSpecialty || docProfile?.specialty || 'Medicina General';
+            const doctorProfileImage = body.doctorProfileImage || docProfile?.profile_image || null;
+
             const { data, error } = await supabaseAdmin
                 .from('health_campaign_doctors')
-                .update({
-                    status,
-                    read_by_doctor: true,
-                    responded_at: new Date().toISOString(),
-                })
-                .eq('campaign_id', targetCampaignId)
-                .eq('doctor_id', doctorId)
+                .upsert(
+                    {
+                        campaign_id: targetCampaignId,
+                        doctor_id: doctorId,
+                        doctor_name: doctorName,
+                        doctor_email: doctorEmail,
+                        doctor_specialty: doctorSpecialty,
+                        doctor_profile_image: doctorProfileImage,
+                        status: resolvedStatus,
+                        read_by_doctor: true,
+                        responded_at: new Date().toISOString(),
+                    },
+                    { onConflict: 'campaign_id,doctor_id' }
+                )
                 .select('*')
                 .maybeSingle();
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 500 });
+            }
+
+            // Si el médico se suscribió o aceptó, asegurar que su especialidad esté en la jornada
+            if (resolvedStatus === 'accepted' && doctorSpecialty) {
+                const { data: campRow } = await supabaseAdmin
+                    .from('health_campaigns')
+                    .select('specialties')
+                    .eq('id', targetCampaignId)
+                    .maybeSingle();
+
+                const currentSpecs: string[] = Array.isArray(campRow?.specialties) ? campRow.specialties : [];
+                if (!currentSpecs.includes(doctorSpecialty)) {
+                    await supabaseAdmin
+                        .from('health_campaigns')
+                        .update({ specialties: [...currentSpecs, doctorSpecialty] })
+                        .eq('id', targetCampaignId);
+                }
             }
 
             return NextResponse.json({ success: true, invitation: data ? mapDoctorRow(data) : null });

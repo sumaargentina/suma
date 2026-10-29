@@ -85,6 +85,7 @@ interface HealthCampaignsManagerProps {
   organizerName: string;
   organizerLogo?: string | null;
   defaultDoctorSpecialty?: string;
+  initialCampaignId?: string | null;
 }
 
 export function HealthCampaignsManager({
@@ -93,6 +94,7 @@ export function HealthCampaignsManager({
   organizerName,
   organizerLogo,
   defaultDoctorSpecialty,
+  initialCampaignId,
 }: HealthCampaignsManagerProps) {
   const { toast } = useToast();
   const { specialties: settingsSpecialties } = useSettings();
@@ -102,8 +104,12 @@ export function HealthCampaignsManager({
   const [loading, setLoading] = useState(true);
 
   // Jornada seleccionada para ver Detalle / Atender en Vivo / Estadísticas
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(initialCampaignId || null);
   const [detailTab, setDetailTab] = useState<'attend' | 'stats' | 'doctors' | 'registrations'>('attend');
+  const [attendanceDoctorFilter, setAttendanceDoctorFilter] = useState<'all' | 'mine'>(
+    organizerRole === 'doctor' ? 'mine' : 'all'
+  );
+  const [isSubscribingDoctor, setIsSubscribingDoctor] = useState(false);
 
   // Modal Crear / Editar Jornada
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -593,6 +599,7 @@ export function HealthCampaignsManager({
 
   const handleRespondInvitation = async (campaignId: string, status: 'accepted' | 'declined') => {
     try {
+      setIsSubscribingDoctor(true);
       const res = await fetch('/api/health-campaigns', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -600,21 +607,34 @@ export function HealthCampaignsManager({
           action: 'respond_invitation',
           campaignId,
           doctorId: organizerId,
+          doctorName: organizerName,
+          doctorSpecialty: defaultDoctorSpecialty || 'Medicina General',
+          doctorProfileImage: organizerLogo || null,
           status,
         }),
       });
       if (!res.ok) throw new Error('No se pudo actualizar tu respuesta');
       toast({
-        title: status === 'accepted' ? '¡Participación Confirmada! 🩺' : 'Invitación Rechazada',
+        title: status === 'accepted' ? '¡Suscripción Confirmada en la Jornada! 🩺' : 'Invitación Rechazada',
         description:
           status === 'accepted'
-            ? 'Ahora formas parte del equipo médico de esta jornada de salud.'
+            ? 'Ya tienes acceso habilitado con tu usuario independiente para pasar consulta en esta jornada médica.'
             : 'Has declinado participar en esta jornada.',
       });
+      setSelectedCampaignId(campaignId);
+      if (status === 'accepted') {
+        setDetailTab('attend');
+      }
       await fetchCampaignsAndDoctors();
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setIsSubscribingDoctor(false);
     }
+  };
+
+  const handleSubscribeAsDoctor = async (campaignId: string) => {
+    await handleRespondInvitation(campaignId, 'accepted');
   };
 
   const handleDeleteCampaign = async (id: string) => {
@@ -800,7 +820,10 @@ export function HealthCampaignsManager({
   }, [allDoctors, doctorSearchQuery, invitedDoctorsList]);
 
   const filteredAttendances = useMemo(() => {
-    const list = selectedCampaign?.attendances || [];
+    let list = selectedCampaign?.attendances || [];
+    if (organizerRole === 'doctor' && attendanceDoctorFilter === 'mine') {
+      list = list.filter(a => a.doctorId === organizerId);
+    }
     const q = attendanceSearchTerm.toLowerCase().trim();
     if (!q) return list;
     return list.filter(
@@ -810,7 +833,20 @@ export function HealthCampaignsManager({
         a.specialty.toLowerCase().includes(q) ||
         a.doctorName.toLowerCase().includes(q)
     );
-  }, [selectedCampaign, attendanceSearchTerm]);
+  }, [selectedCampaign, attendanceSearchTerm, organizerRole, attendanceDoctorFilter, organizerId]);
+
+  const myAttendedInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign) return 0;
+    return (selectedCampaign.attendances || []).filter(a => a.doctorId === organizerId).length;
+  }, [selectedCampaign, organizerId]);
+
+  const isDoctorSubscribedToSelected = useMemo(() => {
+    if (!selectedCampaign || organizerRole !== 'doctor') return true;
+    return (
+      selectedCampaign.organizerId === organizerId ||
+      Boolean(selectedCampaign.doctors?.some(d => d.doctorId === organizerId && d.status === 'accepted'))
+    );
+  }, [selectedCampaign, organizerRole, organizerId]);
 
   return (
     <div className="space-y-6">
@@ -918,12 +954,19 @@ export function HealthCampaignsManager({
           {/* Columna Izquierda (4/12): Lista de Jornadas */}
           <div className="lg:col-span-4 space-y-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 px-1">
-              Mis Jornadas de Salud ({campaigns.length})
+              {organizerRole === 'doctor'
+                ? `Jornadas Suscritas y Disponibles (${campaigns.length})`
+                : `Mis Jornadas de Salud (${campaigns.length})`}
             </h3>
             <div className="space-y-3 max-h-[750px] overflow-y-auto pr-1">
               {campaigns.map(camp => {
                 const isSelected = selectedCampaign?.id === camp.id;
                 const isCreator = camp.organizerId === organizerId || organizerRole === 'admin';
+                const myDocEntry = camp.doctors?.find(d => d.doctorId === organizerId);
+                const isSubscribed =
+                  camp.organizerId === organizerId || myDocEntry?.status === 'accepted';
+                const isPendingInvite = myDocEntry?.status === 'pending';
+                const myAttCount = (camp.attendances || []).filter(a => a.doctorId === organizerId).length;
                 return (
                   <Card
                     key={camp.id}
@@ -963,6 +1006,24 @@ export function HealthCampaignsManager({
                           </Badge>
                         )}
                       </div>
+
+                      {organizerRole === 'doctor' && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isSubscribed ? (
+                            <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                              ✅ Suscrito • Pasar Consulta ({myAttCount} atendidos por mí)
+                            </Badge>
+                          ) : isPendingInvite ? (
+                            <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
+                              ⏳ Invitación Pendiente
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-sky-50 text-sky-800 border-sky-200 text-[10px] font-semibold">
+                              🩺 Jornada Disponible para Suscribirte
+                            </Badge>
+                          )}
+                        </div>
+                      )}
 
                       <div className="text-xs text-slate-600 space-y-1">
                         <p className="flex items-center gap-1.5 font-medium text-slate-800">
@@ -1017,6 +1078,20 @@ export function HealthCampaignsManager({
                           <p className="text-[10px] text-slate-500">Médicos</p>
                         </div>
                       </div>
+
+                      {organizerRole === 'doctor' && !isSubscribed && (
+                        <div className="pt-1" onClick={e => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            disabled={isSubscribingDoctor}
+                            className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                            onClick={() => handleSubscribeAsDoctor(camp.id)}
+                          >
+                            <Stethoscope className="h-3.5 w-3.5 mr-1.5" />
+                            Suscribirme y Pasar Consulta
+                          </Button>
+                        </div>
+                      )}
 
                       {isCreator && (
                         <div className="flex items-center justify-end gap-1 pt-1" onClick={e => e.stopPropagation()}>
@@ -1161,6 +1236,54 @@ export function HealthCampaignsManager({
 
                 {/* TAB 1: CONSOLA DE ATENCIÓN EN VIVO (DÍA DEL EVENTO - SIN CITAS) */}
                 <TabsContent value="attend" className="mt-4 space-y-4">
+                  {organizerRole === 'doctor' && !isDoctorSubscribedToSelected && (
+                    <div className="p-4 rounded-2xl border-2 border-teal-500 bg-teal-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-extrabold text-teal-950 flex items-center gap-1.5">
+                          <Stethoscope className="h-4 w-4 text-teal-600" />
+                          ¿Participarás como médico en esta Jornada de Salud?
+                        </p>
+                        <p className="text-xs text-teal-800">
+                          Suscríbete con un clic para aparecer en el equipo médico oficial del evento y pasar tu consulta independiente con tu propio usuario (<strong>Dr(a). {organizerName}</strong>).
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        disabled={isSubscribingDoctor}
+                        onClick={() => handleSubscribeAsDoctor(selectedCampaign.id)}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0"
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                        Suscribirme a esta Jornada
+                      </Button>
+                    </div>
+                  )}
+
+                  {organizerRole === 'doctor' && isDoctorSubscribedToSelected && (
+                    <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-950">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>
+                          <strong>Consulta Independiente Activa:</strong> Estás pasando consulta con tu usuario{' '}
+                          <strong>Dr(a). {organizerName}</strong>. Cada paciente que atiendas aquí se guardará directamente en la jornada{' '}
+                          <strong>«{selectedCampaign.title}»</strong>.
+                        </span>
+                      </div>
+                      <Badge className="bg-emerald-600 text-white shrink-0 w-fit">
+                        Mis consultas en esta jornada: {myAttendedInSelectedCampaign}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {organizerRole !== 'doctor' && (
+                    <div className="p-3.5 rounded-xl border border-sky-200 bg-sky-50/80 flex items-start gap-2.5 text-xs text-sky-950">
+                      <Stethoscope className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Acceso Independiente para Cada Médico:</strong> Todos los médicos suscritos a esta jornada tienen acceso directo desde su propio Panel Médico (pestaña <strong>Jornadas</strong>) para pasar su consulta independiente con su propio usuario, y cada atención que registren se guarda automáticamente en esta jornada. También puedes registrar atenciones desde aquí seleccionando al médico tratante.
+                      </div>
+                    </div>
+                  )}
+
                   <Card className="border-2 border-teal-500/80 shadow-sm">
                     <CardHeader className="bg-teal-50/70 border-b pb-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1863,14 +1986,38 @@ export function HealthCampaignsManager({
                             Registro completo de pacientes atendidos, diagnóstico, médico tratante y acceso a su récipe digital.
                           </CardDescription>
                         </div>
-                        <div className="relative w-full sm:w-64">
-                          <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
-                          <Input
-                            value={attendanceSearchTerm}
-                            onChange={e => setAttendanceSearchTerm(e.target.value)}
-                            placeholder="Buscar paciente, cédula o médico..."
-                            className="pl-9 h-9 text-xs"
-                          />
+                        <div className="flex flex-wrap items-center gap-2">
+                          {organizerRole === 'doctor' && (
+                            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={attendanceDoctorFilter === 'mine' ? 'default' : 'ghost'}
+                                className="h-7 text-xs px-2.5"
+                                onClick={() => setAttendanceDoctorFilter('mine')}
+                              >
+                                Mis Consultas ({myAttendedInSelectedCampaign})
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={attendanceDoctorFilter === 'all' ? 'default' : 'ghost'}
+                                className="h-7 text-xs px-2.5"
+                                onClick={() => setAttendanceDoctorFilter('all')}
+                              >
+                                Todas en la Jornada ({selectedCampaign.attendances?.length || 0})
+                              </Button>
+                            </div>
+                          )}
+                          <div className="relative w-full sm:w-64">
+                            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                            <Input
+                              value={attendanceSearchTerm}
+                              onChange={e => setAttendanceSearchTerm(e.target.value)}
+                              placeholder="Buscar paciente, cédula o médico..."
+                              className="pl-9 h-9 text-xs"
+                            />
+                          </div>
                         </div>
                       </div>
                     </CardHeader>

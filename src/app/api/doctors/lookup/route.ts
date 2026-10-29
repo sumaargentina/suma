@@ -16,17 +16,27 @@ export async function GET(req: NextRequest) {
 
         let query = supabaseAdmin
             .from('doctors')
-            .select('id, name, email, cedula, specialty, profile_image, banner_image, medical_license');
+            .select('id, name, email, cedula, phone, whatsapp, profession, specialty, profile_image, banner_image, medical_license');
 
-        if (dni && email) {
-            query = query.or(`cedula.eq.${dni},email.eq.${email}`);
-        } else if (dni) {
-            query = query.eq('cedula', dni);
-        } else if (email) {
-            query = query.eq('email', email);
+        const orFilters: string[] = [];
+        if (dni) {
+            const digits = dni.replace(/\D/g, '');
+            orFilters.push(`cedula.eq.${dni}`);
+            if (digits.length >= 5) {
+                orFilters.push(`cedula.eq.${digits}`);
+                orFilters.push(`cedula.eq.V-${digits}`);
+                orFilters.push(`cedula.eq.E-${digits}`);
+                orFilters.push(`cedula.eq.P-${digits}`);
+                orFilters.push(`cedula.ilike.%${digits}%`);
+            }
+        }
+        if (email) {
+            orFilters.push(`email.ilike.${email}`);
         }
 
-        const { data: doctors, error } = await query.limit(1);
+        query = query.or(orFilters.join(','));
+
+        const { data: doctors, error } = await query.limit(5);
 
         if (error) {
             console.error('Error looking up doctor:', error);
@@ -37,20 +47,24 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ found: false });
         }
 
-        const doctor = doctors[0];
+        const cleanDniDigits = dni ? dni.replace(/\D/g, '') : '';
+        const doctor =
+            doctors.find((d: any) => email && (d.email || '').toLowerCase() === email) ||
+            doctors.find((d: any) => cleanDniDigits && (d.cedula || '').replace(/\D/g, '') === cleanDniDigits) ||
+            doctors[0];
 
         // Check if already affiliated with the clinic
         let isAffiliated = false;
         if (clinicId) {
-            const { data: ws } = await supabaseAdmin
+            const { data: wsRows } = await supabaseAdmin
                 .from('doctor_workspaces')
                 .select('id, status')
                 .eq('doctor_id', doctor.id)
                 .eq('clinic_id', clinicId)
-                .eq('status', 'active')
-                .maybeSingle();
+                .in('status', ['active', 'pending_invitation'])
+                .limit(1);
 
-            if (ws) {
+            if (wsRows && wsRows.length > 0) {
                 isAffiliated = true;
             }
         }
@@ -63,6 +77,8 @@ export async function GET(req: NextRequest) {
                 name: doctor.name,
                 email: doctor.email,
                 cedula: doctor.cedula,
+                phone: doctor.phone || doctor.whatsapp || '',
+                profession: doctor.profession || 'Médico',
                 specialty: doctor.specialty,
                 profileImage: doctor.profile_image,
                 bannerImage: doctor.banner_image,

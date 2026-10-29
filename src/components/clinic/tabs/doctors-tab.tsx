@@ -46,9 +46,11 @@ export function DoctorsTab() {
     const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
     const [changePassword, setChangePassword] = useState(false);
 
-    // DNI Lookup / Existing Doctor State
+    // DNI / Email Lookup / Existing Doctor State
+    const [registrationMode, setRegistrationMode] = useState<'existing' | 'new'>('existing');
     const [isSearchingDni, setIsSearchingDni] = useState(false);
     const [existingDoctorFound, setExistingDoctorFound] = useState<Doctor | null>(null);
+    const [lookupPerformed, setLookupPerformed] = useState(false);
     const [isAlreadyAffiliated, setIsAlreadyAffiliated] = useState(false);
 
     // Config Modal State
@@ -61,6 +63,8 @@ export function DoctorsTab() {
         dni: '',
         name: '',
         email: '',
+        phone: '',
+        medicalLicense: '',
         password: '', // Only for new doctors
         profession: 'Médico',
         specialty: '',
@@ -220,36 +224,51 @@ export function DoctorsTab() {
 
 
     const resetForm = () => {
-        setFormData({ dni: '', name: '', email: '', password: '', profession: 'Médico', specialty: '' });
+        setFormData({ dni: '', name: '', email: '', phone: '', medicalLicense: '', password: '', profession: 'Médico', specialty: '' });
         setProfileFile(null);
         setBannerFile(null);
         setPreviewProfile('');
         setPreviewBanner('');
         setEditingDoctor(null);
         setExistingDoctorFound(null);
+        setLookupPerformed(false);
         setIsAlreadyAffiliated(false);
+        setRegistrationMode('existing');
     };
 
-    const handleLookupDoctor = async (dniValue: string) => {
-        const clean = dniValue.trim().replace(/\D/g, '');
-        if (clean.length < 6) {
+    const handleLookupDoctor = async (dniValue?: string, emailValue?: string) => {
+        const rawDni = (dniValue ?? formData.dni).trim();
+        const rawEmail = (emailValue ?? formData.email).trim().toLowerCase();
+        const cleanDigits = rawDni.replace(/\D/g, '');
+
+        if (cleanDigits.length < 5 && (!rawEmail || !rawEmail.includes('@'))) {
             setExistingDoctorFound(null);
+            setLookupPerformed(false);
             setIsAlreadyAffiliated(false);
             return;
         }
 
         setIsSearchingDni(true);
         try {
-            const res = await fetch(`/api/doctors/lookup?dni=${encodeURIComponent(clean)}&clinicId=${user?.id || ''}`);
+            const params = new URLSearchParams();
+            if (cleanDigits.length >= 5) params.set('dni', rawDni);
+            if (rawEmail && rawEmail.includes('@')) params.set('email', rawEmail);
+            if (user?.id) params.set('clinicId', user.id);
+
+            const res = await fetch(`/api/doctors/lookup?${params.toString()}`);
             const data = await res.json();
+            setLookupPerformed(true);
             if (data.found && data.doctor) {
                 setExistingDoctorFound(data.doctor);
                 setIsAlreadyAffiliated(data.isAffiliated || false);
                 setFormData(prev => ({
                     ...prev,
-                    dni: dniValue,
+                    dni: data.doctor.cedula || prev.dni || rawDni,
                     name: data.doctor.name || prev.name,
                     email: data.doctor.email || prev.email,
+                    phone: data.doctor.phone || prev.phone,
+                    medicalLicense: data.doctor.medicalLicense || prev.medicalLicense,
+                    profession: data.doctor.profession || prev.profession || 'Médico',
                     specialty: data.doctor.specialty || prev.specialty || (specialties[0]?.name || ''),
                 }));
                 if (data.doctor.profileImage) setPreviewProfile(data.doctor.profileImage);
@@ -259,7 +278,7 @@ export function DoctorsTab() {
                 setIsAlreadyAffiliated(false);
             }
         } catch (err) {
-            console.error('Error looking up doctor by DNI:', err);
+            console.error('Error looking up doctor:', err);
         } finally {
             setIsSearchingDni(false);
         }
@@ -315,6 +334,8 @@ export function DoctorsTab() {
                 dni: doctor.cedula || '',
                 name: doctor.name,
                 email: doctor.email,
+                phone: doctor.phone || doctor.whatsapp || '',
+                medicalLicense: doctor.medicalLicense || '',
                 password: '', // Don't show password
                 profession: doctor.profession || 'Médico',
                 specialty: doctor.specialty,
@@ -324,6 +345,7 @@ export function DoctorsTab() {
             setProfileFile(null);
             setBannerFile(null);
             setExistingDoctorFound(null);
+            setLookupPerformed(false);
             setIsAlreadyAffiliated(false);
         } else {
             resetForm();
@@ -355,7 +377,11 @@ export function DoctorsTab() {
                 const updateData: any = {
                     name: formData.name,
                     email: formData.email,
-                    cedula: formData.dni.replace(/\D/g, ''),
+                    cedula: formData.dni.trim(),
+                    phone: formData.phone.trim(),
+                    whatsapp: formData.phone.trim(),
+                    medicalLicense: formData.medicalLicense.trim(),
+                    profession: formData.profession || 'Médico',
                     specialty: formData.specialty,
                     profileImage: profileUrl,
                     bannerImage: bannerUrl,
@@ -368,17 +394,25 @@ export function DoctorsTab() {
                 await updateDoctor(editingDoctor.id, updateData);
                 toast({ title: "Médico actualizado", description: "Los cambios se guardaron correctamente." });
             } else {
-                // Validación básica
-                if (!formData.dni.trim()) {
-                    toast({ variant: "destructive", title: "Error", description: "El DNI / Cédula es obligatorio." });
+                const isLinkingExisting = !!existingDoctorFound || registrationMode === 'existing';
+
+                if (isLinkingExisting && !existingDoctorFound && !formData.dni.trim() && !formData.email.trim()) {
+                    toast({ variant: "destructive", title: "Datos requeridos", description: "Ingresa el DNI/Cédula o el Correo Electrónico del médico que pertenece a SUMA." });
                     setIsSubmitting(false);
                     return;
                 }
 
-                if (!existingDoctorFound && !formData.password) {
-                    toast({ variant: "destructive", title: "Error", description: "La contraseña provisional es requerida para nuevos médicos." });
-                    setIsSubmitting(false);
-                    return;
+                if (!isLinkingExisting) {
+                    if (!formData.dni.trim() || !formData.name.trim() || !formData.email.trim() || !formData.specialty.trim()) {
+                        toast({ variant: "destructive", title: "Campos requeridos", description: "Cédula/DNI, Nombre, Correo y Especialidad son obligatorios para registrar al médico." });
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    if (!formData.password || formData.password.length < 6) {
+                        toast({ variant: "destructive", title: "Contraseña requerida", description: "Asigna una contraseña provisional de al menos 6 caracteres para el nuevo médico." });
+                        setIsSubmitting(false);
+                        return;
+                    }
                 }
 
                 let profileUrl = previewProfile || 'https://placehold.co/400x400.png';
@@ -396,18 +430,21 @@ export function DoctorsTab() {
                 const result = await affiliateClinicDoctor({
                     clinicId: user.id,
                     doctorId: existingDoctorFound?.id,
-                    isExistingDoctor: !!existingDoctorFound,
+                    isExistingDoctor: isLinkingExisting,
                     dni: formData.dni,
                     name: formData.name,
                     email: formData.email,
+                    phone: formData.phone,
+                    profession: formData.profession,
                     specialty: formData.specialty,
+                    medicalLicense: formData.medicalLicense,
                     password: existingDoctorFound ? undefined : formData.password,
                     profileImage: profileUrl,
                     bannerImage: bannerUrl,
                 });
 
                 toast({
-                    title: result.isNew ? "✅ Médico registrado" : "✅ Médico vinculado",
+                    title: result.isNew ? "✅ Nuevo Médico Registrado y Vinculado" : "✅ Médico de SUMA Vinculado",
                     description: result.message || "Operación realizada con éxito."
                 });
             }
@@ -429,7 +466,7 @@ export function DoctorsTab() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Médicos</h2>
-                    <p className="text-muted-foreground">Gestiona el plantel médico de la clínica y vincula profesionales.</p>
+                    <p className="text-muted-foreground">Gestiona el plantel médico de la clínica: vincula médicos que ya pertenecen a SUMA o registra médicos nuevos.</p>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
@@ -437,64 +474,137 @@ export function DoctorsTab() {
                             <Plus className="mr-2 h-4 w-4" /> Registrar / Vincular Médico
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>
-                                {editingDoctor ? 'Editar Médico' : existingDoctorFound ? 'Vincular Médico Existente' : 'Registrar Nuevo Médico'}
+                                {editingDoctor
+                                    ? 'Editar Médico'
+                                    : registrationMode === 'existing'
+                                        ? 'Vincular Médico que pertenece a SUMA'
+                                        : 'Registrar Médico Nuevo en SUMA'}
                             </DialogTitle>
                             <DialogDescription>
                                 {editingDoctor
                                     ? 'Modifica los datos del médico en tu clínica.'
-                                    : 'Ingresa el DNI para verificar si el médico ya cuenta con usuario en SUMA o registrar uno nuevo.'}
+                                    : 'Elige si el médico ya tiene cuenta en SUMA para vincularlo o si deseas crearle su cuenta desde tu institución.'}
                             </DialogDescription>
                         </DialogHeader>
 
+                        {!editingDoctor && (
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setRegistrationMode('existing');
+                                    }}
+                                    className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        registrationMode === 'existing'
+                                            ? 'bg-teal-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <UserCheck className="h-4 w-4" />
+                                    Médico YA en SUMA
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setRegistrationMode('new');
+                                        setExistingDoctorFound(null);
+                                        setIsAlreadyAffiliated(false);
+                                    }}
+                                    className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        registrationMode === 'new'
+                                            ? 'bg-teal-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Médico Nuevo (No está en SUMA)
+                                </button>
+                            </div>
+                        )}
+
                         <form onSubmit={handleSubmit} className="space-y-5 py-2">
-                            {/* Campo DNI / Cédula con búsqueda en tiempo real */}
+                            {/* Buscador por DNI / Cédula o Correo */}
                             {!editingDoctor && (
-                                <div className="space-y-1.5 p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                                <div className="space-y-3 p-3.5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="dni" className="font-semibold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
-                                            DNI / Cédula del Profesional *
+                                        <Label className="font-semibold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                                            {registrationMode === 'existing'
+                                                ? 'Buscar Médico en SUMA por Cédula/DNI o Correo *'
+                                                : 'Datos de Identificación del Nuevo Médico *'}
                                         </Label>
                                         {isSearchingDni && (
                                             <span className="flex items-center gap-1 text-xs text-primary font-medium animate-pulse">
-                                                <Loader2 className="w-3 h-3 animate-spin" /> Buscando en SUMA...
+                                                <Loader2 className="w-3 h-3 animate-spin" /> Verificando en SUMA...
                                             </span>
                                         )}
                                     </div>
-                                    <div className="relative">
-                                        <Input
-                                            id="dni"
-                                            value={formData.dni}
-                                            onChange={e => {
-                                                const val = e.target.value;
-                                                setFormData(prev => ({ ...prev, dni: val }));
-                                                handleLookupDoctor(val);
-                                            }}
-                                            placeholder="Ej. 20935658"
-                                            className="bg-white dark:bg-slate-950 pr-9 font-mono"
-                                            required
-                                            autoFocus
-                                        />
-                                        <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <Label htmlFor="dni" className="text-xs font-medium">Cédula / DNI {registrationMode === 'new' ? '*' : ''}</Label>
+                                            <div className="relative mt-1">
+                                                <Input
+                                                    id="dni"
+                                                    value={formData.dni}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setFormData(prev => ({ ...prev, dni: val }));
+                                                        handleLookupDoctor(val, formData.email);
+                                                    }}
+                                                    placeholder="Ej: V-15432890 o 15432890"
+                                                    className="bg-white dark:bg-slate-950 font-mono text-xs"
+                                                    required={registrationMode === 'new'}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="lookup-email" className="text-xs font-medium">Correo Electrónico {registrationMode === 'new' ? '*' : ''}</Label>
+                                            <div className="relative flex gap-1.5 mt-1">
+                                                <Input
+                                                    id="lookup-email"
+                                                    type="email"
+                                                    value={formData.email}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setFormData(prev => ({ ...prev, email: val }));
+                                                    }}
+                                                    onBlur={() => handleLookupDoctor(formData.dni, formData.email)}
+                                                    placeholder="doctor@correo.com"
+                                                    className="bg-white dark:bg-slate-950 text-xs"
+                                                    required={registrationMode === 'new'}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="secondary"
+                                                    size="icon"
+                                                    className="shrink-0"
+                                                    title="Buscar médico en SUMA"
+                                                    onClick={() => handleLookupDoctor(formData.dni, formData.email)}
+                                                >
+                                                    <Search className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Alertas dinámicas según búsqueda */}
                                     {existingDoctorFound && (
                                         <div className="mt-2.5 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5 animate-in fade-in duration-200">
                                             <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                                            <div className="text-xs space-y-0.5 flex-1">
-                                                <div className="flex items-center gap-2">
+                                            <div className="text-xs space-y-1 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="font-bold text-emerald-800 dark:text-emerald-300">
-                                                        Médico detectado: {existingDoctorFound.name}
+                                                        Médico encontrado en SUMA: {existingDoctorFound.name}
                                                     </span>
                                                     <Badge variant="outline" className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 border-emerald-300">
-                                                        Cuenta SUMA Activa
+                                                        {existingDoctorFound.specialty || 'Especialista'}
                                                     </Badge>
                                                 </div>
                                                 <p className="text-emerald-700 dark:text-emerald-400">
-                                                    Este médico ya tiene cuenta en SUMA ({existingDoctorFound.email}). Se le enviará una invitación a su <strong>Espacio de Trabajo</strong> para que la valide desde su cuenta sin requerir contraseña provisional.
+                                                    Correo: <strong>{existingDoctorFound.email}</strong> • Doc: <strong>{existingDoctorFound.cedula || 'N/A'}</strong>. Haz clic en <strong>"Vincular a la Clínica"</strong> abajo para integrarlo a tu equipo médico.
                                                 </p>
                                                 {isAlreadyAffiliated && (
                                                     <p className="text-amber-700 dark:text-amber-300 font-semibold pt-1">
@@ -505,121 +615,178 @@ export function DoctorsTab() {
                                         </div>
                                     )}
 
-                                    {!existingDoctorFound && formData.dni.replace(/\D/g, '').length >= 6 && !isSearchingDni && (
-                                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                                            <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                                            DNI no registrado previamente. Completa los datos para crear su cuenta en SUMA.
-                                        </p>
+                                    {registrationMode === 'existing' && lookupPerformed && !existingDoctorFound && !isSearchingDni && (
+                                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div>
+                                                <p className="font-bold">No se encontró un médico en SUMA con esos datos.</p>
+                                                <p className="text-[11px] text-amber-800">Puedes crearle su cuenta nueva directamente desde aquí conservando los datos ingresados.</p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="bg-amber-600 hover:bg-amber-700 text-white text-xs shrink-0"
+                                                onClick={() => setRegistrationMode('new')}
+                                            >
+                                                Crear como Médico Nuevo
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* Sección Foto de Perfil */}
-                            <div className="flex items-start gap-5">
-                                <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm shrink-0 bg-slate-50">
-                                    {previewProfile ? (
-                                        <Image src={previewProfile} alt="Profile" fill className="object-cover object-top" />
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full w-full bg-slate-100 text-slate-300">
-                                            <User className="h-8 w-8" />
+                            {/* Formulario completo para Médico Nuevo o Edición */}
+                            {(editingDoctor || registrationMode === 'new' || existingDoctorFound) && (
+                                <>
+                                    {/* Sección Foto de Perfil */}
+                                    <div className="flex items-start gap-5">
+                                        <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-slate-100 shadow-sm shrink-0 bg-slate-50">
+                                            {previewProfile ? (
+                                                <Image src={previewProfile} alt="Profile" fill className="object-cover object-top" />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full w-full bg-slate-100 text-slate-300">
+                                                    <User className="h-8 w-8" />
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <div className="space-y-1.5 flex-1">
-                                    <Label className="text-xs font-medium">Foto de Perfil</Label>
-                                    <Input
-                                        type="file"
-                                        accept="image/*"
-                                        disabled={!!existingDoctorFound}
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                setProfileFile(file);
-                                                setPreviewProfile(URL.createObjectURL(file));
-                                            }
-                                        }}
-                                        className="text-xs file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground">
-                                        {existingDoctorFound ? 'Foto tomada del perfil de SUMA del médico.' : 'Recomendado: 400x400px. Formatos: JPG, PNG.'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="name" className="text-xs font-semibold">Nombre Completo *</Label>
-                                    <Input
-                                        id="name"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Dr. Juan Perez"
-                                        disabled={!!existingDoctorFound}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="email" className="text-xs font-semibold">Correo Electrónico *</Label>
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                        placeholder="doctor@ejemplo.com"
-                                        disabled={!!existingDoctorFound}
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <ProfessionSpecialtySelector
-                                    profession={formData.profession}
-                                    specialty={formData.specialty}
-                                    onChange={({ profession, specialty }) =>
-                                        setFormData(prev => ({ ...prev, profession, specialty }))
-                                    }
-                                />
-                            </div>
-
-                            {/* Sección Contraseña: Solo si es un médico NUEVO o si se está editando con cambio de clave */}
-                            {(!existingDoctorFound || editingDoctor) && (
-                                <div className="pt-2 border-t">
-                                    {editingDoctor && (
-                                        <div className="flex items-center space-x-2 pb-3">
-                                            <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
-                                            <Label htmlFor="changePassword" className="text-sm font-medium">Cambiar Contraseña</Label>
-                                        </div>
-                                    )}
-
-                                    {(!editingDoctor || changePassword) && (
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="password">
-                                                {editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional para el Médico *'}
-                                            </Label>
+                                        <div className="space-y-1.5 flex-1">
+                                            <Label className="text-xs font-medium">Foto de Perfil</Label>
                                             <Input
-                                                id="password"
-                                                type="password"
-                                                value={formData.password}
-                                                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                                placeholder="••••••••"
-                                                required={!editingDoctor}
+                                                type="file"
+                                                accept="image/*"
+                                                disabled={!!existingDoctorFound && !editingDoctor}
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        setProfileFile(file);
+                                                        setPreviewProfile(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                className="text-xs file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition-all cursor-pointer border-slate-200 bg-slate-50"
                                             />
-                                            <p className="text-[11px] text-muted-foreground">
-                                                El médico usará esta contraseña para su primer ingreso en SUMA.
+                                            <p className="text-[10px] text-muted-foreground">
+                                                {existingDoctorFound ? 'Foto tomada del perfil de SUMA del médico.' : 'Recomendado: 400x400px. Formatos: JPG, PNG.'}
                                             </p>
                                         </div>
+                                    </div>
+
+                                    {editingDoctor && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="edit-dni" className="text-xs font-semibold">Cédula / DNI *</Label>
+                                                <Input
+                                                    id="edit-dni"
+                                                    value={formData.dni}
+                                                    onChange={e => setFormData({ ...formData, dni: e.target.value })}
+                                                    placeholder="Ej: V-15432890"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="edit-email" className="text-xs font-semibold">Correo Electrónico *</Label>
+                                                <Input
+                                                    id="edit-email"
+                                                    type="email"
+                                                    value={formData.email}
+                                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                                    placeholder="doctor@ejemplo.com"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
                                     )}
-                                </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="name" className="text-xs font-semibold">Nombre Completo *</Label>
+                                            <Input
+                                                id="name"
+                                                value={formData.name}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                                placeholder="Dr(a). Juan Pérez"
+                                                disabled={!!existingDoctorFound && !editingDoctor}
+                                                required={!existingDoctorFound}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="doc-phone" className="text-xs font-semibold">Teléfono / WhatsApp</Label>
+                                            <Input
+                                                id="doc-phone"
+                                                value={formData.phone}
+                                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                                placeholder="+58 414 123-4567"
+                                                disabled={!!existingDoctorFound && !editingDoctor}
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="doc-license" className="text-xs font-semibold">Matrícula / MPPS</Label>
+                                            <Input
+                                                id="doc-license"
+                                                value={formData.medicalLicense}
+                                                onChange={e => setFormData({ ...formData, medicalLicense: e.target.value })}
+                                                placeholder="Ej: MPPS 12345"
+                                                disabled={!!existingDoctorFound && !editingDoctor}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <ProfessionSpecialtySelector
+                                            profession={formData.profession}
+                                            specialty={formData.specialty}
+                                            onChange={({ profession, specialty }) =>
+                                                setFormData(prev => ({ ...prev, profession, specialty }))
+                                            }
+                                        />
+                                    </div>
+
+                                    {/* Sección Contraseña: Solo si es un médico NUEVO o si se está editando con cambio de clave */}
+                                    {(!existingDoctorFound || editingDoctor) && (
+                                        <div className="pt-2 border-t">
+                                            {editingDoctor && (
+                                                <div className="flex items-center space-x-2 pb-3">
+                                                    <Checkbox id="changePassword" checked={changePassword} onCheckedChange={(checked) => setChangePassword(checked as boolean)} />
+                                                    <Label htmlFor="changePassword" className="text-sm font-medium">Cambiar Contraseña</Label>
+                                                </div>
+                                            )}
+
+                                            {(!editingDoctor || changePassword) && (
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="password">
+                                                        {editingDoctor ? 'Nueva Contraseña' : 'Contraseña Provisional para el Médico *'}
+                                                    </Label>
+                                                    <Input
+                                                        id="password"
+                                                        type="password"
+                                                        value={formData.password}
+                                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                                        placeholder="Mínimo 6 caracteres"
+                                                        required={!editingDoctor && !existingDoctorFound}
+                                                    />
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        El médico usará su correo y esta contraseña para entrar a su panel en SUMA.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
                             )}
 
                             <DialogFooter className="pt-3 border-t">
                                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                                     Cancelar
                                 </Button>
-                                <Button type="submit" disabled={isSubmitting || (isAlreadyAffiliated && !editingDoctor)}>
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmitting || (isAlreadyAffiliated && !editingDoctor) || (registrationMode === 'existing' && !existingDoctorFound && !editingDoctor)}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                                >
                                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    {editingDoctor ? 'Guardar Cambios' : existingDoctorFound ? 'Vincular a la Clínica' : 'Crear y Vincular Médico'}
+                                    {editingDoctor
+                                        ? 'Guardar Cambios'
+                                        : existingDoctorFound
+                                            ? 'Vincular Médico a la Clínica'
+                                            : 'Crear Cuenta y Vincular a la Clínica'}
                                 </Button>
                             </DialogFooter>
                         </form>

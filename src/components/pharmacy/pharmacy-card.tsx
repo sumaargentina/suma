@@ -3,8 +3,16 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Pill, Phone, Clock, ShieldCheck, Navigation } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { MapPin, Pill, Phone, Clock, ShieldCheck, Navigation, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Pharmacy } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 interface PharmacyCardProps {
   pharmacy: Pharmacy;
@@ -158,5 +166,210 @@ export function PharmacyCard({ pharmacy, priority = false }: PharmacyCardProps) 
         </div>
       </div>
     </Card>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * MINITARJETA COMPACTA DE FARMACIA ALIADA
+ * ────────────────────────────────────────────────────────────────────────── */
+interface PharmacyMiniCardProps {
+  pharmacy: Pharmacy;
+  onClick: () => void;
+  className?: string;
+}
+
+export function PharmacyMiniCard({ pharmacy, onClick, className }: PharmacyMiniCardProps) {
+  const [logoError, setLogoError] = React.useState(false);
+
+  const isChainBranch = pharmacy.isChain || Boolean(pharmacy.chainName || pharmacy.chain_name);
+  const displayName = pharmacy.chainName || pharmacy.chain_name || pharmacy.name;
+  const branchName = isChainBranch ? (pharmacy.branchName || pharmacy.branch_name) : null;
+  const is24Hours = Boolean(pharmacy.is24Hours || pharmacy.is_24_hours);
+  const city = pharmacy.city || pharmacy.state || '';
+  const logo = (!logoError && (pharmacy.logoUrl || pharmacy.logo_url)) || null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group relative w-full text-left bg-white hover:bg-emerald-50/40 border border-slate-200/90 hover:border-emerald-400 rounded-xl p-2 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer",
+        className
+      )}
+    >
+      {/* Logo compacto */}
+      <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-100 shadow-2xs overflow-hidden flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors">
+        {logo ? (
+          <img
+            src={logo}
+            alt={displayName}
+            onError={() => setLogoError(true)}
+            className="w-full h-full object-contain p-0.5"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-[11px]">
+            {displayName.substring(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      {/* Info compacta */}
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex items-center justify-between gap-1">
+          <p className="font-bold text-slate-900 text-xs leading-tight truncate group-hover:text-emerald-700 transition-colors">
+            {displayName}
+          </p>
+          {is24Hours && (
+            <span className="shrink-0 text-[9px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200/70 px-1 py-0.2 rounded">
+              24h
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 text-[10px] text-slate-500 truncate leading-none">
+          <MapPin className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+          <span className="truncate">
+            {branchName ? `${branchName}${city ? ` · ${city}` : ''}` : (city || 'Aliada SUMA')}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 pt-0.5">
+          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 bg-emerald-50/90 px-1.5 py-0.2 rounded">
+            <span className="w-1 h-1 rounded-full bg-emerald-500" />
+            Récipe SUMA
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECCIÓN DE FARMACIAS ALIADAS (1 LÍNEA + VER MÁS DESPLEGABLE + MODAL)
+ * ────────────────────────────────────────────────────────────────────────── */
+interface AlliedPharmaciesSectionProps {
+  pharmacies: Pharmacy[];
+  defaultExpanded?: boolean;
+}
+
+export function AlliedPharmaciesSection({
+  pharmacies,
+  defaultExpanded = false,
+}: AlliedPharmaciesSectionProps) {
+  const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
+  const [selectedPharmacy, setSelectedPharmacy] = React.useState<Pharmacy | null>(null);
+
+  if (!pharmacies || pharmacies.length === 0) return null;
+
+  // En una sola línea caben: 2 (móvil), 3 (sm), 4 (md), 6 (lg)
+  const SINGLE_ROW_MAX = 6;
+  const visibleList = isExpanded ? pharmacies : pharmacies.slice(0, SINGLE_ROW_MAX);
+  const hasMoreDesktop = pharmacies.length > SINGLE_ROW_MAX;
+  const hasMoreMobileOrTablet = pharmacies.length > 2;
+
+  // Clases responsivas para que cuando NO esté expandido se vea estrictamente 1 sola fila en cualquier pantalla
+  const getSingleRowVisibilityClass = (index: number) => {
+    if (isExpanded) return '';
+    if (index < 2) return ''; // visible en todos (2 cols en móvil)
+    if (index === 2) return 'hidden sm:flex'; // 3ra visible desde sm (3 cols)
+    if (index === 3) return 'hidden md:flex'; // 4ta visible desde md (4 cols)
+    if (index === 4 || index === 5) return 'hidden lg:flex'; // 5ta y 6ta visibles desde lg (6 cols)
+    return 'hidden';
+  };
+
+  return (
+    <div className="space-y-2.5 md:space-y-3">
+      {/* Header compacto */}
+      <div className="flex items-center justify-between border-b pb-2 border-slate-200">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+            <Pill className="h-4 w-4 md:h-5 md:w-5 text-emerald-600" />
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h2 className="text-sm md:text-lg font-bold text-slate-900">Farmacias Aliadas</h2>
+            <span className="text-[10px] md:text-xs text-slate-500 hidden sm:inline">
+              Toca cualquier farmacia para ver su ficha completa y ubicación
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] md:text-xs font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-100">
+            {pharmacies.length} {pharmacies.length === 1 ? 'aliada' : 'aliadas'}
+          </span>
+
+          {hasMoreMobileOrTablet && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(prev => !prev)}
+              className={cn(
+                "h-7 px-2.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 gap-1 rounded-lg",
+                !hasMoreDesktop && "lg:hidden"
+              )}
+            >
+              <span>{isExpanded ? 'Ver menos' : 'Ver más'}</span>
+              {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Grid compacto de minitarjetas bien pegaditas */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        {visibleList.map((pharmacy, idx) => (
+          <PharmacyMiniCard
+            key={pharmacy.id}
+            pharmacy={pharmacy}
+            onClick={() => setSelectedPharmacy(pharmacy)}
+            className={getSingleRowVisibilityClass(idx)}
+          />
+        ))}
+      </div>
+
+      {/* Botón inferior desplegable "Ver más" / "Ver menos" */}
+      {hasMoreMobileOrTablet && (
+        <div className={cn("flex justify-center pt-1", !hasMoreDesktop && !isExpanded && "lg:hidden")}>
+          <button
+            type="button"
+            onClick={() => setIsExpanded(prev => !prev)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs transition-all cursor-pointer"
+          >
+            {isExpanded ? (
+              <>
+                <span>Mostrar solo una fila</span>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </>
+            ) : (
+              <>
+                <span>Ver más farmacias aliadas ({pharmacies.length})</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Modal con la tarjeta completa de la farmacia seleccionada */}
+      <Dialog
+        open={Boolean(selectedPharmacy)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPharmacy(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden border-0 bg-transparent shadow-2xl">
+          <DialogTitle className="sr-only">
+            {selectedPharmacy?.chainName || selectedPharmacy?.chain_name || selectedPharmacy?.name || 'Detalle de Farmacia Aliada'}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Información de contacto, dirección y ubicación en el mapa de la farmacia aliada SUMA.
+          </DialogDescription>
+          {selectedPharmacy && (
+            <PharmacyCard pharmacy={selectedPharmacy} priority />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

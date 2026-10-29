@@ -44,7 +44,13 @@ export async function GET(req: Request) {
             return NextResponse.json([], { status: 200 });
         }
 
-        const doctors = (data || []).map(d => toCamelCase(d as Record<string, unknown>));
+        const doctors = (data || []).map(d => {
+            const mapped = toCamelCase(d as Record<string, unknown>);
+            const resolvedPhone = (mapped.whatsapp as string) || (mapped.phone as string) || '';
+            if (!mapped.whatsapp && resolvedPhone) mapped.whatsapp = resolvedPhone;
+            if (!mapped.phone && resolvedPhone) mapped.phone = resolvedPhone;
+            return mapped;
+        });
         return NextResponse.json(doctors);
     } catch (error: any) {
         console.error('Error in GET /api/doctors:', error);
@@ -63,7 +69,24 @@ export async function PATCH(req: Request) {
         }
 
         const snakeCaseData = toSnakeCase(body);
+        if (snakeCaseData.whatsapp && !snakeCaseData.phone) {
+            snakeCaseData.phone = snakeCaseData.whatsapp;
+        } else if (snakeCaseData.phone && !snakeCaseData.whatsapp) {
+            snakeCaseData.whatsapp = snakeCaseData.phone;
+        }
         const isVerifying = snakeCaseData.verification_status === 'verified';
+
+        // Sincronizar el estado del Consultorio Privado según pago/mensualidad:
+        // Si se activa la suscripción o el estado del médico, habilitar su consultorio privado
+        if (snakeCaseData.subscription_status === 'active') {
+            snakeCaseData.status = 'active';
+            snakeCaseData.is_clinic_employee = false;
+        } else if (snakeCaseData.status === 'active' && snakeCaseData.subscription_status === undefined) {
+            snakeCaseData.subscription_status = 'active';
+            snakeCaseData.is_clinic_employee = false;
+        } else if (snakeCaseData.status === 'inactive' && snakeCaseData.subscription_status === undefined) {
+            snakeCaseData.subscription_status = 'inactive';
+        }
 
         let previousDoctor: {
             id: string;

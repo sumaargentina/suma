@@ -36,6 +36,7 @@ function RegisterClinicContent() {
     const initialMonths = parseInt(searchParams.get('months') || '1');
 
     const [name, setName] = useState('');
+    const [rif, setRif] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [locationData, setLocationData] = useState<LocationData>({
@@ -93,6 +94,7 @@ function RegisterClinicContent() {
         try {
             await registerClinic({
                 name,
+                rif,
                 email,
                 password,
                 phone,
@@ -102,6 +104,10 @@ function RegisterClinicContent() {
                 sector: locationData.sector,
                 address: locationData.address,
                 billingCycle: billingMonths === 12 ? 'annual' : 'monthly',
+                billingMonths,
+                subscriptionFee: totalToPay,
+                discountPercentage: Math.round(discount * 100),
+                freeMonths: 1,
                 lat: locationData.lat || undefined,
                 lng: locationData.lng || undefined,
             });
@@ -231,6 +237,17 @@ function RegisterClinicContent() {
                                     required
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="rif">RIF / CUIT / Identificación Fiscal <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                                <Input
+                                    id="rif"
+                                    placeholder="Ej: J-12345678-9"
+                                    value={rif}
+                                    onChange={(e) => setRif(e.target.value)}
                                     disabled={isLoading}
                                 />
                             </div>

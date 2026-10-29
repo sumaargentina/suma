@@ -5,9 +5,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { supabase } from '@/lib/supabase';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save, Sparkles, Wand2, Mic, MicOff, FileText, BedDouble, Calendar, ShieldCheck } from 'lucide-react';
+import {
+    Loader2,
+    Save,
+    Sparkles,
+    Wand2,
+    Mic,
+    FileText,
+    Calendar,
+    Check,
+    Trash2,
+    Plus,
+    Pill,
+    Lock,
+    CheckCircle2,
+    Edit3
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
 import { useSettings } from '@/lib/settings';
@@ -21,6 +36,38 @@ interface NewRecordFormProps {
     onSuccess: () => void;
 }
 
+interface MedicationItem {
+    id: string;
+    text: string;
+    approved: boolean;
+    controlledOnly: boolean;
+    fromAi?: boolean;
+}
+
+/**
+ * Limpia cantidades de empaque ("1 caja", "2 cajas", etc.) por si se pegan o dictan
+ */
+function cleanMedicationText(raw: string): string {
+    return raw
+        .replace(/^(\d+[\.\)\-]\s*|[\-\•\*]\s*)/, '')
+        .replace(/\(\s*(caja|frasco|bl[ií]ster|envase|paquete)[^)]*\)/gi, '')
+        .replace(/[\-\–\—\,\:]?\s*\b(comprar\s+)?\d+\s*(cajas?|frascos?|bl[ií]sters?|envases?|paquetes?)\b.*$/gi, '')
+        .replace(/\s*\[SOLO CON R[EÉ]CIPE\s*\-\s*ENTREGA [UÚ]NICA\]/gi, '')
+        .trim();
+}
+
+function buildPrescriptionString(items: MedicationItem[]): string {
+    return items
+        .map((item, idx) => {
+            const clean = item.text.trim();
+            if (!clean) return '';
+            const suffix = item.controlledOnly ? ' [SOLO CON RÉCIPE - ENTREGA ÚNICA]' : '';
+            return `${idx + 1}. ${clean}${suffix}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+}
+
 export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoctorId, onSuccess }: NewRecordFormProps) {
     const { toast } = useToast();
     const { user } = useAuth();
@@ -31,6 +78,12 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
     // AI States
     const [aiPrompt, setAiPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [hasAiGenerated, setHasAiGenerated] = useState(false);
+
+    // Medications structured list (one by one with Approve / Delete / Edit)
+    const [medicationItems, setMedicationItems] = useState<MedicationItem[]>([]);
+    const [newMedInput, setNewMedInput] = useState('');
+    const [showRawPrescription, setShowRawPrescription] = useState(false);
 
     // WHISPER-BASED VOICE RECORDING
     const [isRecording, setIsRecording] = useState(false);
@@ -59,15 +112,11 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             mediaRecorder.onstop = async () => {
                 console.log('⏹️ Grabación detenida. Procesando audio...');
 
-                // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
 
-                // Create audio blob
                 const audioBlob = new Blob(audioChunksRef.current, {
                     type: mediaRecorder.mimeType
                 });
-
-                console.log('📦 Audio blob creado:', audioBlob.size, 'bytes');
 
                 if (audioBlob.size < 1000) {
                     toast({
@@ -78,7 +127,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     return;
                 }
 
-                // Send to Whisper API
                 await transcribeAudio(audioBlob);
             };
 
@@ -89,8 +137,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 title: '🎙️ Grabando...',
                 description: 'Habla ahora. Presiona el botón nuevamente para detener.',
             });
-
-            console.log('🔴 Grabación iniciada');
 
         } catch (error: any) {
             console.error('❌ Error accessing microphone:', error);
@@ -115,7 +161,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
-            console.log('⏹️ Deteniendo grabación...');
         }
     };
 
@@ -123,10 +168,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         setIsTranscribing(true);
 
         try {
-            console.log('🚀 Enviando audio a Whisper API...');
-
             const formData = new FormData();
-            // Whisper needs a file with proper extension
             const audioFile = new File([audioBlob], 'recording.webm', {
                 type: audioBlob.type
             });
@@ -143,7 +185,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             }
 
             const data = await response.json();
-            console.log('✅ Transcripción recibida:', data.text);
 
             if (data.text) {
                 setAiPrompt(prev => {
@@ -178,7 +219,6 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         }
     };
 
-    // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -187,6 +227,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         };
     }, []);
 
+    // Por defecto requires_rest es FALSE y rest_days es 0 (SOLO se activa si el médico indica reposo)
     const [formData, setFormData] = useState({
         record_type: 'consultation',
         reason_for_visit: '',
@@ -199,12 +240,88 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         evolution: '',
         medical_report: '',
         requires_rest: false,
-        rest_days: 3,
+        rest_days: 0,
         rest_start_date: format(new Date(), 'yyyy-MM-dd'),
         rest_end_date: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
         rest_type: 'Absoluto',
         rest_justification: 'Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación.'
     });
+
+    // Sincronizar formData.prescription cada vez que cambian los medicationItems
+    const syncMedicationItemsToPrescription = (items: MedicationItem[]) => {
+        setMedicationItems(items);
+        const formatted = buildPrescriptionString(items);
+        setFormData(prev => ({
+            ...prev,
+            prescription: formatted
+        }));
+    };
+
+    const handleAddMedicationItem = (textToAdd?: string) => {
+        const raw = (textToAdd !== undefined ? textToAdd : newMedInput).trim();
+        if (!raw) return;
+        const clean = cleanMedicationText(raw);
+        if (!clean) return;
+
+        const nextItems: MedicationItem[] = [
+            ...medicationItems,
+            {
+                id: `med-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                text: clean,
+                approved: true,
+                controlledOnly: true,
+                fromAi: false
+            }
+        ];
+        syncMedicationItemsToPrescription(nextItems);
+        if (textToAdd === undefined) {
+            setNewMedInput('');
+        }
+    };
+
+    const handleUpdateMedicationItemText = (id: string, newText: string) => {
+        const nextItems = medicationItems.map(item =>
+            item.id === id ? { ...item, text: newText } : item
+        );
+        syncMedicationItemsToPrescription(nextItems);
+    };
+
+    const handleApproveMedicationItem = (id: string) => {
+        const nextItems = medicationItems.map(item =>
+            item.id === id ? { ...item, approved: true } : item
+        );
+        syncMedicationItemsToPrescription(nextItems);
+        toast({
+            title: '✅ Medicamento Aprobado',
+            description: 'El medicamento ha sido confirmado en el récipe.'
+        });
+    };
+
+    const handleApproveAllMedications = () => {
+        const nextItems = medicationItems.map(item => ({ ...item, approved: true }));
+        syncMedicationItemsToPrescription(nextItems);
+        toast({
+            title: '✅ Todos los medicamentos aprobados',
+            description: 'Puedes seguir editando cualquier detalle antes de guardar.'
+        });
+    };
+
+    const handleDeleteMedicationItem = (id: string) => {
+        const removed = medicationItems.find(i => i.id === id);
+        const nextItems = medicationItems.filter(item => item.id !== id);
+        syncMedicationItemsToPrescription(nextItems);
+        toast({
+            title: '🗑️ Medicamento Eliminado',
+            description: removed ? `Se quitó "${removed.text}" del récipe.` : 'Medicamento eliminado del récipe.'
+        });
+    };
+
+    const handleToggleControlledMedication = (id: string) => {
+        const nextItems = medicationItems.map(item =>
+            item.id === id ? { ...item, controlledOnly: !item.controlledOnly } : item
+        );
+        syncMedicationItemsToPrescription(nextItems);
+    };
 
     const handleAiGenerate = async () => {
         if (!aiPrompt.trim()) {
@@ -230,24 +347,60 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
             const data = await response.json();
 
-            // Auto-fill form
+            // Extraer medicamentos individuales sin cantidades de cajas
+            let rawMedsList: string[] = [];
+            if (Array.isArray(data.medications) && data.medications.length > 0) {
+                rawMedsList = data.medications;
+            } else if (typeof data.prescription === 'string' && data.prescription.trim()) {
+                rawMedsList = data.prescription.split(/\r?\n/);
+            }
+
+            const aiMedItems: MedicationItem[] = rawMedsList
+                .map((line: string) => cleanMedicationText(String(line || '')))
+                .filter(Boolean)
+                .map((cleanLine: string, idx: number) => ({
+                    id: `ai-med-${Date.now()}-${idx}`,
+                    text: cleanLine,
+                    approved: false, // Queda listo para que el médico lo apruebe o elimine
+                    controlledOnly: true,
+                    fromAi: true
+                }));
+
+            setMedicationItems(aiMedItems);
+            const formattedPrescription = buildPrescriptionString(aiMedItems);
+
+            // Reposo SOLA Y EXCLUSIVAMENTE si el médico lo indicó explícitamente
+            const aiRequiresRest = Boolean(data.requires_rest === true);
+            const aiRestDays = aiRequiresRest ? (Number(data.rest_days) > 0 ? Number(data.rest_days) : 3) : 0;
+            const startDateStr = format(new Date(), 'yyyy-MM-dd');
+            const endDateStr = aiRequiresRest
+                ? format(addDays(new Date(), Math.max(0, aiRestDays - 1)), 'yyyy-MM-dd')
+                : startDateStr;
+
             setFormData(prev => ({
                 ...prev,
                 reason_for_visit: data.reason || prev.reason_for_visit,
                 diagnosis: data.diagnosis || prev.diagnosis,
                 evaluation: data.evaluation || prev.evaluation,
-                requested_studies: data.requested_studies || prev.requested_studies,
-                prescription: data.prescription || prev.prescription,
+                requested_studies: data.requested_studies !== undefined ? data.requested_studies : prev.requested_studies,
+                prescription: formattedPrescription,
                 treatment_plan: data.treatment || prev.treatment_plan,
                 evolution: data.evolution || prev.evolution,
                 medical_report: data.medical_report || prev.medical_report,
-                requires_rest: Boolean(data.requires_rest ?? prev.requires_rest),
-                rest_days: data.rest_days || prev.rest_days
+                requires_rest: aiRequiresRest,
+                rest_days: aiRestDays,
+                rest_start_date: startDateStr,
+                rest_end_date: endDateStr,
+                rest_justification: aiRequiresRest && data.rest_justification
+                    ? data.rest_justification
+                    : prev.rest_justification
             }));
 
+            setHasAiGenerated(true);
+
             toast({
-                title: '✨ ¡Datos Estructurados!',
-                description: 'La IA ha completado el formulario por ti. Revisa y guarda.',
+                title: '✨ ¡Historia generada por IA!',
+                description: 'Revisa, edita, aprueba o elimina los medicamentos y demás campos antes de guardar.',
                 className: 'bg-indigo-50 border-indigo-200 text-indigo-800'
             });
 
@@ -262,7 +415,10 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const effectiveDiagnosis = formData.diagnosis.trim() || formData.reason_for_visit.trim() || formData.evaluation.trim();
-        const effectiveTreatment = formData.treatment_plan.trim() || formData.prescription.trim();
+        const effectivePrescription = medicationItems.length > 0
+            ? buildPrescriptionString(medicationItems)
+            : formData.prescription.trim();
+        const effectiveTreatment = formData.treatment_plan.trim() || effectivePrescription;
 
         if (!effectiveDiagnosis || !effectiveTreatment) {
             toast({
@@ -281,6 +437,10 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 throw new Error('No se pudo identificar tu usuario como profesional.');
             }
 
+            // Garantizar que si el médico NO marcó reposo, jamás se guarde reposo en la base de datos
+            const strictlyRequiresRest = Boolean(formData.requires_rest);
+            const strictlyRestDays = strictlyRequiresRest ? Math.max(1, Number(formData.rest_days) || 3) : 0;
+
             const payload = {
                 patient_id: patientId,
                 family_member_id: familyMemberId || null,
@@ -288,13 +448,17 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 doctor_email: user?.email,
                 visit_date: new Date().toISOString(),
                 ...formData,
+                prescription: effectivePrescription,
                 diagnosis: effectiveDiagnosis,
                 treatment_plan: effectiveTreatment,
+                requires_rest: strictlyRequiresRest,
+                rest_days: strictlyRestDays,
+                rest_start_date: strictlyRequiresRest ? formData.rest_start_date : null,
+                rest_end_date: strictlyRequiresRest ? formData.rest_end_date : null,
+                rest_type: strictlyRequiresRest ? formData.rest_type : null,
+                rest_justification: strictlyRequiresRest ? formData.rest_justification : null,
             };
 
-            console.log('🚀 Enviando a API Backend:', payload);
-
-            // Asegurar que el token de sesión HTTP esté vigente
             if (user) {
                 await fetch('/api/auth/set-token', {
                     method: 'POST',
@@ -315,9 +479,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 body: JSON.stringify(payload)
             });
 
-            // Si expiró o falló la sesión, reintentar una vez
             if (response.status === 401 && user) {
-                console.warn('⚠️ Reintentando sincronización de sesión...');
                 await fetch('/api/auth/set-token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -342,10 +504,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 throw new Error(errorData.error || 'Error del servidor');
             }
 
-            const data = await response.json();
-            console.log('✅ Guardado exitoso:', data);
-
-            toast({ title: 'Registro Guardado', description: 'La evolución se ha guardado correctamente.' });
+            toast({ title: 'Registro Guardado', description: 'La evolución, récipe y órdenes se han guardado correctamente.' });
             onSuccess();
         } catch (error: any) {
             console.error('❌ Error saving record:', error);
@@ -403,18 +562,18 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
                     <div className="space-y-2">
                         <Textarea
-                            placeholder="Presiona 'Dictar', habla, y presiona 'Detener' cuando termines..."
+                            placeholder="Presiona 'Dictar', habla sobre la consulta, medicamentos (ej: Acetaminofén de 800mg por 3 días), exámenes de laboratorio o reposo si aplica, y presiona 'Detener'..."
                             className={`bg-white/80 border-indigo-200 focus:border-indigo-400 min-h-[80px] transition-colors ${isRecording ? 'border-red-400 ring-2 ring-red-100' : ''}`}
                             value={aiPrompt}
                             onChange={(e) => setAiPrompt(e.target.value)}
                         />
-                        <div className="flex justify-between items-center text-xs text-muted-foreground">
-                            <span>* La IA estructurará esto en los campos de abajo automáticamente.</span>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-muted-foreground">
+                            <span>* La IA transcribe fielmente lo que indiques sin inventar medicamentos ni agregar cajas.</span>
                             <Button
                                 size="sm"
                                 onClick={handleAiGenerate}
                                 disabled={isGenerating || !aiPrompt}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shrink-0"
                                 type="button"
                             >
                                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
@@ -422,6 +581,20 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                             </Button>
                         </div>
                     </div>
+
+                    {hasAiGenerated && (
+                        <div className="bg-white/90 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-950 flex items-start gap-2.5 shadow-2xs">
+                            <Edit3 className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                            <div>
+                                <span className="font-bold block text-indigo-900">
+                                    Control Total del Médico sobre la Historia
+                                </span>
+                                <span className="text-slate-600">
+                                    Revisa lo que estructuró la IA: puedes <strong>aprobar, editar o eliminar cada medicamento</strong> individualmente, modificar el diagnóstico, los exámenes de laboratorio, el tratamiento o el reposo antes de guardar.
+                                </span>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -431,7 +604,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                         <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">O llena manualmente</span>
+                        <span className="bg-background px-2 text-muted-foreground">Revisa, Edita o Llena Manualmente</span>
                     </div>
                 </div>
 
@@ -457,7 +630,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                     <div className="space-y-2">
                         <Label>Motivo (Breve)</Label>
                         <Input
-                            placeholder="Ej: Dolor de espalda / Limpieza Facial"
+                            placeholder="Ej: Dolor de espalda / Fiebre"
                             value={formData.reason_for_visit}
                             onChange={(e) => setFormData({ ...formData, reason_for_visit: e.target.value })}
                         />
@@ -488,100 +661,284 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 </div>
 
                 <div className="space-y-2">
-                    <Label className="text-amber-900 font-medium">Estudios Solicitados</Label>
+                    <div className="flex items-center justify-between">
+                        <Label className="text-amber-900 font-semibold">
+                            🔬 Estudios de Laboratorio / Imágenes Solicitados
+                        </Label>
+                        {formData.requested_studies.trim() && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setFormData({ ...formData, requested_studies: '' })}
+                                className="h-6 px-2 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                            >
+                                <Trash2 className="h-3 w-3 mr-1" /> Limpiar estudios
+                            </Button>
+                        )}
+                    </div>
                     <Textarea
-                        placeholder="Laboratorios, imágenes, interconsultas solicitadas..."
-                        className="min-h-[60px] border-amber-100 focus:border-amber-300"
+                        placeholder="Ej: Hematología completa, Glicemia en ayunas, Examen de orina (Puedes editar o borrar libremente)..."
+                        className="min-h-[65px] border-amber-200 focus:border-amber-400 bg-amber-50/20"
                         value={formData.requested_studies}
                         onChange={(e) => setFormData({ ...formData, requested_studies: e.target.value })}
                     />
+                    <p className="text-[11px] text-muted-foreground">
+                        Si indicas exámenes aquí, cualquier Laboratorio Aliado SUMA podrá verlos automáticamente cuando el paciente llegue y dicte su cédula (incluso sin cita).
+                    </p>
                 </div>
 
-                <div className={`grid grid-cols-1 ${capabilities.hasPrescription ? 'md:grid-cols-2' : ''} gap-4`}>
+                {/* ========================================================================= */}
+                {/* SECCIÓN DE MEDICAMENTOS UNO POR UNO (APROBAR / EDITAR / ELIMINAR)         */}
+                {/* ========================================================================= */}
+                <div className="space-y-4">
                     {capabilities.hasPrescription && (
-                    <div className="space-y-2">
-                        <Label className="text-teal-900 font-semibold flex items-center gap-1.5">
-                            💊 Récipe Médico (Prescripción para Farmacia)
-                        </Label>
-                        <Textarea
-                            placeholder={`Listado de medicamentos a comprar:\n1. Amoxicilina 875mg (Caja x 14 comp) - 1 caja\n2. Ibuprofeno 600mg (Caja x 20 comp) - 1 caja`}
-                            className="min-h-[110px] border-teal-200 focus:border-teal-400 bg-teal-50/20"
-                            value={formData.prescription}
-                            onChange={(e) => setFormData({ ...formData, prescription: e.target.value })}
-                        />
-                        <p className="text-[11px] text-muted-foreground">
-                            Este récipe se estampará con tu firma y podrá ser presentado o impreso por el paciente.
-                        </p>
+                        <Card className="border-2 border-teal-200 bg-gradient-to-b from-teal-50/40 via-white to-teal-50/20 shadow-xs overflow-hidden">
+                            <CardContent className="p-4 sm:p-5 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-100 pb-3">
+                                    <div>
+                                        <Label className="text-teal-950 font-bold text-sm flex items-center gap-1.5">
+                                            <Pill className="h-4 w-4 text-teal-600" />
+                                            💊 Récipe Médico (Medicamentos Uno por Uno)
+                                        </Label>
+                                        <p className="text-[11px] text-slate-500 mt-0.5">
+                                            Cada medicamento queda separado individualmente (sin colocar cantidad de cajas). Puedes editarlo, aprobarlo o eliminarlo.
+                                        </p>
+                                    </div>
 
-                        {/* Control de Vigencia / Expiración del Récipe */}
-                        <div className="mt-2.5 p-3 rounded-lg border border-teal-200/80 bg-teal-50/40 space-y-2">
-                            <div className="flex items-center justify-between text-xs font-medium text-teal-900">
-                                <span className="flex items-center gap-1.5 font-semibold">
-                                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
-                                    Vigencia del Récipe:
-                                </span>
-                                <span className="text-teal-700 bg-teal-100/70 px-2 py-0.5 rounded font-medium">
-                                    Vence el {formData.prescription_expires_at ? format(parseISO(formData.prescription_expires_at), 'dd/MM/yyyy') : 'N/A'}
-                                </span>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-1.5">
-                                {[
-                                    { label: '7 días', days: 7 },
-                                    { label: '15 días', days: 15 },
-                                    { label: '30 días', days: 30 },
-                                    { label: '60 días', days: 60 },
-                                    { label: '90 días', days: 90 },
-                                ].map((preset) => {
-                                    const presetDate = format(addDays(new Date(), preset.days), 'yyyy-MM-dd');
-                                    const isSelected = formData.prescription_expires_at === presetDate;
-                                    return (
-                                        <button
+                                    {medicationItems.some(m => !m.approved) && (
+                                        <Button
                                             type="button"
-                                            key={preset.days}
-                                            onClick={() => setFormData({ ...formData, prescription_expires_at: presetDate })}
-                                            className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium border ${
-                                                isSelected
-                                                    ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                                                    : 'bg-white text-teal-800 border-teal-200 hover:bg-teal-100/50'
-                                            }`}
+                                            size="sm"
+                                            onClick={handleApproveAllMedications}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 gap-1.5 shrink-0"
                                         >
-                                            {preset.label}
-                                        </button>
-                                    );
-                                })}
-
-                                <div className="flex items-center gap-1 ml-auto">
-                                    <span className="text-[11px] text-teal-700">Manual:</span>
-                                    <Input
-                                        type="date"
-                                        min={format(new Date(), 'yyyy-MM-dd')}
-                                        value={formData.prescription_expires_at || ''}
-                                        onChange={(e) => setFormData({ ...formData, prescription_expires_at: e.target.value })}
-                                        className="h-7 w-[125px] text-[11px] px-1.5 py-0 bg-white border-teal-200 text-teal-900"
-                                    />
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            Aprobar Todos ({medicationItems.filter(m => !m.approved).length})
+                                        </Button>
+                                    )}
                                 </div>
-                            </div>
-                            <p className="text-[10px] text-teal-600/90 leading-tight">
-                                Las farmacias aliadas solo podrán despachar este récipe mientras esté dentro de su vigencia.
-                            </p>
-                        </div>
-                    </div>
+
+                                {/* Lista de Medicamentos Individuales */}
+                                {medicationItems.length === 0 ? (
+                                    <div className="text-center py-5 px-3 rounded-xl border border-dashed border-teal-200 bg-white/70 text-xs text-slate-500">
+                                        No hay medicamentos agregados aún. Dicta con la IA o agrega un medicamento abajo.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        {medicationItems.map((item, idx) => (
+                                            <div
+                                                key={item.id}
+                                                className={`p-3 rounded-xl border transition-all flex flex-col gap-2 ${
+                                                    item.approved
+                                                        ? 'bg-emerald-50/40 border-emerald-200 shadow-2xs'
+                                                        : 'bg-amber-50/40 border-amber-300 shadow-xs'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`h-6 w-6 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                                                        item.approved
+                                                            ? 'bg-emerald-600 text-white'
+                                                            : 'bg-amber-500 text-white'
+                                                    }`}>
+                                                        {idx + 1}
+                                                    </span>
+
+                                                    <Input
+                                                        value={item.text}
+                                                        onChange={(e) => handleUpdateMedicationItemText(item.id, e.target.value)}
+                                                        placeholder="Ej: Acetaminofén de 800 g por 3 días"
+                                                        className="h-9 text-xs font-medium bg-white border-slate-200 flex-1"
+                                                    />
+
+                                                    {/* Botón Aprobar */}
+                                                    {item.approved ? (
+                                                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[11px] px-2.5 py-1 flex items-center gap-1 shrink-0">
+                                                            <Check className="h-3 w-3 text-emerald-600" />
+                                                            Aprobado
+                                                        </Badge>
+                                                    ) : (
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            onClick={() => handleApproveMedicationItem(item.id)}
+                                                            className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1 shrink-0"
+                                                            title="Aprobar este medicamento"
+                                                        >
+                                                            <Check className="h-3.5 w-3.5" />
+                                                            Aprobar
+                                                        </Button>
+                                                    )}
+
+                                                    {/* Botón Eliminar */}
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleDeleteMedicationItem(item.id)}
+                                                        className="h-8 px-2.5 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 text-xs font-semibold gap-1 shrink-0"
+                                                        title="Eliminar este medicamento"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                        <span className="hidden sm:inline">Eliminar</span>
+                                                    </Button>
+                                                </div>
+
+                                                {/* Control de Medicamento Delicado (Solo por Récipe) */}
+                                                <div className="flex items-center justify-between pl-8 text-[11px]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleControlledMedication(item.id)}
+                                                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold transition-colors ${
+                                                            item.controlledOnly
+                                                                ? 'bg-teal-100/80 text-teal-900 border-teal-300'
+                                                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                        }`}
+                                                    >
+                                                        <Lock className="h-3 w-3 text-teal-700" />
+                                                        {item.controlledOnly
+                                                            ? 'Medicamento controlado por Récipe (Se bloquea en farmacia tras entregarse)'
+                                                            : 'Venta libre / Sin bloqueo estricto'}
+                                                    </button>
+                                                    {item.fromAi && !item.approved && (
+                                                        <span className="text-[10px] font-semibold text-amber-700">
+                                                            Sugerido por tu dictado • Confirma o edita
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Agregar nuevo medicamento manualmente */}
+                                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                                    <Input
+                                        placeholder="Agregar medicamento (ej: Acetaminofén de 800 g por 3 días)..."
+                                        value={newMedInput}
+                                        onChange={(e) => setNewMedInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleAddMedicationItem();
+                                            }
+                                        }}
+                                        className="h-9 text-xs bg-white border-teal-200 flex-1"
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleAddMedicationItem()}
+                                        className="h-9 border-teal-300 text-teal-800 hover:bg-teal-100/60 text-xs font-semibold gap-1.5 shrink-0"
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Agregar Medicamento
+                                    </Button>
+                                </div>
+
+                                {/* Opción para ver/editar texto plano del récipe */}
+                                <div className="pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRawPrescription(!showRawPrescription)}
+                                        className="text-[11px] text-teal-700 hover:underline font-medium"
+                                    >
+                                        {showRawPrescription ? 'Ocultar vista de texto completo del récipe' : 'Ver / editar texto completo del récipe'}
+                                    </button>
+                                    {showRawPrescription && (
+                                        <Textarea
+                                            placeholder={`Listado de medicamentos:\n1. Acetaminofén de 800 g por 3 días\n2. Ibuprofeno 600 mg por 5 días`}
+                                            className="mt-2 min-h-[90px] border-teal-200 focus:border-teal-400 bg-white text-xs"
+                                            value={formData.prescription}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData({ ...formData, prescription: val });
+                                                const lines = val
+                                                    .split(/\r?\n/)
+                                                    .map(l => cleanMedicationText(l))
+                                                    .filter(Boolean);
+                                                setMedicationItems(lines.map((t, i) => ({
+                                                    id: `manual-${i}-${Date.now()}`,
+                                                    text: t,
+                                                    approved: true,
+                                                    controlledOnly: true
+                                                })));
+                                            }}
+                                        />
+                                    )}
+                                </div>
+
+                                {/* Control de Vigencia / Expiración del Récipe */}
+                                <div className="p-3 rounded-lg border border-teal-200/80 bg-teal-50/40 space-y-2">
+                                    <div className="flex items-center justify-between text-xs font-medium text-teal-900">
+                                        <span className="flex items-center gap-1.5 font-semibold">
+                                            <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                                            Vigencia del Récipe:
+                                        </span>
+                                        <span className="text-teal-700 bg-teal-100/70 px-2 py-0.5 rounded font-medium">
+                                            Vence el {formData.prescription_expires_at ? format(parseISO(formData.prescription_expires_at), 'dd/MM/yyyy') : 'N/A'}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        {[
+                                            { label: '7 días', days: 7 },
+                                            { label: '15 días', days: 15 },
+                                            { label: '30 días', days: 30 },
+                                            { label: '60 días', days: 60 },
+                                            { label: '90 días', days: 90 },
+                                        ].map((preset) => {
+                                            const presetDate = format(addDays(new Date(), preset.days), 'yyyy-MM-dd');
+                                            const isSelected = formData.prescription_expires_at === presetDate;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={preset.days}
+                                                    onClick={() => setFormData({ ...formData, prescription_expires_at: presetDate })}
+                                                    className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium border ${
+                                                        isSelected
+                                                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                                                            : 'bg-white text-teal-800 border-teal-200 hover:bg-teal-100/50'
+                                                    }`}
+                                                >
+                                                    {preset.label}
+                                                </button>
+                                            );
+                                        })}
+
+                                        <div className="flex items-center gap-1 ml-auto">
+                                            <span className="text-[11px] text-teal-700">Manual:</span>
+                                            <Input
+                                                type="date"
+                                                min={format(new Date(), 'yyyy-MM-dd')}
+                                                value={formData.prescription_expires_at || ''}
+                                                onChange={(e) => setFormData({ ...formData, prescription_expires_at: e.target.value })}
+                                                className="h-7 w-[125px] text-[11px] px-1.5 py-0 bg-white border-teal-200 text-teal-900"
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-teal-700/90 leading-tight">
+                                        🔒 Una vez que una farmacia entregue estos medicamentos delicados bajo récipe, el récipe quedará bloqueado con el nombre de la farmacia y médico tratante para impedir doble entrega.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     <div className="space-y-2">
                         <Label className="text-green-900 font-semibold flex items-center gap-1.5">
-                            📋 Plan de Tratamiento / Indicaciones
+                            📋 Plan de Tratamiento / Indicaciones para el Paciente
                         </Label>
                         <Textarea
-                            placeholder={`Indicaciones de toma para el paciente:\n- Amoxicilina: Tomar 1 comprimido cada 12 horas con comida por 7 días.\n- Ibuprofeno: Tomar 1 comprimido cada 8 horas si hay dolor o fiebre.\n- Reposo por 48 horas.`}
+                            placeholder={`Indicaciones de toma para el paciente:\n- Acetaminofén 800mg: Tomar cada 8 horas por 3 días.\n- Hidratación abundante.`}
                             className="min-h-[110px] border-green-200 focus:border-green-400 bg-green-50/20"
                             value={formData.treatment_plan}
                             onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })}
                             required
                         />
                         <p className="text-[11px] text-muted-foreground">
-                            Instrucciones claras de horarios, duración y recomendaciones de reposo.
+                            Instrucciones claras de horarios y duración para el paciente (puedes editar libremente lo generado por la IA).
                         </p>
                     </div>
                 </div>
@@ -616,7 +973,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                                         )}
                                     </h4>
                                     <p className="text-xs text-slate-500">
-                                        Genera un informe oficial con validez legal y código QR para Recursos Humanos / Empresas.
+                                        El reposo se emite <strong>sola y exclusivamente</strong> si activas esta opción o lo indicas explícitamente.
                                     </p>
                                 </div>
                             </div>
@@ -624,22 +981,30 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                             {/* Switch Reposo */}
                             <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
                                 <Label htmlFor="requires-rest-switch" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                                    ¿Emitir Reposo?
+                                    ¿Lleva Reposo?
                                 </Label>
                                 <Switch
                                     id="requires-rest-switch"
                                     checked={formData.requires_rest}
-                                    onCheckedChange={(checked) => setFormData({ ...formData, requires_rest: checked })}
+                                    onCheckedChange={(checked) => {
+                                        const defaultDays = checked ? (formData.rest_days > 0 ? formData.rest_days : 3) : 0;
+                                        const startDate = formData.rest_start_date ? parseISO(formData.rest_start_date) : new Date();
+                                        const endDate = addDays(startDate, Math.max(0, defaultDays - 1));
+                                        setFormData({
+                                            ...formData,
+                                            requires_rest: checked,
+                                            rest_days: defaultDays,
+                                            rest_end_date: format(endDate, 'yyyy-MM-dd')
+                                        });
+                                    }}
                                     className="data-[state=checked]:bg-blue-600"
                                 />
                             </div>
                         </div>
 
-                        {/* Campos de Reposo Médico (si está habilitado) */}
+                        {/* Campos de Reposo Médico (SOLO si está habilitado explícitamente) */}
                         {formData.requires_rest && (
                             <div className="pt-2 border-t border-blue-100 space-y-3 animate-in fade-in-50 duration-200">
-                                
-                                {/* Chips de Días Rápidos */}
                                 <div>
                                     <Label className="text-xs font-semibold text-slate-700 block mb-1.5">
                                         Duración del Reposo:
@@ -739,7 +1104,7 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                                 Resumen Clínico para el Informe Oficial (Opcional):
                             </Label>
                             <Textarea
-                                placeholder="Escribe observaciones específicas para el informe o constancia que se entregará al paciente/empresa (si se deja vacío, se utilizará la evolución y diagnóstico)..."
+                                placeholder="Escribe observaciones específicas para el informe que se entregará al paciente (si se deja vacío, se utilizará la evolución y diagnóstico)..."
                                 className="min-h-[70px] text-xs bg-white border-slate-200"
                                 value={formData.medical_report}
                                 onChange={(e) => setFormData({ ...formData, medical_report: e.target.value })}

@@ -143,7 +143,7 @@ export default function VerifyReportPage({ params }: { params: Promise<{ id: str
       `*Dr(a).* ${doc.name} (${doc.specialty})\n` +
       (doc.medical_license ? `*M.P.:* ${doc.medical_license}\n` : '') +
       `*Paciente:* ${pat.name} (CI: ${pat.cedula})\n` +
-      (rec.requiresRest || rec.restDays > 0 ? `\n*🛌 REPOSO MÉDICO:* ${rec.restDays} día(s) (${rec.restType || 'Absoluto'})\n` : '') +
+      (rec.requiresRest ? `\n*🛌 REPOSO MÉDICO:* ${rec.restDays} día(s) (${rec.restType || 'Absoluto'})\n` : '') +
       `*Diagnóstico:* ${rec.diagnosis || 'En tratamiento'}\n` +
       `\n*🔗 Verificación Oficial en Línea para RRHH y Empresas:*\n${typeof window !== 'undefined' ? window.location.href : ''}`;
 
@@ -197,7 +197,7 @@ export default function VerifyReportPage({ params }: { params: Promise<{ id: str
   }
 
   const { record, doctor: doc, patient: pat, reportCode } = data;
-  const hasRest = Boolean(record.requiresRest || record.restDays > 0);
+  const hasRest = Boolean(record.requiresRest);
 
   let formattedDate = 'Fecha no registrada';
   let shortDate = 'N/A';

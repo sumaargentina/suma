@@ -98,7 +98,7 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                                     <Badge variant="outline" className="capitalize font-normal text-xs">
                                         {record.record_type?.replace('_', ' ') || 'Consulta'}
                                     </Badge>
-                                    {(record.requires_rest || record.rest_days > 0) && (
+                                    {Boolean(record.requires_rest) && (
                                         <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-200 text-xs font-semibold">
                                             <BedDouble className="h-3 w-3 mr-1" /> Reposo {record.rest_days}d
                                         </Badge>
@@ -160,7 +160,7 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                                 </span>
                             </div>
                         )}
-                        {(record.requires_rest || record.rest_days > 0) && (
+                        {Boolean(record.requires_rest) && (
                             <div className="bg-blue-50/70 p-3 rounded-lg border border-blue-200 text-xs text-blue-950 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <BedDouble className="h-4 w-4 text-blue-600" />

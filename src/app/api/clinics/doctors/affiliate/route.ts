@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
             dni,
             name,
             email,
+            phone,
+            profession,
             specialty,
+            medicalLicense,
             password,
             profileImage,
             bannerImage,
@@ -43,65 +46,45 @@ export async function POST(req: NextRequest) {
 
         let targetDoctorId = doctorId;
 
-        // CASE 1: Linking an EXISTING doctor
-        if (isExistingDoctor || targetDoctorId) {
-            if (!targetDoctorId && dni) {
-                const { data: foundDoc } = await supabaseAdmin
-                    .from('doctors')
-                    .select('id, name, email')
-                    .eq('cedula', dni.trim())
-                    .maybeSingle();
-
-                if (foundDoc) {
-                    targetDoctorId = foundDoc.id;
-                }
-            }
-
-            if (!targetDoctorId) {
-                return NextResponse.json({ error: 'No se encontró el médico especificado para vincular.' }, { status: 404 });
-            }
-
-            // Check if workspace affiliation already exists
-            const { data: existingWs } = await supabaseAdmin
+        // Helper para vincular un médico existente a doctor_workspaces sin errores de duplicados
+        const linkDoctorWorkspace = async (docId: string) => {
+            const { data: existingWsRows } = await supabaseAdmin
                 .from('doctor_workspaces')
                 .select('id, status')
-                .eq('doctor_id', targetDoctorId)
+                .eq('doctor_id', docId)
                 .eq('clinic_id', clinicId)
-                .maybeSingle();
+                .limit(1);
+
+            const existingWs = existingWsRows && existingWsRows.length > 0 ? existingWsRows[0] : null;
 
             if (existingWs) {
                 if (existingWs.status === 'active') {
-                    return NextResponse.json({
-                        success: true,
-                        isNew: false,
-                        doctorId: targetDoctorId,
+                    return {
+                        alreadyActive: true,
                         workspaceStatus: 'active',
-                        message: 'El médico ya se encuentra activo y validado en tu equipo.',
-                    });
+                    };
                 }
-                await supabaseAdmin
+                const { error: updErr } = await supabaseAdmin
                     .from('doctor_workspaces')
                     .update({
-                        status: 'pending_invitation',
+                        status: 'active',
                         workspace_type: targetWorkspaceType,
-                        updated_at: new Date().toISOString()
+                        custom_name: clinic.name,
+                        updated_at: new Date().toISOString(),
                     })
                     .eq('id', existingWs.id);
 
-                return NextResponse.json({
-                    success: true,
-                    isNew: false,
-                    doctorId: targetDoctorId,
-                    workspaceStatus: 'pending_invitation',
-                    message: 'Se ha reenviado la invitación al médico para que valide su integración a tu espacio de trabajo.',
-                });
+                if (updErr) throw new Error(updErr.message);
+                return {
+                    alreadyActive: false,
+                    workspaceStatus: 'active',
+                };
             }
 
-            // Insert new clinic/hospital workspace for this doctor (pending doctor validation)
             const { error: wsError } = await supabaseAdmin
                 .from('doctor_workspaces')
                 .insert([{
-                    doctor_id: targetDoctorId,
+                    doctor_id: docId,
                     workspace_type: targetWorkspaceType,
                     clinic_id: clinicId,
                     custom_name: clinic.name,
@@ -110,65 +93,101 @@ export async function POST(req: NextRequest) {
                     can_manage_schedule: true,
                     consultation_fee: 0,
                     is_default: false,
-                    status: 'pending_invitation',
+                    status: 'active',
                 }]);
 
-            if (wsError) {
-                console.error('Error creating doctor workspace:', wsError);
-                return NextResponse.json({ error: 'Error al vincular el médico a la clínica: ' + wsError.message }, { status: 500 });
+            if (wsError) throw new Error(wsError.message);
+            return {
+                alreadyActive: false,
+                workspaceStatus: 'active',
+            };
+        };
+
+        // CASE 1: Linking an EXISTING doctor
+        if (isExistingDoctor || targetDoctorId) {
+            if (!targetDoctorId && (dni || email)) {
+                const orParts: string[] = [];
+                if (dni) {
+                    const cleanDigits = String(dni).trim().replace(/\D/g, '');
+                    orParts.push(`cedula.eq.${String(dni).trim()}`);
+                    if (cleanDigits.length >= 5) {
+                        orParts.push(`cedula.eq.${cleanDigits}`);
+                        orParts.push(`cedula.eq.V-${cleanDigits}`);
+                        orParts.push(`cedula.eq.E-${cleanDigits}`);
+                        orParts.push(`cedula.eq.P-${cleanDigits}`);
+                        orParts.push(`cedula.ilike.%${cleanDigits}%`);
+                    }
+                }
+                if (email) {
+                    orParts.push(`email.ilike.${String(email).trim().toLowerCase()}`);
+                }
+
+                if (orParts.length > 0) {
+                    const { data: foundDocs } = await supabaseAdmin
+                        .from('doctors')
+                        .select('id, name, email')
+                        .or(orParts.join(','))
+                        .limit(1);
+
+                    if (foundDocs && foundDocs.length > 0) {
+                        targetDoctorId = foundDocs[0].id;
+                    }
+                }
             }
+
+            if (!targetDoctorId) {
+                return NextResponse.json({ error: 'No se encontró ningún médico en SUMA con ese DNI o Correo. Puedes registrarlo en la pestaña "Médico Nuevo".' }, { status: 404 });
+            }
+
+            const linkRes = await linkDoctorWorkspace(targetDoctorId);
 
             return NextResponse.json({
                 success: true,
                 isNew: false,
                 doctorId: targetDoctorId,
-                workspaceStatus: 'pending_invitation',
-                message: 'Invitación enviada al médico. Deberá validarla desde su Espacio de Trabajo en SUMA para quedar activo en tu sede.',
+                workspaceStatus: linkRes.workspaceStatus,
+                message: linkRes.alreadyActive
+                    ? 'El médico ya se encontraba activo en el equipo de tu institución.'
+                    : '¡Médico de SUMA vinculado y activado exitosamente en tu institución!',
             });
         }
 
         // CASE 2: Registering a NEW doctor from clinic
         if (!name || !email || !dni || !specialty) {
-            return NextResponse.json({ error: 'Todos los campos (DNI, Nombre, Correo y Especialidad) son obligatorios.' }, { status: 400 });
+            return NextResponse.json({ error: 'Todos los campos (DNI/Cédula, Nombre, Correo y Especialidad) son obligatorios.' }, { status: 400 });
         }
 
         const normalizedEmail = sanitizeEmail(email);
         const cleanDni = sanitizeString(dni).replace(/\D/g, '');
+        const formattedCedula = String(dni).trim().toUpperCase().startsWith('V-') || String(dni).trim().toUpperCase().startsWith('E-') || String(dni).trim().toUpperCase().startsWith('P-')
+            ? String(dni).trim().toUpperCase()
+            : (cleanDni ? `V-${cleanDni}` : String(dni).trim());
 
         // Double-check if doctor with email or DNI already exists to avoid conflict
-        const { data: existingDoc } = await supabaseAdmin
+        const checkOrParts = [`email.ilike.${normalizedEmail}`];
+        if (cleanDni.length >= 5) {
+            checkOrParts.push(`cedula.eq.${cleanDni}`);
+            checkOrParts.push(`cedula.eq.V-${cleanDni}`);
+            checkOrParts.push(`cedula.eq.E-${cleanDni}`);
+        }
+
+        const { data: existingDocs } = await supabaseAdmin
             .from('doctors')
             .select('id, name, email, cedula')
-            .or(`email.eq.${normalizedEmail},cedula.eq.${cleanDni}`)
-            .maybeSingle();
+            .or(checkOrParts.join(','))
+            .limit(1);
+
+        const existingDoc = existingDocs && existingDocs.length > 0 ? existingDocs[0] : null;
 
         if (existingDoc) {
-            // Already exists! Send workspace invitation for validation
-            const { error: wsError } = await supabaseAdmin
-                .from('doctor_workspaces')
-                .upsert([{
-                    doctor_id: existingDoc.id,
-                    workspace_type: targetWorkspaceType,
-                    clinic_id: clinicId,
-                    custom_name: clinic.name,
-                    role_in_workplace: 'staff_doctor',
-                    can_manage_finances: false,
-                    can_manage_schedule: true,
-                    consultation_fee: 0,
-                    is_default: false,
-                    status: 'pending_invitation',
-                }]);
-
-            if (wsError) {
-                return NextResponse.json({ error: 'Error al vincular: ' + wsError.message }, { status: 500 });
-            }
+            const linkRes = await linkDoctorWorkspace(existingDoc.id);
 
             return NextResponse.json({
                 success: true,
                 isNew: false,
                 doctorId: existingDoc.id,
-                workspaceStatus: 'pending_invitation',
-                message: `El médico ${existingDoc.name} ya tenía cuenta en SUMA. Se le ha enviado la invitación para validar su integración a tu espacio de trabajo.`,
+                workspaceStatus: linkRes.workspaceStatus,
+                message: `El médico ${existingDoc.name} ya tenía cuenta en SUMA y ha sido vinculado directamente al equipo de tu institución.`,
             });
         }
 
@@ -180,33 +199,37 @@ export async function POST(req: NextRequest) {
         const hashedPassword = await hashPassword(password);
         const joinDateArgentina = getCurrentDateInArgentina();
         const paymentDateArgentina = getPaymentDateInArgentina(new Date());
+        const resolvedPhone = phone ? String(phone).trim() : (clinic.phone || clinic.whatsapp || '');
 
         const newDoctorPayload = {
             name: sanitizeString(name),
             email: normalizedEmail,
-            cedula: cleanDni,
+            cedula: formattedCedula,
+            profession: profession ? sanitizeString(profession) : 'Médico',
             specialty: sanitizeString(specialty),
+            medical_license: medicalLicense ? sanitizeString(medicalLicense) : null,
             city: clinic.city || 'Maturín',
             state: clinic.state || 'Monagas',
             country: clinic.country || 'VE',
-            address: clinic.address || '',
+            address: clinic.address || 'Sede Principal',
             sector: clinic.sector || '',
-            phone: clinic.phone || '',
-            whatsapp: clinic.whatsapp || '',
+            phone: resolvedPhone,
+            whatsapp: resolvedPhone,
             consultation_fee: 0,
             slot_duration: 30,
             password: hashedPassword,
             profile_image: profileImage || 'https://placehold.co/400x400.png',
             banner_image: bannerImage || 'https://placehold.co/1200x400.png',
             status: 'active',
-            verification_status: 'pending',
+            verification_status: 'verified',
+            verified: true,
             read_by_admin: false,
             read_by_seller: false,
             is_clinic_employee: true,
             clinic_id: clinicId,
             join_date: joinDateArgentina,
             next_payment_date: paymentDateArgentina,
-            subscription_status: 'active',
+            subscription_status: 'inactive',
             rating: 0,
             review_count: 0,
             services: [],
@@ -242,13 +265,13 @@ export async function POST(req: NextRequest) {
             role: 'doctor',
             extraData: {
                 specialty: createdDoctor.specialty,
-                verificationStatus: 'pending',
+                verificationStatus: 'verified',
                 tempPassword: password,
                 clinicName: clinic.name,
             },
         }).catch((err) => console.error('Error enviando correo de bienvenida a médico afiliado:', err));
 
-        // Create both workspaces: Private (active) and Clinic/Hospital (pending doctor validation)
+        // Create both workspaces: Private (inactive until doctor pays SUMA) and Clinic/Hospital (active immediately)
         await supabaseAdmin
             .from('doctor_workspaces')
             .insert([
@@ -259,7 +282,7 @@ export async function POST(req: NextRequest) {
                     role_in_workplace: 'owner',
                     can_manage_finances: true,
                     can_manage_schedule: true,
-                    is_default: true,
+                    is_default: false,
                     status: 'active',
                 },
                 {
@@ -271,8 +294,8 @@ export async function POST(req: NextRequest) {
                     can_manage_finances: false,
                     can_manage_schedule: true,
                     consultation_fee: 0,
-                    is_default: false,
-                    status: 'pending_invitation',
+                    is_default: true,
+                    status: 'active',
                 }
             ]);
 
@@ -280,8 +303,8 @@ export async function POST(req: NextRequest) {
             success: true,
             isNew: true,
             doctorId: createdDoctor.id,
-            workspaceStatus: 'pending_invitation',
-            message: `Médico ${createdDoctor.name} registrado en SUMA. Al iniciar sesión deberá validar su integración a tu espacio de trabajo.`,
+            workspaceStatus: 'active',
+            message: `¡Médico ${createdDoctor.name} registrado en SUMA y vinculado exitosamente a ${clinic.name}!`,
         });
 
     } catch (error: any) {

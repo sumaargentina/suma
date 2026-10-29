@@ -196,9 +196,14 @@ export interface DoctorWorkspace {
   schedule?: Schedule | null;
   isDefault: boolean;
   clinicName?: string;
+  clinicSlug?: string;
   clinicLogo?: string;
   clinicAddress?: string;
   clinicPlan?: string;
+  clinicStatus?: string;
+  clinicSubscriptionStatus?: string;
+  subscriptionLocked?: boolean;
+  lockReason?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -211,6 +216,8 @@ export interface ActiveWorkspace {
   roleInWorkplace?: string;
   canManageFinances: boolean;
   canManageSchedule: boolean;
+  subscriptionLocked?: boolean;
+  lockReason?: string;
 }
 
 export interface Secretary {

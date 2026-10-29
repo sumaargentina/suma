@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Building2, Stethoscope, Landmark, ChevronDown, Check, PlusCircle, BellRing, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Building2, Stethoscope, Landmark, ChevronDown, Check, PlusCircle, BellRing, CheckCircle2, XCircle, Loader2, Lock } from 'lucide-react';
 import type { WorkspaceType, DoctorWorkspace } from '@/lib/types';
 
 export function WorkspaceSwitcherHeader() {
@@ -126,6 +126,7 @@ export function WorkspaceSwitcherHeader() {
           ) : (
             activeWorkspaces.map((ws) => {
               const isSelected = activeWorkspace?.id === ws.id;
+              const isLocked = Boolean(ws.subscriptionLocked);
               const title = ws.customName || ws.clinicName || (ws.workspaceType === 'private' ? 'Mi Consultorio Privado' : 'Clínica Institucional');
 
               return (
@@ -133,36 +134,47 @@ export function WorkspaceSwitcherHeader() {
                   key={ws.id}
                   onClick={() => switchWorkspace(ws.id)}
                   className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer my-0.5 transition-colors ${
-                    isSelected
+                    isLocked
+                      ? 'bg-amber-50/70 hover:bg-amber-100/70 text-amber-900 border border-amber-200/80'
+                      : isSelected
                       ? 'bg-primary/10 text-primary font-semibold'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={`p-1.5 rounded-md ${
-                      ws.workspaceType === 'private'
+                      isLocked
+                        ? 'bg-amber-100 text-amber-700'
+                        : ws.workspaceType === 'private'
                         ? 'bg-emerald-50 text-emerald-600'
                         : ws.workspaceType === 'public_hospital'
                         ? 'bg-sky-50 text-sky-600'
                         : 'bg-blue-50 text-blue-600'
                     }`}>
-                      {getWorkspaceIcon(ws.workspaceType, "w-3.5 h-3.5")}
+                      {isLocked ? <Lock className="w-3.5 h-3.5 text-amber-600" /> : getWorkspaceIcon(ws.workspaceType, "w-3.5 h-3.5")}
                     </div>
                     <div className="flex flex-col truncate">
-                      <span className="text-xs truncate font-medium">
+                      <span className="text-xs truncate font-medium flex items-center gap-1.5">
                         {title}
+                        {isLocked && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 font-bold">
+                            Inactivo
+                          </span>
+                        )}
                       </span>
-                      <span className="text-[10px] text-gray-400 leading-tight">
+                      <span className="text-[10px] text-gray-500 leading-tight">
                         {ws.workspaceType === 'private'
-                          ? 'Cobro directo & Finanzas propias'
+                          ? isLocked
+                            ? 'Mensualidad pendiente • Clic para activar'
+                            : 'Consultorio activo • Finanzas propias'
                           : ws.workspaceType === 'public_hospital'
-                          ? 'Hospital / Atención Gratuita'
-                          : 'Clínica / Atención Institucional'}
+                          ? 'Hospital Público • Espacio Gratis'
+                          : 'Clínica • Cubierto por la Institución'}
                       </span>
                     </div>
                   </div>
 
-                  {isSelected && (
+                  {isSelected && !isLocked && (
                     <Check className="w-4 h-4 text-primary flex-shrink-0 ml-2" />
                   )}
                 </DropdownMenuItem>

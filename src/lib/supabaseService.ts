@@ -24,6 +24,11 @@ const toCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
     if ('favoriteDoctorIds' in result && !('favoritedDoctorIds' in result)) {
         result.favoritedDoctorIds = result.favoriteDoctorIds;
     }
+    if ('whatsapp' in result || 'phone' in result) {
+        const resolvedPhone = (result.whatsapp as string) || (result.phone as string) || '';
+        if (!result.whatsapp && resolvedPhone) result.whatsapp = resolvedPhone;
+        if (!result.phone && resolvedPhone) result.phone = resolvedPhone;
+    }
     return result;
 };
 
@@ -96,7 +101,20 @@ async function getDocumentData<T>(tableName: string, id: string): Promise<T | nu
 // DATA FETCHING FUNCTIONS
 // =====================================================
 
-export const getDoctors = () => getCollectionData<Doctor>('doctors');
+export const getDoctors = async (): Promise<Doctor[]> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch('/api/doctors');
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) return data;
+            }
+        } catch (err) {
+            console.warn('[supabaseService] Fallback to getCollectionData for doctors:', err);
+        }
+    }
+    return getCollectionData<Doctor>('doctors');
+};
 
 export const getDoctorsLite = async (): Promise<Partial<Doctor>[]> => {
     try {
@@ -834,6 +852,54 @@ export const deletePatient = async (id: string) => {
 // DATA MUTATION FUNCTIONS - CLINICS
 // =====================================================
 
+const VALID_CLINIC_COLUMNS = new Set([
+    'admin_email',
+    'name',
+    'slug',
+    'logo_url',
+    'description',
+    'phone',
+    'whatsapp',
+    'email',
+    'website',
+    'password',
+    'payment_settings',
+    'banner_image',
+    'accepted_insurances',
+    'status',
+    'verification_status',
+    'subscription_status',
+    'last_payment_date',
+    'next_payment_date',
+    'subscription_fee',
+    'sector',
+    'city',
+    'address',
+    'lat',
+    'lng',
+    'country',
+    'state',
+    'coupons',
+    'plan',
+    'billing_cycle',
+    'billing_months',
+    'institution_type',
+    'rif',
+    'legal_name',
+    'regent_name',
+    'regent_license',
+    'contact_name',
+    'contact_role',
+    'discount_percentage',
+    'free_months',
+    'rating',
+    'review_count',
+    'onboarding_completed',
+    'verified_at',
+    'verified_by',
+    'verification_notes',
+]);
+
 export const addClinic = async (clinicData: Omit<Clinic, 'id' | 'createdAt'>): Promise<string> => {
     // Si estamos en el cliente, llamar a la API para usar credenciales seguras de servidor
     if (typeof window !== 'undefined') {
@@ -861,18 +927,60 @@ export const addClinic = async (clinicData: Omit<Clinic, 'id' | 'createdAt'>): P
     }
 
     // Si estamos en el servidor, usar supabaseAdmin directamente
-    const snakeCaseData = toSnakeCase(clinicData as unknown as Record<string, unknown>);
+    const rawSnake = toSnakeCase(clinicData as unknown as Record<string, unknown>);
+    const snakeCaseData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawSnake)) {
+        if (VALID_CLINIC_COLUMNS.has(key) && value !== undefined) {
+            snakeCaseData[key] = value;
+        }
+    }
+
     if (!snakeCaseData.admin_email && snakeCaseData.email) {
         snakeCaseData.admin_email = snakeCaseData.email;
     }
-    if (!snakeCaseData.slug && typeof snakeCaseData.name === 'string') {
-        snakeCaseData.slug = snakeCaseData.name
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
+    if (typeof snakeCaseData.admin_email === 'string') {
+        snakeCaseData.admin_email = snakeCaseData.admin_email.toLowerCase().trim();
     }
+    if (!snakeCaseData.email && snakeCaseData.admin_email) {
+        snakeCaseData.email = snakeCaseData.admin_email;
+    }
+    if (!snakeCaseData.whatsapp && snakeCaseData.phone) {
+        snakeCaseData.whatsapp = snakeCaseData.phone;
+    }
+
+    // Verificar si ya existe una clínica con este correo administrador
+    if (typeof snakeCaseData.admin_email === 'string' && snakeCaseData.admin_email) {
+        const { data: existingByEmail } = await supabaseAdmin
+            .from('clinics')
+            .select('id')
+            .ilike('admin_email', snakeCaseData.admin_email)
+            .limit(1);
+        if (existingByEmail && existingByEmail.length > 0) {
+            throw new Error('Ya existe una clínica o institución registrada con este correo electrónico.');
+        }
+    }
+
+    const baseSlug = (typeof snakeCaseData.slug === 'string' && snakeCaseData.slug.trim())
+        ? snakeCaseData.slug.trim()
+        : (typeof snakeCaseData.name === 'string'
+            ? snakeCaseData.name
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)+/g, '')
+            : 'clinica');
+
+    const { data: existingBySlug } = await supabaseAdmin
+        .from('clinics')
+        .select('id')
+        .eq('slug', baseSlug)
+        .limit(1);
+
+    snakeCaseData.slug = (existingBySlug && existingBySlug.length > 0)
+        ? `${baseSlug}-${Date.now().toString().slice(-4)}`
+        : baseSlug;
+
     if (typeof snakeCaseData.password === 'string' && !snakeCaseData.password.startsWith('$2')) {
         const { hashPassword } = await import('./password-utils');
         snakeCaseData.password = await hashPassword(snakeCaseData.password);
@@ -905,7 +1013,13 @@ export const updateClinic = async (id: string, data: Partial<Clinic>) => {
     }
 
     // Si estamos en el servidor, usar supabaseAdmin directamente
-    const snakeCaseData = toSnakeCase(data as unknown as Record<string, unknown>);
+    const rawSnake = toSnakeCase(data as unknown as Record<string, unknown>);
+    const snakeCaseData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rawSnake)) {
+        if (VALID_CLINIC_COLUMNS.has(key) && value !== undefined) {
+            snakeCaseData[key] = value;
+        }
+    }
 
     const { error } = await supabaseAdmin
         .from('clinics')
@@ -1158,7 +1272,10 @@ export const affiliateClinicDoctor = async (payload: {
     dni?: string;
     name?: string;
     email?: string;
+    phone?: string;
+    profession?: string;
     specialty?: string;
+    medicalLicense?: string;
     password?: string;
     profileImage?: string;
     bannerImage?: string;
@@ -3788,36 +3905,138 @@ export const getDoctorWorkspaces = async (doctorId: string): Promise<DoctorWorks
     }
 
     try {
-        const { data, error } = await supabaseAdmin
-            .from('doctor_workspaces')
-            .select(`
-                *,
-                clinics:clinic_id (
-                    id,
-                    name,
-                    logo_url,
-                    address,
-                    phone,
-                    plan
-                )
-            `)
-            .eq('doctor_id', doctorId)
-            .in('status', ['active', 'pending_invitation'])
-            .order('is_default', { ascending: false });
+        const [{ data: docRecord }, { data, error }] = await Promise.all([
+            supabaseAdmin
+                .from('doctors')
+                .select('id, name, status, subscription_status, is_clinic_employee, last_payment_date, clinic_id')
+                .eq('id', doctorId)
+                .maybeSingle(),
+            supabaseAdmin
+                .from('doctor_workspaces')
+                .select(`
+                    *,
+                    clinics:clinic_id (
+                        id,
+                        name,
+                        slug,
+                        logo_url,
+                        address,
+                        phone,
+                        plan,
+                        status,
+                        subscription_status
+                    )
+                `)
+                .eq('doctor_id', doctorId)
+                .in('status', ['active', 'pending_invitation'])
+                .order('is_default', { ascending: false })
+        ]);
 
         if (error) {
             console.error('Error fetching doctor workspaces from DB:', error);
             return [];
         }
 
-        return (data || []).map((row: any) => {
+        const rows = [...(data || [])];
+
+        // Asegurar que todo médico tenga su espacio de trabajo de Consultorio Privado
+        const hasPrivateWs = rows.some((r: any) => r.workspace_type === 'private');
+        if (!hasPrivateWs && docRecord) {
+            rows.unshift({
+                id: `private-${doctorId}`,
+                doctor_id: doctorId,
+                workspace_type: 'private',
+                clinic_id: null,
+                custom_name: 'Mi Consultorio Privado',
+                role_in_workplace: 'owner',
+                status: 'active',
+                can_manage_finances: true,
+                can_manage_schedule: true,
+                is_default: !docRecord.is_clinic_employee,
+                clinics: null,
+            });
+        }
+
+        // Si el médico tiene un clinic_id directo (legacy) y no está en doctor_workspaces, incluirlo
+        if (docRecord?.clinic_id && !rows.some((r: any) => r.clinic_id === docRecord.clinic_id)) {
+            const { data: legacyWsCheck } = await supabaseAdmin
+                .from('doctor_workspaces')
+                .select('id, status')
+                .eq('doctor_id', doctorId)
+                .eq('clinic_id', docRecord.clinic_id)
+                .maybeSingle();
+
+            if (!legacyWsCheck || legacyWsCheck.status !== 'inactive') {
+                const { data: legacyClinic } = await supabaseAdmin
+                    .from('clinics')
+                    .select('id, name, slug, logo_url, address, phone, plan, status, subscription_status')
+                    .eq('id', docRecord.clinic_id)
+                    .maybeSingle();
+
+                if (legacyClinic) {
+                    rows.push({
+                        id: `clinic-${docRecord.clinic_id}`,
+                        doctor_id: doctorId,
+                        workspace_type: legacyClinic.plan === 'hospital_gratuito' ? 'public_hospital' : 'clinic',
+                        clinic_id: legacyClinic.id,
+                        custom_name: legacyClinic.name,
+                        role_in_workplace: 'staff_doctor',
+                        status: 'active',
+                        can_manage_finances: false,
+                        can_manage_schedule: true,
+                        is_default: Boolean(docRecord.is_clinic_employee),
+                        clinics: legacyClinic,
+                    });
+                }
+            }
+        }
+
+        // Determinar si el Consultorio Privado del médico tiene su mensualidad al día
+        const isPrivateSubscriptionActive = docRecord
+            ? (
+                docRecord.status === 'active' &&
+                docRecord.subscription_status === 'active' &&
+                (!docRecord.is_clinic_employee || Boolean(docRecord.last_payment_date))
+            )
+            : true;
+
+        return rows.map((row: any) => {
             const camel = toCamelCase(row) as any;
             if (row.clinics) {
                 camel.clinicName = row.clinics.name;
+                camel.clinicSlug = row.clinics.slug;
                 camel.clinicLogo = row.clinics.logo_url;
                 camel.clinicAddress = row.clinics.address;
                 camel.clinicPlan = row.clinics.plan;
+                camel.clinicStatus = row.clinics.status;
+                camel.clinicSubscriptionStatus = row.clinics.subscription_status;
+                if (row.clinics.plan === 'hospital_gratuito') {
+                    camel.workspaceType = 'public_hospital';
+                }
             }
+
+            if (camel.workspaceType === 'private') {
+                camel.subscriptionLocked = !isPrivateSubscriptionActive;
+                if (camel.subscriptionLocked) {
+                    camel.lockReason = docRecord?.subscription_status === 'pending_payment'
+                        ? 'Tu pago de mensualidad está en revisión. Una vez aprobado se activará tu Consultorio Privado.'
+                        : 'Mensualidad no activa. Paga tu suscripción para habilitar tu Consultorio Privado y aparecer en el buscador.';
+                }
+            } else if (camel.workspaceType === 'public_hospital' || camel.clinicPlan === 'hospital_gratuito') {
+                // Salud pública / hospital es gratuito: disponible mientras el hospital esté activo
+                camel.subscriptionLocked = row.clinics?.status === 'inactive';
+                if (camel.subscriptionLocked) {
+                    camel.lockReason = 'Este hospital se encuentra inactivo temporalmente.';
+                }
+            } else if (camel.workspaceType === 'clinic') {
+                // Clínica privada: cubierta por el pago de la clínica
+                const clinicInactive = row.clinics?.status === 'inactive' || row.clinics?.subscription_status === 'inactive';
+                camel.subscriptionLocked = Boolean(clinicInactive);
+                if (camel.subscriptionLocked) {
+                    camel.lockReason = 'La clínica tiene su membresía inactiva en este momento.';
+                }
+            }
+
             return camel as DoctorWorkspace;
         });
     } catch (err) {

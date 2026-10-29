@@ -53,9 +53,10 @@ export default function ClinicPublicProfilePage() {
             ]);
             setBranches(branchesData);
             setServices(servicesData);
-            // Solo mostrar médicos que hayan validado su espacio de trabajo y estén activos
+            // Solo mostrar médicos que hayan validado su espacio de trabajo en esta clínica/hospital
+            // (independientemente de si pagan o no su consultorio privado particular)
             const validatedDoctors = (doctorsData || []).filter(
-                (d: any) => d.workspaceStatus !== 'pending_invitation' && d.status !== 'inactive'
+                (d: any) => d.workspaceStatus !== 'pending_invitation' && d.workspaceStatus !== 'inactive'
             );
             setDoctors(validatedDoctors);
         } catch (error) {
@@ -340,7 +341,7 @@ export default function ClinicPublicProfilePage() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                                     {filteredDoctors.map((doctor) => (
-                                        <Link key={doctor.id} href={`/doctors/${doctor.id}`}>
+                                        <Link key={doctor.id} href={`/doctors/${doctor.id}?clinicId=${clinic.id}`}>
                                             <Card className="group overflow-hidden hover:shadow-md transition-all border-0 shadow-sm">
                                                 <CardContent className="p-3 md:p-4">
                                                     <div className="flex gap-3">

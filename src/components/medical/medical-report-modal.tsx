@@ -111,9 +111,9 @@ export function MedicalReportModal({
     visitDateFormatted = format(new Date(), "dd 'de' MMMM, yyyy", { locale: es });
   }
 
-  // Rest details
-  const hasRest = Boolean(record.requires_rest || (record.rest_days && record.rest_days > 0));
-  const restDays = record.rest_days || 0;
+  // Rest details (SOLA Y EXCLUSIVAMENTE si el médico marcó requires_rest)
+  const hasRest = Boolean(record.requires_rest);
+  const restDays = hasRest ? (record.rest_days || 0) : 0;
   const restType = record.rest_type || 'Absoluto';
   const restJustification = record.rest_justification || 'Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación y reincorporación.';
 
