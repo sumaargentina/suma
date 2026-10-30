@@ -127,11 +127,14 @@ export async function POST(request: NextRequest) {
             finalDemographic = 'mujer';
         }
 
-        const hasPrescription = Boolean(prescription && String(prescription).trim().length > 0);
+        const cleanPrescription = prescription ? String(prescription).trim() : '';
+        const cleanStudies = requestedStudies ? String(requestedStudies).trim() : '';
+        const hasPrescription = Boolean(cleanPrescription.length > 0);
 
         // 4. Crear registro en medical_records para que:
         //    - Si ya es usuario registrado en SUMA: quede guardado en su historial médico y récipe dentro de su plataforma.
         //    - Si NO está registrado aún: tenga igual su link verificable /ver-recipe/[id] y /ver-informe/[id] con QR, y si luego se registra se vincule automáticamente.
+        //    - Nota: record_type debe ser 'consultation' para cumplir con el check constraint medical_records_record_type_check.
         let medicalRecordId: string | null = null;
         try {
             const expiresAt = new Date();
@@ -149,14 +152,14 @@ export async function POST(request: NextRequest) {
                         guest_patient_email: cleanEmail || null,
                         guest_patient_phone: patientPhone ? String(patientPhone).trim() : null,
                         visit_date: new Date().toISOString(),
-                        record_type: 'jornada_salud',
+                        record_type: 'consultation',
                         reason_for_visit: `Jornada de Salud: ${campaignTitle}`,
                         symptoms: symptoms || null,
                         diagnosis: diagnosis || evaluation || `Atención en ${campaignTitle}`,
                         evaluation: evaluation || diagnosis || null,
-                        treatment_plan: treatmentPlan || null,
-                        prescription: prescription || null,
-                        requested_studies: requestedStudies || null,
+                        treatment_plan: treatmentPlan || cleanPrescription || 'Cumplir indicaciones según pauta médica.',
+                        prescription: cleanPrescription || null,
+                        requested_studies: cleanStudies || null,
                         medical_report: [
                             `Atención realizada en la Jornada de Salud "${campaignTitle}" organizada por ${organizerName}.`,
                             evaluation ? `Evaluación: ${evaluation}` : '',
@@ -173,6 +176,11 @@ export async function POST(request: NextRequest) {
 
             if (!recordErr && createdRecord) {
                 medicalRecordId = createdRecord.id;
+                const generatedRecipeCode = `SUMA-REC-${createdRecord.id.slice(0, 8).toUpperCase()}`;
+                await supabaseAdmin
+                    .from('medical_records')
+                    .update({ recipe_code: generatedRecipeCode })
+                    .eq('id', createdRecord.id);
             } else if (recordErr) {
                 console.warn('Warning creating medical_record for campaign attendance:', recordErr);
             }
@@ -202,8 +210,8 @@ export async function POST(request: NextRequest) {
                     diagnosis: diagnosis || null,
                     evaluation: evaluation || null,
                     treatment_plan: treatmentPlan || null,
-                    prescription: prescription || null,
-                    requested_studies: requestedStudies || null,
+                    prescription: cleanPrescription || null,
+                    requested_studies: cleanStudies || null,
                     has_prescription: hasPrescription,
                     medical_record_id: medicalRecordId,
                     amount_paid: Number(amountPaid) || 0,
@@ -221,6 +229,31 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: attErr.message }, { status: 500 });
         }
 
+        // Si se solicitaron estudios de laboratorio y el paciente está registrado, crear orden en laboratory_orders
+        if (cleanStudies && resolvedPatientId) {
+            try {
+                const orderIdSource = medicalRecordId || attendance.id;
+                const orderNumber = `SUMA-LAB-${orderIdSource.slice(0, 8).toUpperCase()}`;
+                await supabaseAdmin.from('laboratory_orders').insert([
+                    {
+                        doctor_id: doctorId,
+                        patient_id: resolvedPatientId,
+                        order_number: orderNumber,
+                        studies: [{ name: cleanStudies }],
+                        diagnosis: diagnosis || evaluation || `Atención en ${campaignTitle}`,
+                        clinical_indications: cleanStudies,
+                        doctor_notes: treatmentPlan || null,
+                        status: 'pending',
+                        results_available: false,
+                        valid_from: new Date().toISOString(),
+                        valid_until: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+                    },
+                ]);
+            } catch (labErr) {
+                console.warn('Warning creating laboratory_order for campaign attendance:', labErr);
+            }
+        }
+
         // 6. Si estaba en la lista de pre-inscritos de la jornada, marcarlo como 'attended'
         if (digitsOnly.length >= 4) {
             await supabaseAdmin
@@ -229,6 +262,8 @@ export async function POST(request: NextRequest) {
                 .eq('campaign_id', campaignId)
                 .ilike('cedula', `%${digitsOnly}%`);
         }
+
+        const effectiveVerifyId = medicalRecordId || attendance.id;
 
         // 7. Enviar correo electrónico al paciente con su participación, récipe y botón (Plataforma SUMA o Registro en SUMA)
         let emailSentSuccess = false;
@@ -246,9 +281,9 @@ export async function POST(request: NextRequest) {
                     diagnosis,
                     evaluation,
                     treatmentPlan,
-                    prescription,
-                    requestedStudies,
-                    medicalRecordId,
+                    prescription: cleanPrescription,
+                    requestedStudies: cleanStudies,
+                    medicalRecordId: effectiveVerifyId,
                     isRegisteredPatient,
                 });
                 emailSentSuccess = Boolean(emailRes.success);
@@ -260,11 +295,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             attendanceId: attendance.id,
-            medicalRecordId,
+            medicalRecordId: effectiveVerifyId,
             isRegisteredPatient,
             emailSent: emailSentSuccess,
-            recipeUrl: medicalRecordId ? `/ver-recipe/${medicalRecordId}` : null,
-            reportUrl: medicalRecordId ? `/ver-informe/${medicalRecordId}` : null,
+            recipeUrl: `/ver-recipe/${effectiveVerifyId}`,
+            reportUrl: `/ver-informe/${effectiveVerifyId}`,
         }, { status: 201 });
     } catch (error: any) {
         console.error('Error in POST /api/health-campaigns/attend:', error);

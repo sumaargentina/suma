@@ -757,6 +757,26 @@ export function HealthCampaignsManager({
     const resolvedDoctorId = activeDoc?.id || selectedCampaign.doctors?.[0]?.doctorId || organizerId;
     const resolvedDoctorName = activeDoc?.name || selectedCampaign.doctors?.[0]?.doctorName || organizerName;
 
+    // Si el médico escribió un medicamento en el campo de entrada rápida pero olvidó pulsar "+ Agregar", incluirlo automáticamente
+    let finalPrescription = attPrescription.trim();
+    if (newAttMedInput.trim()) {
+      const cleanPending = cleanCampaignMedicationText(newAttMedInput.trim());
+      if (cleanPending) {
+        const pendingItem: CampaignMedicationItem = {
+          id: `cmed-${Date.now()}`,
+          text: cleanPending,
+          approved: true,
+          controlledOnly: true,
+          fromAi: false,
+        };
+        const mergedItems = [...attMedicationItems, pendingItem];
+        setAttMedicationItems(mergedItems);
+        finalPrescription = buildCampaignPrescriptionString(mergedItems);
+        setAttPrescription(finalPrescription);
+        setNewAttMedInput('');
+      }
+    }
+
     setIsSubmittingAttendance(true);
     try {
       const res = await fetch('/api/health-campaigns/attend', {
@@ -776,7 +796,7 @@ export function HealthCampaignsManager({
           demographicGroup: attDemographic,
           evaluation: attEvaluation.trim(),
           diagnosis: attDiagnosis.trim(),
-          prescription: attPrescription.trim(),
+          prescription: finalPrescription,
           treatmentPlan: attTreatmentPlan.trim(),
           requestedStudies: attRequestedStudies.trim(),
           amountPaid: selectedCampaign.campaignType === 'paid' ? Number(attAmountPaid) || 0 : 0,

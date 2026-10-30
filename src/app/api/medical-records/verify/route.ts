@@ -3,6 +3,50 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
+const VERIFY_RECORD_SELECT = `
+    id,
+    patient_id,
+    doctor_id,
+    visit_date,
+    diagnosis,
+    prescription,
+    prescription_expires_at,
+    recipe_status,
+    dispensed_by_pharmacy_id,
+    dispensed_by_pharmacy_name,
+    dispensed_at,
+    dispensation_notes,
+    treatment_plan,
+    requested_studies,
+    medical_report,
+    requires_rest,
+    rest_days,
+    rest_start_date,
+    rest_end_date,
+    rest_type,
+    rest_justification,
+    evaluation,
+    evolution,
+    notes,
+    created_at,
+    campaign_id,
+    guest_patient_name,
+    guest_patient_cedula,
+    guest_patient_email,
+    guest_patient_phone,
+    doctors (
+        id,
+        name,
+        specialty,
+        medical_license,
+        signature_url,
+        phone,
+        whatsapp,
+        address,
+        city
+    )
+`;
+
 // GET /api/medical-records/verify?id=[id]
 export async function GET(request: NextRequest) {
     try {
@@ -14,57 +58,97 @@ export async function GET(request: NextRequest) {
         }
 
         // Consultar registro médico con información del médico tratante
-        const { data: record, error: recordError } = await supabaseAdmin
+        let { data: record, error: recordError } = await supabaseAdmin
             .from('medical_records')
-            .select(`
-                id,
-                patient_id,
-                doctor_id,
-                visit_date,
-                diagnosis,
-                prescription,
-                prescription_expires_at,
-                recipe_status,
-                dispensed_by_pharmacy_id,
-                dispensed_by_pharmacy_name,
-                dispensed_at,
-                dispensation_notes,
-                treatment_plan,
-                requested_studies,
-                medical_report,
-                requires_rest,
-                rest_days,
-                rest_start_date,
-                rest_end_date,
-                rest_type,
-                rest_justification,
-                evaluation,
-                evolution,
-                notes,
-                created_at,
-                campaign_id,
-                guest_patient_name,
-                guest_patient_cedula,
-                guest_patient_email,
-                guest_patient_phone,
-                doctors (
-                    id,
-                    name,
-                    specialty,
-                    medical_license,
-                    signature_url,
-                    phone,
-                    whatsapp,
-                    address,
-                    city
-                )
-            `)
+            .select(VERIFY_RECORD_SELECT)
             .eq('id', id)
             .maybeSingle();
 
         if (recordError) {
             console.error('Error al consultar récipe:', recordError);
             return NextResponse.json({ error: 'Error al consultar la base de datos' }, { status: 500 });
+        }
+
+        // Si no se encontró en medical_records, verificar si corresponde a un ID de health_campaign_attendances
+        if (!record) {
+            const { data: campAtt } = await supabaseAdmin
+                .from('health_campaign_attendances')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+
+            if (campAtt) {
+                if (campAtt.medical_record_id) {
+                    const { data: linkedRecord } = await supabaseAdmin
+                        .from('medical_records')
+                        .select(VERIFY_RECORD_SELECT)
+                        .eq('id', campAtt.medical_record_id)
+                        .maybeSingle();
+                    if (linkedRecord) {
+                        record = linkedRecord;
+                    }
+                }
+
+                if (!record) {
+                    let docData: any = null;
+                    if (campAtt.doctor_id) {
+                        const { data: d } = await supabaseAdmin
+                            .from('doctors')
+                            .select('id, name, specialty, medical_license, signature_url, phone, whatsapp, address, city')
+                            .eq('id', campAtt.doctor_id)
+                            .maybeSingle();
+                        docData = d;
+                    }
+
+                    record = {
+                        id: campAtt.id,
+                        patient_id: campAtt.patient_id,
+                        doctor_id: campAtt.doctor_id,
+                        visit_date: campAtt.attended_at,
+                        diagnosis: campAtt.diagnosis,
+                        prescription: campAtt.prescription,
+                        prescription_expires_at: null,
+                        recipe_status: 'active',
+                        dispensed_by_pharmacy_id: null,
+                        dispensed_by_pharmacy_name: null,
+                        dispensed_at: null,
+                        dispensation_notes: null,
+                        treatment_plan: campAtt.treatment_plan,
+                        requested_studies: campAtt.requested_studies,
+                        medical_report: [
+                            campAtt.evaluation ? `Evaluación: ${campAtt.evaluation}` : '',
+                            campAtt.diagnosis ? `Diagnóstico: ${campAtt.diagnosis}` : '',
+                            campAtt.treatment_plan ? `Indicaciones: ${campAtt.treatment_plan}` : '',
+                        ].filter(Boolean).join('\n\n'),
+                        requires_rest: false,
+                        rest_days: 0,
+                        rest_start_date: null,
+                        rest_end_date: null,
+                        rest_type: 'Absoluto',
+                        rest_justification: null,
+                        evaluation: campAtt.evaluation,
+                        evolution: null,
+                        notes: null,
+                        created_at: campAtt.attended_at,
+                        campaign_id: campAtt.campaign_id,
+                        guest_patient_name: campAtt.patient_name,
+                        guest_patient_cedula: campAtt.patient_cedula,
+                        guest_patient_email: campAtt.patient_email,
+                        guest_patient_phone: campAtt.patient_phone,
+                        doctors: docData || {
+                            id: campAtt.doctor_id,
+                            name: campAtt.doctor_name || 'Médico Tratante',
+                            specialty: campAtt.specialty || 'Medicina General',
+                            medical_license: '',
+                            signature_url: null,
+                            phone: '',
+                            whatsapp: '',
+                            address: '',
+                            city: '',
+                        },
+                    } as any;
+                }
+            }
         }
 
         if (!record) {
