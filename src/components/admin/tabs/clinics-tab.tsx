@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus, Trash2, Phone, MapPin } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Eye, Building2, Pencil, Save, X, KeyRound, Plus, Trash2, Phone, MapPin, Power } from 'lucide-react';
 import {
     Table,
     TableBody,
@@ -92,25 +92,40 @@ export function ClinicsTab() {
         loadClinics();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handleUpdateStatus = async (clinic: Clinic, newStatus: 'active' | 'inactive', verification: 'verified' | 'rejected') => {
-        if (!confirm(`¿Estás seguro de cambiar el estado de ${clinic.name}?`)) return;
-
+    const handleUpdateStatus = async (
+        clinic: Clinic,
+        newStatus: 'active' | 'inactive',
+        verification?: 'verified' | 'rejected' | 'pending'
+    ) => {
         setProcessingId(clinic.id);
+        const nextVerification = verification || (newStatus === 'active' ? 'verified' : (clinic.verificationStatus || 'verified'));
+        const nextSubscription: 'active' | 'inactive' = newStatus === 'active' ? 'active' : 'inactive';
         try {
             await updateClinicStatus(clinic.id, {
                 status: newStatus,
-                verificationStatus: verification
+                verificationStatus: nextVerification,
+                subscriptionStatus: nextSubscription,
             });
 
             setClinics(prev => prev.map(c =>
                 c.id === clinic.id
-                    ? { ...c, status: newStatus, verificationStatus: verification }
+                    ? { ...c, status: newStatus, verificationStatus: nextVerification, subscriptionStatus: nextSubscription }
                     : c
             ));
 
-            toast({ title: 'Estado actualizado', description: `La clínica ahora está ${newStatus === 'active' ? 'activa' : 'inactiva'}.` });
+            toast({
+                title: newStatus === 'active' ? 'Clínica Activada' : 'Clínica Inactivada',
+                description: newStatus === 'active'
+                    ? `"${clinic.name}" está activa y su tarjeta es visible en el buscador.`
+                    : `"${clinic.name}" pasó a inactiva y su tarjeta ya no se muestra en el buscador.`,
+            });
             if (selectedClinic?.id === clinic.id) {
-                setSelectedClinic({ ...selectedClinic, status: newStatus, verificationStatus: verification });
+                setSelectedClinic({
+                    ...selectedClinic,
+                    status: newStatus,
+                    verificationStatus: nextVerification,
+                    subscriptionStatus: nextSubscription,
+                });
             }
         } catch (error: any) {
             console.error('Update failed:', error);
@@ -122,6 +137,12 @@ export function ClinicsTab() {
         } finally {
             setProcessingId(null);
         }
+    };
+
+    const handleQuickToggleStatus = async (clinic: Clinic) => {
+        const isCurrentlyActive = clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive';
+        const targetStatus: 'active' | 'inactive' = isCurrentlyActive ? 'inactive' : 'active';
+        await handleUpdateStatus(clinic, targetStatus);
     };
 
     const handleEditClick = () => {
@@ -365,11 +386,27 @@ export function ClinicsTab() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1 items-start">
-                                                <Badge className={clinic.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                                    {clinic.status === 'active' ? 'Activa' : 'Inactiva'}
+                                                <Badge
+                                                    onClick={() => processingId !== clinic.id && handleQuickToggleStatus(clinic)}
+                                                    title="Clic para cambiar entre Activa e Inactiva"
+                                                    className={`cursor-pointer select-none transition-all ${
+                                                        clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive'
+                                                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                            : 'bg-red-600 hover:bg-red-700 text-white'
+                                                    }`}
+                                                >
+                                                    {processingId === clinic.id ? (
+                                                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                    ) : (
+                                                        <Power className="h-3 w-3 mr-1" />
+                                                    )}
+                                                    {clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive' ? 'Activa' : 'Inactiva'}
                                                 </Badge>
                                                 {clinic.verificationStatus === 'pending' && (
                                                     <Badge variant="secondary" className="text-xs text-orange-600">Pendiente Verif.</Badge>
+                                                )}
+                                                {clinic.subscriptionStatus === 'inactive' && (
+                                                    <span className="text-[10px] font-medium text-rose-600">Sin pago / Oculta</span>
                                                 )}
                                             </div>
                                         </TableCell>
@@ -395,7 +432,38 @@ export function ClinicsTab() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
-                                                <Button variant="ghost" size="sm" onClick={() => { setSelectedClinic(clinic); setIsEditing(false); }}>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleQuickToggleStatus(clinic)}
+                                                    disabled={processingId === clinic.id}
+                                                    title={clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive' ? 'Inactivar por falta de pago' : 'Activar clínica'}
+                                                    className={
+                                                        clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive'
+                                                            ? 'text-amber-700 border-amber-200 hover:bg-amber-50 h-8 px-2 text-xs'
+                                                            : 'text-emerald-700 border-emerald-200 hover:bg-emerald-50 h-8 px-2 text-xs'
+                                                    }
+                                                >
+                                                    {processingId === clinic.id ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Power className="h-3.5 w-3.5 mr-1" />
+                                                    )}
+                                                    {clinic.status === 'active' && clinic.subscriptionStatus !== 'inactive' ? 'Inactivar' : 'Activar'}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    title="Editar clínica"
+                                                    onClick={() => {
+                                                        setSelectedClinic(clinic);
+                                                        setEditData({ ...clinic });
+                                                        setIsEditing(true);
+                                                    }}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button variant="ghost" size="sm" title="Ver detalles" onClick={() => { setSelectedClinic(clinic); setIsEditing(false); }}>
                                                     <Eye className="h-4 w-4" />
                                                 </Button>
                                                 <Button
@@ -701,7 +769,13 @@ export function ClinicsTab() {
                                             {isEditing ? (
                                                 <Select
                                                     value={editData.subscriptionStatus || 'active'}
-                                                    onValueChange={(value: any) => handleInputChange('subscriptionStatus', value)}
+                                                    onValueChange={(value: any) => {
+                                                        setEditData(prev => ({
+                                                            ...prev,
+                                                            subscriptionStatus: value,
+                                                            status: value === 'inactive' ? 'inactive' : 'active',
+                                                        }));
+                                                    }}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue />
@@ -709,7 +783,7 @@ export function ClinicsTab() {
                                                     <SelectContent>
                                                         <SelectItem value="active">Activa / Al día</SelectItem>
                                                         <SelectItem value="pending_payment">Pago en Revisión</SelectItem>
-                                                        <SelectItem value="inactive">Vencida / Inactiva</SelectItem>
+                                                        <SelectItem value="inactive">Vencida / Inactiva (Oculta tarjeta)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             ) : (
@@ -736,23 +810,29 @@ export function ClinicsTab() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Estado de Cuenta</Label>
+                                            <Label>Estado de Cuenta (Visibilidad en Buscador)</Label>
                                             {isEditing ? (
                                                 <Select
                                                     value={editData.status || 'inactive'}
-                                                    onValueChange={(value) => handleInputChange('status', value)}
+                                                    onValueChange={(value: any) => {
+                                                        setEditData(prev => ({
+                                                            ...prev,
+                                                            status: value,
+                                                            subscriptionStatus: value === 'inactive' ? 'inactive' : (prev.subscriptionStatus === 'inactive' ? 'active' : prev.subscriptionStatus || 'active'),
+                                                        }));
+                                                    }}
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="active">Activa</SelectItem>
-                                                        <SelectItem value="inactive">Inactiva</SelectItem>
+                                                        <SelectItem value="active">Activa (Visible en Buscador)</SelectItem>
+                                                        <SelectItem value="inactive">Inactiva (Oculta por Falta de Pago)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             ) : (
-                                                <Badge className={selectedClinic.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                                    {selectedClinic.status === 'active' ? 'Activa' : 'Inactiva'}
+                                                <Badge className={selectedClinic.status === 'active' && selectedClinic.subscriptionStatus !== 'inactive' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                                    {selectedClinic.status === 'active' && selectedClinic.subscriptionStatus !== 'inactive' ? 'Activa' : 'Inactiva'}
                                                 </Badge>
                                             )}
                                         </div>
@@ -807,24 +887,24 @@ export function ClinicsTab() {
                             {/* Quick Actions */}
                             {!isEditing && (
                                 <div className="flex justify-between items-center pt-4 mt-4 border-t gap-2">
-                                    {selectedClinic.status !== 'active' ? (
+                                    {selectedClinic.status !== 'active' || selectedClinic.subscriptionStatus === 'inactive' ? (
                                         <Button
-                                            className="flex-1 bg-green-600 hover:bg-green-700"
+                                            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                                             onClick={() => handleUpdateStatus(selectedClinic, 'active', 'verified')}
                                             disabled={!!processingId}
                                         >
                                             {processingId === selectedClinic.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-                                            Aprobar y Activar
+                                            Activar Clínica (Mostrar en Buscador)
                                         </Button>
                                     ) : (
                                         <Button
                                             variant="outline"
                                             className="flex-1 border-amber-500 text-amber-700 hover:bg-amber-50"
-                                            onClick={() => handleUpdateStatus(selectedClinic, 'inactive', 'rejected')}
+                                            onClick={() => handleUpdateStatus(selectedClinic, 'inactive', 'verified')}
                                             disabled={!!processingId}
                                         >
                                             {processingId === selectedClinic.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2" />}
-                                            Suspender Cuenta
+                                            Cambiar a Inactiva (Ocultar por falta de pago)
                                         </Button>
                                     )}
                                     <Button

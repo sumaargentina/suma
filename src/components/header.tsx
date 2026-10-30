@@ -1007,27 +1007,11 @@ export function Header() {
                   <LogIn className="mr-2 h-4 w-4" /> Iniciar Sesión
                 </Link>
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm">
-                    <UserPlus className="mr-2 h-4 w-4" /> Regístrate
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem asChild>
-                    <Link href="/auth/register">
-                      <User className="mr-2 h-4 w-4" />
-                      Como Paciente
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/auth/register-doctor">
-                      <Stethoscope className="mr-2 h-4 w-4" />
-                      Como Médico
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button size="sm" asChild>
+                <Link href="/auth/register">
+                  <UserPlus className="mr-2 h-4 w-4" /> Regístrate como paciente
+                </Link>
+              </Button>
             </div>
           )}
         </div>
@@ -1310,12 +1294,7 @@ export function Header() {
                       </SheetClose>
                       <SheetClose asChild>
                         <Button className="w-full h-9 text-sm" asChild>
-                          <Link href="/auth/register">Registrarse (Paciente)</Link>
-                        </Button>
-                      </SheetClose>
-                      <SheetClose asChild>
-                        <Button className="w-full h-9 text-sm" variant="secondary" asChild>
-                          <Link href="/auth/register-doctor">Registrarse (Médico)</Link>
+                          <Link href="/auth/register">Regístrate como paciente</Link>
                         </Button>
                       </SheetClose>
                     </div>

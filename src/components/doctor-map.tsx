@@ -204,52 +204,115 @@ async function fetchPublicHealthFacilities(
 function createMarkerEl(item: MapItem): HTMLElement {
   const el = document.createElement("div");
   el.className = "maplibre-marker-custom";
+  el.style.display = "flex";
+  el.style.flexDirection = "column";
+  el.style.alignItems = "center";
 
   const isDoctor = item.type === "doctor";
   const isPharmacy = item.type === "pharmacy";
-  const borderColor = isDoctor ? "#0d9488" : isPharmacy ? "#059669" : "#6366f1";
-  const bgColor = isDoctor ? "#f0fdfa" : isPharmacy ? "#ecfdf5" : "#eef2ff";
+
+  // Colores, formas e iconos claramente diferenciados para visualizar todos al mismo tiempo:
+  // 1) MÉDICOS: Círculo Teal (#0d9488) + insignia 🩺 + etiqueta "MÉDICO"
+  // 2) CLÍNICAS: Cuadrado redondeado tipo Edificio/Escudo Índigo (#4f46e5) + insignia 🏥 + etiqueta "CLÍNICA"
+  // 3) FARMACIAS: Cápsula/Rombo redondeado Naranja/Ámbar (#ea580c) + insignia 💊 + etiqueta "FARMACIA"
+  const borderColor = isDoctor ? "#0d9488" : isPharmacy ? "#ea580c" : "#4f46e5";
+  const bgColor = isDoctor ? "#f0fdfa" : isPharmacy ? "#fff7ed" : "#eef2ff";
+  const borderRadius = isDoctor ? "9999px" : isPharmacy ? "14px" : "10px";
+  const badgeEmoji = isDoctor ? "🩺" : isPharmacy ? "💊" : "🏥";
+  const typeTag = isDoctor ? "MÉDICO" : isPharmacy ? "FARMACIA" : "CLÍNICA";
+  const boxSize = isDoctor ? 44 : isPharmacy ? 44 : 46;
+
+  const shortName = item.name.length > 14 ? item.name.substring(0, 13) + "…" : item.name;
 
   el.innerHTML = `
-    <div style="
-      width: 44px; height: 44px; border-radius: 50%;
-      border: 3px solid ${borderColor};
-      background: ${bgColor};
-      display: flex; align-items: center; justify-content: center;
+    <div class="marker-card-wrap" style="
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      overflow: hidden;
+      transition: transform 0.2s ease, filter 0.2s ease;
     ">
-      ${item.profileImage
-      ? `<img src="${item.profileImage}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-      : isPharmacy
-        ? `<span style="font-size:20px;">💊</span>`
-        : `<span style="font-size:18px;font-weight:700;color:${borderColor}">${item.name.charAt(0)}</span>`
-    }
+      <!-- Etiqueta superior de categoría -->
+      <div style="
+        background: ${borderColor};
+        color: #ffffff;
+        font-size: 8.5px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        margin-bottom: -5px;
+        z-index: 3;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.22);
+        border: 1.5px solid #ffffff;
+        white-space: nowrap;
+      ">${badgeEmoji} ${typeTag}</div>
+
+      <!-- Pin principal con forma distinta según el tipo -->
+      <div style="
+        width: ${boxSize}px;
+        height: ${boxSize}px;
+        border-radius: ${borderRadius};
+        border: 3px solid ${borderColor};
+        background: ${bgColor};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.22);
+        overflow: hidden;
+        position: relative;
+      ">
+        ${item.profileImage
+          ? `<img src="${item.profileImage}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;" />`
+          : `<span style="font-size:20px;">${badgeEmoji}</span>`
+        }
+      </div>
+
+      <!-- Punta inferior del marcador -->
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-top: 8px solid ${borderColor};
+        margin-top: -1px;
+      "></div>
+
+      <!-- Nombre abreviado flotante -->
+      <div style="
+        margin-top: 1px;
+        background: rgba(255,255,255,0.94);
+        color: #0f172a;
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 5px;
+        border: 1px solid ${borderColor}55;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+        white-space: nowrap;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      ">${shortName}</div>
     </div>
-    <div style="
-      width:0; height:0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 8px solid ${borderColor};
-      margin: -1px auto 0;
-    "></div>
   `;
 
   el.addEventListener("mouseenter", () => {
     const inner = el.firstElementChild as HTMLElement;
     if (inner) {
-      inner.style.transform = "scale(1.15)";
-      inner.style.boxShadow = "0 4px 16px rgba(0,0,0,0.25)";
+      inner.style.transform = "scale(1.14) translateY(-2px)";
+      inner.style.zIndex = "50";
     }
+    el.style.zIndex = "50";
   });
   el.addEventListener("mouseleave", () => {
     const inner = el.firstElementChild as HTMLElement;
     if (inner) {
       inner.style.transform = "scale(1)";
-      inner.style.boxShadow = "0 2px 8px rgba(0,0,0,0.18)";
+      inner.style.zIndex = "1";
     }
+    el.style.zIndex = "1";
   });
 
   return el;
@@ -675,8 +738,8 @@ export default function DoctorMapComponent({ doctors, clinics, pharmacies = [], 
           <button
             onClick={() => setFilterType("pharmacy")}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all ${filterType === "pharmacy"
-              ? "bg-emerald-600 text-white shadow-xs"
-              : "text-emerald-700 hover:bg-emerald-50"
+              ? "bg-orange-600 text-white shadow-xs"
+              : "text-orange-700 hover:bg-orange-50"
             }`}
           >
             <span>💊</span>
@@ -706,24 +769,32 @@ export default function DoctorMapComponent({ doctors, clinics, pharmacies = [], 
         </button>
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex flex-wrap items-center gap-3 text-xs border border-slate-100">
+      {/* Legend con formas e iconos diferenciados */}
+      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg px-3.5 py-2.5 flex flex-wrap items-center gap-3.5 text-xs border border-slate-200/80">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full border-2 border-teal-600 bg-teal-50" />
-          <span className="text-slate-600 font-medium">Médicos</span>
+          <div className="w-5 h-5 rounded-full border-2 border-teal-600 bg-teal-50 flex items-center justify-center text-[11px] shadow-2xs">
+            🩺
+          </div>
+          <span className="text-teal-800 font-bold">Médicos (Círculo Teal)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full border-2 border-indigo-500 bg-indigo-50" />
-          <span className="text-slate-600 font-medium">Clínicas</span>
+          <div className="w-5 h-5 rounded-md border-2 border-indigo-600 bg-indigo-50 flex items-center justify-center text-[11px] shadow-2xs">
+            🏥
+          </div>
+          <span className="text-indigo-800 font-bold">Clínicas (Cuadrado Índigo)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full border-2 border-emerald-600 bg-emerald-50 flex items-center justify-center text-[8px]">💊</div>
-          <span className="text-emerald-700 font-semibold">Farmacias Aliadas</span>
+          <div className="w-5 h-5 rounded-lg border-2 border-orange-600 bg-orange-50 flex items-center justify-center text-[11px] shadow-2xs">
+            💊
+          </div>
+          <span className="text-orange-800 font-bold">Farmacias (Cápsula Naranja)</span>
         </div>
         {showPublicHealth && (
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full border-2 border-green-600 bg-green-50" />
-            <span className="text-green-700 font-medium">Salud Pública</span>
+            <div className="w-4 h-4 rounded-full border-2 border-green-600 bg-green-50 flex items-center justify-center text-[9px]">
+              💚
+            </div>
+            <span className="text-green-700 font-semibold">Salud Pública</span>
           </div>
         )}
       </div>

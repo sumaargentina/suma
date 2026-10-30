@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   Calendar,
@@ -37,6 +37,10 @@ import {
   DollarSign,
   CreditCard,
   Wallet,
+  Mic,
+  Wand2,
+  Lock,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,6 +82,35 @@ const DEFAULT_SPECIALTIES = [
   'Fisioterapia',
   'Laboratorio Clínico',
 ];
+
+interface CampaignMedicationItem {
+  id: string;
+  text: string;
+  approved: boolean;
+  controlledOnly: boolean;
+  fromAi?: boolean;
+}
+
+function cleanCampaignMedicationText(raw: string): string {
+  return raw
+    .replace(/^(\d+[\.\)\-]\s*|[\-\•\*]\s*)/, '')
+    .replace(/\(\s*(caja|frasco|bl[ií]ster|envase|paquete)[^)]*\)/gi, '')
+    .replace(/[\-\–\—\,\:]?\s*\b(comprar\s+)?\d+\s*(cajas?|frascos?|bl[ií]sters?|envases?|paquetes?)\b.*$/gi, '')
+    .replace(/\s*\[SOLO CON R[EÉ]CIPE\s*\-\s*ENTREGA [UÚ]NICA\]/gi, '')
+    .trim();
+}
+
+function buildCampaignPrescriptionString(items: CampaignMedicationItem[]): string {
+  return items
+    .map((item, idx) => {
+      const clean = item.text.trim();
+      if (!clean) return '';
+      const suffix = item.controlledOnly ? ' [SOLO CON RÉCIPE - ENTREGA ÚNICA]' : '';
+      return `${idx + 1}. ${clean}${suffix}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
 
 interface HealthCampaignsManagerProps {
   organizerId: string;
@@ -196,6 +229,23 @@ export function HealthCampaignsManager({
     reportUrl?: string | null;
   } | null>(null);
   const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
+
+  // Buscador filtrable y deseleccionable de pacientes pre-anotados
+  const [preRegSearchQuery, setPreRegSearchQuery] = useState('');
+  const [isPreRegDropdownOpen, setIsPreRegDropdownOpen] = useState(false);
+  const [selectedPreRegId, setSelectedPreRegId] = useState<string | null>(null);
+
+  // Estados de Escriba Médico Inteligente (IA por Voz + Autocompletado en Jornada)
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [hasAiGenerated, setHasAiGenerated] = useState(false);
+  const [isAiRecording, setIsAiRecording] = useState(false);
+  const [isAiTranscribing, setIsAiTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [attMedicationItems, setAttMedicationItems] = useState<CampaignMedicationItem[]>([]);
+  const [newAttMedInput, setNewAttMedInput] = useState('');
+  const [showRawAttPrescription, setShowRawAttPrescription] = useState(false);
 
   const availableSpecialties = useMemo(() => {
     const merged = new Set<string>([...DEFAULT_SPECIALTIES, ...(settingsSpecialties || [])]);
@@ -785,6 +835,298 @@ export function HealthCampaignsManager({
     setAttPaymentReference('');
     setPatientLookupStatus('idle');
     setLastAttendanceResult(null);
+    setSelectedPreRegId(null);
+    setPreRegSearchQuery('');
+    setIsPreRegDropdownOpen(false);
+    setAiPrompt('');
+    setHasAiGenerated(false);
+    setAttMedicationItems([]);
+    setNewAttMedInput('');
+  };
+
+  // Seleccionar o limpiar un paciente pre-anotado
+  const handleSelectPreRegPatient = (reg: any) => {
+    setSelectedPreRegId(reg.id);
+    setPreRegSearchQuery(`${reg.name} (${reg.cedula})`);
+    setIsPreRegDropdownOpen(false);
+    setAttCedula(reg.cedula || '');
+    setAttName(reg.name || '');
+    setAttPhone(reg.phone || '');
+    setAttEmail(reg.email || '');
+    setAttAge(reg.age ? String(reg.age) : '');
+    if (reg.gender === 'hombre' || reg.gender === 'mujer' || reg.gender === 'nino') {
+      setAttDemographic(reg.gender);
+    }
+    if (reg.interestSpecialty) {
+      setAttSpecialty(reg.interestSpecialty);
+    }
+    setPatientLookupStatus(reg.patientId ? 'registered' : 'guest');
+  };
+
+  const handleClearPreRegPatient = () => {
+    setSelectedPreRegId(null);
+    setPreRegSearchQuery('');
+    setIsPreRegDropdownOpen(false);
+    setAttCedula('');
+    setAttName('');
+    setAttPhone('');
+    setAttEmail('');
+    setAttAge('');
+    setAttDemographic('mujer');
+    setPatientLookupStatus('idle');
+    toast({
+      title: 'Selección limpiada',
+      description: 'Los datos del paciente quedaron en blanco para cargar a la persona real.',
+    });
+  };
+
+  // Sincronización de medicamentos individuales con attPrescription
+  const syncAttMedicationItems = (items: CampaignMedicationItem[]) => {
+    setAttMedicationItems(items);
+    setAttPrescription(buildCampaignPrescriptionString(items));
+  };
+
+  const handleAddAttMedicationItem = (textToAdd?: string) => {
+    const raw = (textToAdd !== undefined ? textToAdd : newAttMedInput).trim();
+    if (!raw) return;
+    const clean = cleanCampaignMedicationText(raw);
+    if (!clean) return;
+
+    const nextItems: CampaignMedicationItem[] = [
+      ...attMedicationItems,
+      {
+        id: `cmed-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        text: clean,
+        approved: true,
+        controlledOnly: true,
+        fromAi: false,
+      },
+    ];
+    syncAttMedicationItems(nextItems);
+    if (textToAdd === undefined) {
+      setNewAttMedInput('');
+    }
+  };
+
+  const handleUpdateAttMedicationText = (id: string, newText: string) => {
+    const nextItems = attMedicationItems.map(item =>
+      item.id === id ? { ...item, text: newText } : item
+    );
+    syncAttMedicationItems(nextItems);
+  };
+
+  const handleApproveAttMedicationItem = (id: string) => {
+    const nextItems = attMedicationItems.map(item =>
+      item.id === id ? { ...item, approved: true } : item
+    );
+    syncAttMedicationItems(nextItems);
+    toast({
+      title: '✅ Medicamento Aprobado',
+      description: 'El medicamento fue confirmado en el récipe de la jornada.',
+    });
+  };
+
+  const handleApproveAllAttMedications = () => {
+    const nextItems = attMedicationItems.map(item => ({ ...item, approved: true }));
+    syncAttMedicationItems(nextItems);
+    toast({
+      title: '✅ Todos los medicamentos aprobados',
+      description: 'Puedes seguir editando cualquier detalle antes de guardar.',
+    });
+  };
+
+  const handleDeleteAttMedicationItem = (id: string) => {
+    const nextItems = attMedicationItems.filter(item => item.id !== id);
+    syncAttMedicationItems(nextItems);
+  };
+
+  const handleToggleControlledAttMedication = (id: string) => {
+    const nextItems = attMedicationItems.map(item =>
+      item.id === id ? { ...item, controlledOnly: !item.controlledOnly } : item
+    );
+    syncAttMedicationItems(nextItems);
+  };
+
+  // Grabación de Voz con Whisper para la Jornada
+  const startAiRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4',
+      });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
+        if (audioBlob.size < 1000) {
+          toast({
+            variant: 'destructive',
+            title: 'Grabación muy corta',
+            description: 'Por favor habla un poco más tiempo.',
+          });
+          return;
+        }
+        await transcribeAiAudio(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsAiRecording(true);
+      toast({
+        title: '🎙️ Grabando dictado médico...',
+        description: 'Habla ahora sobre la evaluación y el récipe. Presiona Detener al finalizar.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error de Micrófono',
+        description:
+          error?.name === 'NotAllowedError'
+            ? 'Permite el acceso al micrófono en tu navegador.'
+            : 'No se pudo acceder al micrófono.',
+      });
+    }
+  };
+
+  const stopAiRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsAiRecording(false);
+    }
+  };
+
+  const toggleAiRecording = () => {
+    if (isAiRecording) {
+      stopAiRecording();
+    } else {
+      startAiRecording();
+    }
+  };
+
+  const transcribeAiAudio = async (audioBlob: Blob) => {
+    setIsAiTranscribing(true);
+    try {
+      const formData = new FormData();
+      const audioFile = new File([audioBlob], 'recording.webm', { type: audioBlob.type });
+      formData.append('audio', audioFile);
+
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'No se pudo transcribir el audio');
+      }
+      const data = await res.json();
+      if (data.text) {
+        setAiPrompt(prev => {
+          const spacer = prev && !prev.endsWith(' ') ? ' ' : '';
+          return prev + spacer + data.text;
+        });
+        toast({
+          title: '✅ Dictado transcrito',
+          description: data.text.substring(0, 70) + (data.text.length > 70 ? '...' : ''),
+        });
+      }
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error de Transcripción',
+        description: err.message || 'No se pudo transcribir el audio.',
+      });
+    } finally {
+      setIsAiTranscribing(false);
+    }
+  };
+
+  const handleAiGenerateAttendance = async () => {
+    if (!aiPrompt.trim()) {
+      toast({
+        title: 'Dicta o escribe primero',
+        description: 'Usa el botón Dictar o escribe las notas clínicas para que la IA complete los campos.',
+      });
+      return;
+    }
+
+    try {
+      setIsAiGenerating(true);
+      const res = await fetch('/api/ai/generate-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: aiPrompt,
+          context: `Jornada Médica: ${selectedCampaign?.title || 'SUMA'} | Especialidad: ${attSpecialty || 'Medicina General'} | Paciente: ${attName || 'Paciente'}`,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error al procesar con IA');
+      }
+
+      const data = await res.json();
+
+      // Extraer medicamentos individuales sin cantidades de cajas ni inventos
+      let rawMedsList: string[] = [];
+      if (Array.isArray(data.medications) && data.medications.length > 0) {
+        rawMedsList = data.medications;
+      } else if (typeof data.prescription === 'string' && data.prescription.trim()) {
+        rawMedsList = data.prescription.split(/\r?\n/);
+      }
+
+      const aiMedItems: CampaignMedicationItem[] = rawMedsList
+        .map((line: string) => cleanCampaignMedicationText(String(line || '')))
+        .filter(Boolean)
+        .map((cleanLine: string, idx: number) => ({
+          id: `ai-cmed-${Date.now()}-${idx}`,
+          text: cleanLine,
+          approved: false,
+          controlledOnly: true,
+          fromAi: true,
+        }));
+
+      if (aiMedItems.length > 0) {
+        setAttMedicationItems(aiMedItems);
+        setAttPrescription(buildCampaignPrescriptionString(aiMedItems));
+      }
+
+      // Completar evaluación clínica (uniendo motivo + hallazgos si ambos existen)
+      const evalParts = [data.reason, data.evaluation].filter(Boolean);
+      if (evalParts.length > 0) {
+        setAttEvaluation(evalParts.join(' — '));
+      }
+      if (data.diagnosis) {
+        setAttDiagnosis(data.diagnosis);
+      }
+      if (data.treatment) {
+        setAttTreatmentPlan(data.treatment);
+      }
+      if (data.requested_studies) {
+        setAttRequestedStudies(data.requested_studies);
+      }
+
+      setHasAiGenerated(true);
+      toast({
+        title: '✨ ¡Evaluación y Récipe completados con IA!',
+        description: 'Revisa, edita, aprueba o elimina los medicamentos y demás campos antes de guardar.',
+      });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error de IA',
+        description: err.message || 'No se pudo autocompletar con IA.',
+      });
+    } finally {
+      setIsAiGenerating(false);
+    }
   };
 
   const handleCopyPublicLink = (campId: string) => {
@@ -1363,49 +1705,143 @@ export function HealthCampaignsManager({
                         </div>
                       ) : (
                         <form onSubmit={handleSaveAttendance} className="space-y-5">
-                          {/* Selector rápido si hay pacientes pre-anotados esperando */}
+                          {/* Buscador filtrable y deseleccionable de pacientes pre-anotados */}
                           {selectedCampaign.registrations &&
-                            selectedCampaign.registrations.filter(r => r.status === 'registered').length > 0 && (
-                              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <span className="text-xs font-semibold text-sky-900">
-                                  💡 Hay{' '}
-                                  {selectedCampaign.registrations.filter(r => r.status === 'registered').length}{' '}
-                                  persona(s) pre-anotadas desde el link del evento:
-                                </span>
-                                <Select
-                                  onValueChange={regId => {
-                                    const reg = selectedCampaign.registrations?.find(r => r.id === regId);
-                                    if (reg) {
-                                      setAttCedula(reg.cedula);
-                                      setAttName(reg.name);
-                                      setAttPhone(reg.phone || '');
-                                      setAttEmail(reg.email || '');
-                                      setAttAge(reg.age ? String(reg.age) : '');
-                                      if (reg.gender === 'hombre' || reg.gender === 'mujer' || reg.gender === 'nino') {
-                                        setAttDemographic(reg.gender);
-                                      }
-                                      if (reg.interestSpecialty) {
-                                        setAttSpecialty(reg.interestSpecialty);
-                                      }
-                                      setPatientLookupStatus(reg.patientId ? 'registered' : 'guest');
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="w-full sm:w-72 h-8 text-xs bg-white">
-                                    <SelectValue placeholder="Cargar paciente pre-anotado..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {selectedCampaign.registrations
-                                      .filter(r => r.status === 'registered')
-                                      .map(r => (
-                                        <SelectItem key={r.id} value={r.id}>
-                                          {r.name} ({r.cedula}) {r.interestSpecialty ? `• ${r.interestSpecialty}` : ''}
-                                        </SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
+                            selectedCampaign.registrations.filter(r => r.status === 'registered').length > 0 && (() => {
+                              const waitingRegs = selectedCampaign.registrations.filter(r => r.status === 'registered');
+                              const q = preRegSearchQuery.toLowerCase().trim();
+                              const filteredRegs = waitingRegs.filter(r => {
+                                if (!q) return true;
+                                const initials = (r.name || '')
+                                  .split(/\s+/)
+                                  .map(w => w[0] || '')
+                                  .join('')
+                                  .toLowerCase();
+                                return (
+                                  (r.name || '').toLowerCase().includes(q) ||
+                                  (r.cedula || '').toLowerCase().includes(q) ||
+                                  initials.includes(q) ||
+                                  (r.interestSpecialty || '').toLowerCase().includes(q)
+                                );
+                              });
+                              const selectedReg = waitingRegs.find(r => r.id === selectedPreRegId);
+
+                              return (
+                                <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 space-y-2.5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <span className="text-xs font-semibold text-sky-900">
+                                      💡 Hay <strong>{waitingRegs.length}</strong> persona(s) pre-anotadas desde el link del evento (escribe letras, iniciales o cédula para filtrar):
+                                    </span>
+                                    {(selectedPreRegId || preRegSearchQuery || attCedula || attName) && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleClearPreRegPatient}
+                                        className="h-7 px-2.5 text-xs border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-semibold shrink-0"
+                                      >
+                                        <X className="h-3.5 w-3.5 mr-1" />
+                                        Quitar selección y dejar en cero
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  <div className="relative">
+                                    <div className="relative flex items-center">
+                                      <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+                                      <Input
+                                        value={preRegSearchQuery}
+                                        onFocus={() => setIsPreRegDropdownOpen(true)}
+                                        onChange={e => {
+                                          setPreRegSearchQuery(e.target.value);
+                                          setIsPreRegDropdownOpen(true);
+                                          if (!e.target.value.trim() && selectedPreRegId) {
+                                            setSelectedPreRegId(null);
+                                          }
+                                        }}
+                                        placeholder="Escribe nombre, iniciales o cédula del paciente pre-anotado..."
+                                        className="pl-8 pr-16 h-9 text-xs bg-white border-sky-300 focus-visible:ring-sky-500"
+                                      />
+                                      <div className="absolute right-1.5 flex items-center gap-1">
+                                        {preRegSearchQuery && (
+                                          <button
+                                            type="button"
+                                            title="Limpiar búsqueda y quitar selección"
+                                            onClick={handleClearPreRegPatient}
+                                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => setIsPreRegDropdownOpen(prev => !prev)}
+                                          className="text-[10px] font-semibold text-sky-700 bg-sky-100 hover:bg-sky-200 px-2 py-1 rounded"
+                                        >
+                                          {isPreRegDropdownOpen ? 'Cerrar' : `Ver (${filteredRegs.length})`}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {selectedReg && (
+                                      <div className="mt-1.5 flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 text-xs text-emerald-900">
+                                        <span>
+                                          ✅ Cargado: <strong>{selectedReg.name}</strong> ({selectedReg.cedula})
+                                          {selectedReg.interestSpecialty ? ` • ${selectedReg.interestSpecialty}` : ''}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={handleClearPreRegPatient}
+                                          className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-0.5 shrink-0"
+                                        >
+                                          <X className="h-3 w-3" />
+                                          Quitar
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {isPreRegDropdownOpen && (
+                                      <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-sky-200 bg-white shadow-lg divide-y divide-slate-100">
+                                        <button
+                                          type="button"
+                                          onClick={handleClearPreRegPatient}
+                                          className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center justify-between"
+                                        >
+                                          <span>— Ninguno / Paciente nuevo (Dejar campos en cero) —</span>
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                        {filteredRegs.length === 0 ? (
+                                          <div className="px-3 py-3 text-xs text-slate-500 text-center">
+                                            No se encontraron pre-anotados con «{preRegSearchQuery}».
+                                          </div>
+                                        ) : (
+                                          filteredRegs.slice(0, 60).map(r => (
+                                            <button
+                                              key={r.id}
+                                              type="button"
+                                              onClick={() => handleSelectPreRegPatient(r)}
+                                              className={`w-full text-left px-3 py-2 text-xs hover:bg-sky-50 flex items-center justify-between gap-2 transition-colors ${
+                                                selectedPreRegId === r.id ? 'bg-sky-100/80 font-bold text-sky-950' : 'text-slate-700'
+                                              }`}
+                                            >
+                                              <div className="truncate">
+                                                <span className="font-semibold text-slate-900">{r.name}</span>{' '}
+                                                <span className="text-slate-500 font-mono">({r.cedula})</span>
+                                              </div>
+                                              {r.interestSpecialty && (
+                                                <Badge variant="outline" className="text-[10px] shrink-0 bg-sky-50 text-sky-800 border-sky-200">
+                                                  {r.interestSpecialty}
+                                                </Badge>
+                                              )}
+                                            </button>
+                                          ))
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                           {/* Fila 1: Médico y Especialidad */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
@@ -1684,11 +2120,91 @@ export function HealthCampaignsManager({
                             )}
                           </div>
 
-                          {/* Fila 3: Evaluación Médica y Récipe */}
-                          <div className="space-y-3 pt-2 border-t">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                              2. Evaluación Clínica y Récipe de la Jornada
-                            </h4>
+                          {/* Fila 3: Evaluación Médica y Récipe con Escriba Médico Inteligente (IA por Voz) */}
+                          <div className="space-y-4 pt-3 border-t">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                2. Evaluación Clínica y Récipe de la Jornada
+                              </h4>
+                              <span className="text-[11px] text-indigo-600 font-medium flex items-center gap-1">
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Puedes llenar manualmente o dictar con IA por voz
+                              </span>
+                            </div>
+
+                            {/* ESCRIBA MÉDICO INTELIGENTE (IA POR VOZ) PARA LA JORNADA */}
+                            <div className="rounded-2xl bg-gradient-to-r from-indigo-50/90 via-blue-50/80 to-teal-50/60 border border-indigo-200/80 p-4 space-y-3 shadow-2xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 text-indigo-800 font-bold text-sm">
+                                  <Sparkles className="h-4 w-4 text-indigo-600 fill-indigo-200" />
+                                  <span>Escriba Médico Inteligente (IA por Voz)</span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={isAiRecording ? 'destructive' : 'secondary'}
+                                    onClick={toggleAiRecording}
+                                    disabled={isAiTranscribing}
+                                    className={`h-8 text-xs gap-1.5 font-semibold ${
+                                      isAiRecording
+                                        ? 'animate-pulse'
+                                        : 'bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                                    }`}
+                                  >
+                                    {isAiTranscribing ? (
+                                      <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        Transcribiendo...
+                                      </>
+                                    ) : isAiRecording ? (
+                                      <>
+                                        <span className="relative flex h-2.5 w-2.5">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                                        </span>
+                                        Detener Dictado
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Mic className="h-3.5 w-3.5" />
+                                        Dictar con Voz
+                                      </>
+                                    )}
+                                  </Button>
+
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={handleAiGenerateAttendance}
+                                    disabled={isAiGenerating || !aiPrompt.trim()}
+                                    className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 font-semibold"
+                                  >
+                                    {isAiGenerating ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Wand2 className="h-3.5 w-3.5" />
+                                    )}
+                                    Autocompletar con IA
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <Textarea
+                                rows={2}
+                                value={aiPrompt}
+                                onChange={e => setAiPrompt(e.target.value)}
+                                placeholder="Presiona 'Dictar con Voz', habla sobre los hallazgos, diagnóstico, medicamentos (ej: Acetaminofén de 800mg cada 8 horas por 3 días), indicaciones o exámenes de laboratorio, y luego presiona 'Autocompletar con IA'..."
+                                className={`bg-white/90 text-xs border-indigo-200 focus-visible:ring-indigo-500 ${
+                                  isAiRecording ? 'border-red-400 ring-2 ring-red-100' : ''
+                                }`}
+                              />
+
+                              <p className="text-[11px] text-indigo-800/80">
+                                * La IA completa automáticamente Hallazgos, Diagnóstico, Récipe (sin inventar medicamentos ni colocar cantidades de cajas), Indicaciones y Laboratorios. Tú tienes el control total para aprobar, editar o eliminar.
+                              </p>
+                            </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
@@ -1722,21 +2238,142 @@ export function HealthCampaignsManager({
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div>
-                                <Label htmlFor="att-rx" className="text-xs font-semibold text-blue-700 flex items-center gap-1">
-                                  <Pill className="h-3.5 w-3.5" />
-                                  Récipe Médico (Medicamentos)
-                                </Label>
-                                <Textarea
-                                  id="att-rx"
-                                  rows={4}
-                                  className="mt-1 text-xs border-blue-200 focus-visible:ring-blue-500"
-                                  value={attPrescription}
-                                  onChange={e => setAttPrescription(e.target.value)}
-                                  placeholder="1. Amoxicilina 500mg - 1 cápsula cada 8 horas por 7 días..."
-                                />
+                              {/* Columna Izquierda: Récipe Médico con Lista Interactiva de Medicamentos */}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <Label htmlFor="att-rx" className="text-xs font-semibold text-blue-700 flex items-center gap-1">
+                                    <Pill className="h-3.5 w-3.5" />
+                                    Récipe Médico (Medicamentos)
+                                  </Label>
+                                  <div className="flex items-center gap-1.5">
+                                    {attMedicationItems.some(m => !m.approved) && (
+                                      <button
+                                        type="button"
+                                        onClick={handleApproveAllAttMedications}
+                                        className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full"
+                                      >
+                                        ✓ Aprobar todos
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowRawAttPrescription(prev => !prev)}
+                                      className="text-[10px] font-medium text-blue-600 hover:underline"
+                                    >
+                                      {showRawAttPrescription ? 'Ver por ítems' : 'Editar texto libre'}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Agregar medicamento individual */}
+                                <div className="flex gap-1.5">
+                                  <Input
+                                    value={newAttMedInput}
+                                    onChange={e => setNewAttMedInput(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleAddAttMedicationItem();
+                                      }
+                                    }}
+                                    placeholder="Ej: Acetaminofén 800mg cada 8h por 3 días..."
+                                    className="h-8 text-xs border-blue-200"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => handleAddAttMedicationItem()}
+                                    className="h-8 px-2.5 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 shrink-0"
+                                  >
+                                    <Plus className="h-3.5 w-3.5 mr-1" />
+                                    Agregar
+                                  </Button>
+                                </div>
+
+                                {/* Lista de medicamentos uno por uno con Aprobar / Editar / Eliminar */}
+                                {attMedicationItems.length > 0 && !showRawAttPrescription && (
+                                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {attMedicationItems.map((med, idx) => (
+                                      <div
+                                        key={med.id}
+                                        className={`p-2 rounded-xl border text-xs flex flex-col gap-1.5 transition-colors ${
+                                          med.approved
+                                            ? 'bg-emerald-50/40 border-emerald-200'
+                                            : 'bg-amber-50/50 border-amber-200'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-bold text-slate-500 text-[11px] shrink-0">
+                                            {idx + 1}.
+                                          </span>
+                                          <Input
+                                            value={med.text}
+                                            onChange={e => handleUpdateAttMedicationText(med.id, e.target.value)}
+                                            className="h-7 text-xs bg-white flex-1"
+                                          />
+                                          {!med.approved ? (
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              onClick={() => handleApproveAttMedicationItem(med.id)}
+                                              className="h-7 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                                              title="Aprobar este medicamento"
+                                            >
+                                              <Check className="h-3 w-3 mr-0.5" />
+                                              Aprobar
+                                            </Button>
+                                          ) : (
+                                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px] px-1.5 py-0 shrink-0">
+                                              ✓ Aprobado
+                                            </Badge>
+                                          )}
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => handleDeleteAttMedicationItem(med.id)}
+                                            className="h-7 w-7 p-0 text-rose-500 hover:text-rose-700 hover:bg-rose-50 shrink-0"
+                                            title="Eliminar medicamento"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between px-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleControlledAttMedication(med.id)}
+                                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                              med.controlledOnly
+                                                ? 'bg-amber-100/80 text-amber-900'
+                                                : 'text-slate-500 hover:bg-slate-100'
+                                            }`}
+                                          >
+                                            <Lock className="h-2.5 w-2.5" />
+                                            {med.controlledOnly
+                                              ? 'Entrega única en farmacia (Con Récipe)'
+                                              : 'Venta libre'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {(showRawAttPrescription || attMedicationItems.length === 0) && (
+                                  <Textarea
+                                    id="att-rx"
+                                    rows={3}
+                                    className="text-xs border-blue-200 focus-visible:ring-blue-500"
+                                    value={attPrescription}
+                                    onChange={e => setAttPrescription(e.target.value)}
+                                    placeholder="1. Acetaminofén 800mg por 3 días (o usa el buscador/IA arriba)..."
+                                  />
+                                )}
                               </div>
 
+                              {/* Columna Derecha: Indicaciones y Estudios Solicitados */}
                               <div className="space-y-2">
                                 <div>
                                   <Label htmlFor="att-plan" className="text-xs font-semibold">
@@ -1744,7 +2381,7 @@ export function HealthCampaignsManager({
                                   </Label>
                                   <Textarea
                                     id="att-plan"
-                                    rows={2}
+                                    rows={3}
                                     className="mt-1 text-xs"
                                     value={attTreatmentPlan}
                                     onChange={e => setAttTreatmentPlan(e.target.value)}

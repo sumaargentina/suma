@@ -72,7 +72,11 @@ export async function GET(request: Request) {
             coupons: clinic.coupons || [],
         }));
 
-        return NextResponse.json(camelCaseClinics);
+        return NextResponse.json(camelCaseClinics, {
+            headers: {
+                'Cache-Control': 'no-store, max-age=0',
+            },
+        });
     } catch (error: any) {
         console.error('Unexpected error in GET /api/clinics:', error);
         return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
@@ -242,15 +246,24 @@ export async function PATCH(request: Request) {
         if (body.verificationStatus !== undefined) dbData.verification_status = body.verificationStatus;
         if (body.subscriptionStatus !== undefined) dbData.subscription_status = body.subscriptionStatus;
         if (body.subscriptionFee !== undefined) dbData.subscription_fee = Number(body.subscriptionFee) || 0;
-        if (body.lastPaymentDate !== undefined) dbData.last_payment_date = body.lastPaymentDate;
-        if (body.nextPaymentDate !== undefined) dbData.next_payment_date = body.nextPaymentDate;
+        if (body.lastPaymentDate !== undefined) dbData.last_payment_date = body.lastPaymentDate || null;
+        if (body.nextPaymentDate !== undefined) dbData.next_payment_date = body.nextPaymentDate || null;
         if (body.plan !== undefined) dbData.plan = body.plan;
         if (body.billingCycle !== undefined) dbData.billing_cycle = body.billingCycle;
         if (body.billingMonths !== undefined) dbData.billing_months = Number(body.billingMonths) || 1;
         if (body.institutionType !== undefined) dbData.institution_type = body.institutionType;
         if (body.email !== undefined) dbData.email = body.email;
-        if (body.lat !== undefined) dbData.lat = body.lat;
-        if (body.lng !== undefined) dbData.lng = body.lng;
+        if (body.lat !== undefined && body.lat !== '') dbData.lat = Number(body.lat);
+        if (body.lng !== undefined && body.lng !== '') dbData.lng = Number(body.lng);
+
+        // Sincronizar status y subscription_status cuando se desactiva por falta de pago o se reactiva
+        if (body.status === 'inactive' && body.subscriptionStatus === undefined) {
+            dbData.subscription_status = 'inactive';
+        } else if (body.subscriptionStatus === 'inactive' && body.status === undefined) {
+            dbData.status = 'inactive';
+        } else if (body.status === 'active' && body.subscriptionStatus === undefined) {
+            dbData.subscription_status = 'active';
+        }
 
         // Handle password change - hash it before saving
         if (body.password && body.password.trim()) {

@@ -1076,7 +1076,7 @@ export const getClinic = (id: string) => getDocumentData<Clinic>('clinics', id);
 export const getClinics = async (): Promise<Clinic[]> => {
     if (typeof window !== 'undefined') {
         try {
-            const res = await fetch('/api/clinics');
+            const res = await fetch('/api/clinics', { cache: 'no-store' });
             if (!res.ok) return [];
             return await res.json();
         } catch (error) {
@@ -3471,6 +3471,7 @@ export const getAdminClinics = async (): Promise<Clinic[]> => {
         const response = await fetch('/api/clinics', {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
         });
 
         if (!response.ok) throw new Error('Failed to fetch clinics');

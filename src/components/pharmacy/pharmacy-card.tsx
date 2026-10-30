@@ -193,49 +193,49 @@ export function PharmacyMiniCard({ pharmacy, onClick, className }: PharmacyMiniC
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative w-full text-left bg-white hover:bg-emerald-50/40 border border-slate-200/90 hover:border-emerald-400 rounded-xl p-2 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer",
+        "group relative w-full text-left bg-white hover:bg-emerald-50/40 border border-slate-200/90 hover:border-emerald-400 rounded-xl p-2.5 md:p-3 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex items-center gap-2.5 md:gap-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer",
         className
       )}
     >
-      {/* Logo compacto */}
-      <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-100 shadow-2xs overflow-hidden flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors">
+      {/* Logo un poquito más grande y apreciable */}
+      <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-slate-50 border border-slate-100 shadow-2xs overflow-hidden flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors">
         {logo ? (
           <img
             src={logo}
             alt={displayName}
             onError={() => setLogoError(true)}
-            className="w-full h-full object-contain p-0.5"
+            className="w-full h-full object-contain p-1"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-[11px]">
+          <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-xs md:text-sm">
             {displayName.substring(0, 2).toUpperCase()}
           </div>
         )}
       </div>
 
-      {/* Info compacta */}
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="flex items-center justify-between gap-1">
-          <p className="font-bold text-slate-900 text-xs leading-tight truncate group-hover:text-emerald-700 transition-colors">
+      {/* Info fina pero más legible */}
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="font-bold text-slate-900 text-xs md:text-sm leading-tight truncate group-hover:text-emerald-700 transition-colors">
             {displayName}
           </p>
           {is24Hours && (
-            <span className="shrink-0 text-[9px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200/70 px-1 py-0.2 rounded">
+            <span className="shrink-0 text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200/70 px-1.5 py-0.5 rounded">
               24h
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-slate-500 truncate leading-none">
-          <MapPin className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+        <div className="flex items-center gap-1 text-[11px] md:text-xs text-slate-500 truncate leading-none">
+          <MapPin className="h-3 w-3 text-emerald-600 shrink-0" />
           <span className="truncate">
             {branchName ? `${branchName}${city ? ` · ${city}` : ''}` : (city || 'Aliada SUMA')}
           </span>
         </div>
 
         <div className="flex items-center gap-1 pt-0.5">
-          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 bg-emerald-50/90 px-1.5 py-0.2 rounded">
-            <span className="w-1 h-1 rounded-full bg-emerald-500" />
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50/90 px-2 py-0.5 rounded-md border border-emerald-100/80">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Récipe SUMA
           </span>
         </div>
@@ -261,8 +261,8 @@ export function AlliedPharmaciesSection({
 
   if (!pharmacies || pharmacies.length === 0) return null;
 
-  // En una sola línea caben: 2 (móvil), 3 (sm), 4 (md), 6 (lg)
-  const SINGLE_ROW_MAX = 6;
+  // En una sola línea caben: 2 (móvil), 3 (sm), 4 (md), 5 (lg) para que se aprecien un poquito más grandes
+  const SINGLE_ROW_MAX = 5;
   const visibleList = isExpanded ? pharmacies : pharmacies.slice(0, SINGLE_ROW_MAX);
   const hasMoreDesktop = pharmacies.length > SINGLE_ROW_MAX;
   const hasMoreMobileOrTablet = pharmacies.length > 2;
@@ -273,7 +273,7 @@ export function AlliedPharmaciesSection({
     if (index < 2) return ''; // visible en todos (2 cols en móvil)
     if (index === 2) return 'hidden sm:flex'; // 3ra visible desde sm (3 cols)
     if (index === 3) return 'hidden md:flex'; // 4ta visible desde md (4 cols)
-    if (index === 4 || index === 5) return 'hidden lg:flex'; // 5ta y 6ta visibles desde lg (6 cols)
+    if (index === 4) return 'hidden lg:flex'; // 5ta visible desde lg (5 cols)
     return 'hidden';
   };
 
@@ -316,8 +316,8 @@ export function AlliedPharmaciesSection({
         </div>
       </div>
 
-      {/* Grid compacto de minitarjetas bien pegaditas */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+      {/* Grid de minitarjetas un poquito más grandes y apreciables */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 md:gap-3">
         {visibleList.map((pharmacy, idx) => (
           <PharmacyMiniCard
             key={pharmacy.id}

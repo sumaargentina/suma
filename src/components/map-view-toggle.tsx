@@ -37,10 +37,10 @@ export function MapViewToggle({ doctors, clinics, pharmacies = [], mapDoctors, m
     return (
         <div>
             {/* Toggle buttons */}
-            <div className="flex items-center justify-center gap-1 mb-4 md:mb-6">
+            <div className="flex items-center justify-center gap-1 mb-3 md:mb-4">
                 <button
                     onClick={() => setView("list")}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-l-full text-xs md:text-sm font-semibold transition-all duration-200 ${view === "list"
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-l-full text-xs md:text-sm font-semibold transition-all duration-200 ${view === "list"
                             ? "bg-teal-600 text-white shadow-md"
                             : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                         }`}
@@ -50,7 +50,7 @@ export function MapViewToggle({ doctors, clinics, pharmacies = [], mapDoctors, m
                 </button>
                 <button
                     onClick={() => setView("map")}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-r-full text-xs md:text-sm font-semibold transition-all duration-200 ${view === "map"
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-r-full text-xs md:text-sm font-semibold transition-all duration-200 ${view === "map"
                             ? "bg-teal-600 text-white shadow-md"
                             : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                         }`}
@@ -72,8 +72,8 @@ export function MapViewToggle({ doctors, clinics, pharmacies = [], mapDoctors, m
                 </div>
             )}
 
-            {/* List view — generous spacing between Médicos, Bienestar, Clínicas and bottom margin */}
-            <div className={cn("space-y-8 md:space-y-16 pb-20 md:pb-28", view === "map" && "hidden")}>
+            {/* List view — compact spacing between Médicos, Bienestar, Clínicas */}
+            <div className={cn("space-y-6 md:space-y-10 pb-16 md:pb-20", view === "map" && "hidden")}>
                 {children}
             </div>
         </div>

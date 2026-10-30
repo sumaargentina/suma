@@ -159,7 +159,11 @@ export default async function FindDoctorPage({
 
   // Filter Logic - Clínicas (ya aisladas por país)
   const filteredClinics = clinics.filter(clinic => {
-    const matchesStatus = clinic.verificationStatus === 'verified' && clinic.status === 'active';
+    const isHospitalGratuito = clinic.plan === 'hospital_gratuito' || clinic.institutionType === 'public_hospital';
+    const matchesStatus =
+      clinic.verificationStatus === 'verified' &&
+      clinic.status === 'active' &&
+      (isHospitalGratuito || clinic.subscriptionStatus !== 'inactive');
 
     // Búsqueda en múltiples campos
     const insurancesString = clinic.acceptedInsurances?.join(' ') || '';
@@ -238,7 +242,11 @@ export default async function FindDoctorPage({
   });
 
   const mapClinics = clinics.filter(clinic => {
-    const matchesStatus = clinic.verificationStatus === 'verified' && clinic.status === 'active';
+    const isHospitalGratuito = clinic.plan === 'hospital_gratuito' || clinic.institutionType === 'public_hospital';
+    const matchesStatus =
+      clinic.verificationStatus === 'verified' &&
+      clinic.status === 'active' &&
+      (isHospitalGratuito || clinic.subscriptionStatus !== 'inactive');
     const insurancesString = clinic.acceptedInsurances?.join(' ') || '';
 
     const matchesQuery = matchesSearch(
@@ -304,19 +312,19 @@ export default async function FindDoctorPage({
     <div className="min-h-screen bg-neutral-50 selection:bg-secondary selection:text-white">
       <HeaderWrapper />
 
-      <main className="pb-28 md:pb-20">
-        {/* HERO & SEARCH SECTION - Compacto en móvil */}
-        <section className="relative overflow-hidden bg-white pt-4 pb-4 md:pt-16 md:pb-12 shadow-sm border-b border-gray-100">
+      <main className="pb-24 md:pb-16">
+        {/* HERO & SEARCH SECTION - Compacto para subir el contenido */}
+        <section className="relative overflow-hidden bg-white pt-3 pb-3 md:pt-7 md:pb-5 shadow-sm border-b border-gray-100">
           {/* Background Animation */}
           <HealthBackground />
 
-          <div className="container mx-auto px-3 md:px-4 max-w-6xl space-y-3 md:space-y-6 relative z-10">
-            {/* Título - más pequeño en móvil */}
-            <div className="text-center space-y-1 md:space-y-3">
-              <h1 className="text-xl md:text-5xl font-bold md:font-extrabold text-slate-900 tracking-tight">
+          <div className="container mx-auto px-3 md:px-4 max-w-6xl space-y-2.5 md:space-y-4 relative z-10">
+            {/* Título compacto */}
+            <div className="text-center space-y-1">
+              <h1 className="text-xl md:text-3xl font-bold md:font-extrabold text-slate-900 tracking-tight">
                 Encuentra tu especialista
               </h1>
-              <p className="text-xs md:text-lg text-slate-500 max-w-2xl mx-auto hidden md:block">
+              <p className="text-xs md:text-sm text-slate-500 max-w-2xl mx-auto hidden md:block">
                 <span className="font-semibold text-primary">Miles de profesionales</span> confían en SUMA.
               </p>
             </div>
@@ -329,16 +337,11 @@ export default async function FindDoctorPage({
                 maxPrice={100000}
               />
             </div>
-
-            {/* Especialidades - scroll horizontal */}
-            <div className="pt-2 md:pt-4">
-              <SpecialtyPills specialties={specialtiesWithCount} />
-            </div>
           </div>
         </section>
 
-        {/* RESULTS SECTION - Más compacto en móvil */}
-        <section className="container mx-auto px-3 md:px-4 py-4 md:py-12 max-w-7xl space-y-6 md:space-y-20">
+        {/* RESULTS SECTION */}
+        <section className="container mx-auto px-3 md:px-4 py-3 md:py-6 max-w-7xl space-y-5 md:space-y-10">
 
           {/* Toggle Lista / Mapa */}
           <MapViewToggle
@@ -369,7 +372,7 @@ export default async function FindDoctorPage({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                   {regularDoctors.map(doctor => (
                     <DoctorCard key={doctor.id} doctor={doctor} />
                   ))}
@@ -379,23 +382,23 @@ export default async function FindDoctorPage({
 
             {/* 2. ESPECIALISTAS DE BIENESTAR */}
             {wellnessDoctors.length > 0 && viewMode !== 'clinics' && viewMode !== 'pharmacies' && (
-              <div className="space-y-3 md:space-y-6">
-                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
+              <div className="space-y-3 md:space-y-4">
+                <div className="flex items-center justify-between border-b pb-2 md:pb-3 border-slate-200">
                   <div className="flex items-center gap-2 md:gap-3">
                     <div className="p-1.5 md:p-2 bg-gradient-to-br from-pink-500/10 to-purple-500/10 rounded-lg">
-                      <Sparkles className="h-4 w-4 md:h-6 md:w-6 text-pink-500" />
+                      <Sparkles className="h-4 w-4 md:h-5 md:w-5 text-pink-500" />
                     </div>
                     <div>
-                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Bienestar</h2>
-                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Estética y cuidado personal</p>
+                      <h2 className="text-base md:text-xl font-bold text-slate-900">Bienestar</h2>
+                      <p className="text-slate-500 text-[10px] md:text-xs hidden md:block">Estética y cuidado personal</p>
                     </div>
                   </div>
-                  <span className="text-[10px] md:text-sm font-semibold bg-gradient-to-r from-pink-50 to-purple-50 text-pink-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-pink-100">
+                  <span className="text-[10px] md:text-xs font-semibold bg-gradient-to-r from-pink-50 to-purple-50 text-pink-600 px-2 md:px-3 py-1 rounded-full border border-pink-100">
                     {wellnessDoctors.length}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                   {wellnessDoctors.map(doctor => (
                     <DoctorCard key={doctor.id} doctor={doctor} />
                   ))}
@@ -421,9 +424,9 @@ export default async function FindDoctorPage({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                   {filteredClinics.map((clinic, index) => (
-                    <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
+                    <ClinicCard key={clinic.id} clinic={clinic} priority={index < 4} />
                   ))}
                 </div>
               </div>

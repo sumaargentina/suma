@@ -425,6 +425,7 @@ export type Clinic = {
   nextPaymentDate?: string | null;
   subscriptionFee?: number;
   billingMonths?: number;
+  institutionType?: 'private_clinic' | 'public_hospital' | string;
   discountPercentage?: number;
   freeMonths?: number;
   legalName?: string | null;
@@ -516,6 +517,7 @@ export type Laboratory = {
   billingCycle?: 'monthly' | 'annual' | 'free' | string;
   subscriptionFee?: number;
   billingMonths?: number;
+  institutionType?: 'private_clinic' | 'public_hospital' | string;
   discountPercentage?: number;
   freeMonths?: number;
   legalName?: string | null;
