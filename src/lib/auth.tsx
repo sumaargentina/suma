@@ -54,6 +54,8 @@ export interface User extends Patient {
   chainName?: string | null;
   branchName?: string | null;
   plan?: string;
+  isDoctorAccount?: boolean;
+  doctorAccountId?: string;
 }
 
 interface DoctorRegistrationData {
@@ -109,6 +111,9 @@ export interface AuthContextType {
   setShowWorkspaceModal: (show: boolean) => void;
   switchWorkspace: (workspaceId: string) => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
+  isDoctorInPatientMode: boolean;
+  switchToPatientMode: (redirectPath?: string) => Promise<void>;
+  switchToDoctorMode: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, location?: { country?: string; state?: string; city?: string; cedula?: string; phone?: string }) => Promise<void>;
   registerDoctor: (doctorData: DoctorRegistrationData) => Promise<void>;
@@ -185,6 +190,7 @@ const buildUserFromData = (userData: any): User => {
       favoriteDoctorIds: [],
       role: 'doctor',
       isClinicEmployee: doctorData.isClinicEmployee,
+      isDoctorAccount: true,
     };
   }
 
@@ -434,6 +440,103 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const syncDoctorMirrorPatient = useCallback(async (doctorUser: User): Promise<Partial<Patient> | null> => {
+    try {
+      const targetDoctorId = doctorUser.doctorAccountId || doctorUser.id;
+      const res = await fetch('/api/doctors/patient-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctorId: targetDoctorId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data?.patient || null;
+      }
+    } catch (err) {
+      console.warn('Warning syncing doctor mirror patient profile:', err);
+    }
+    return null;
+  }, []);
+
+  const switchToPatientMode = useCallback(async (redirectPath?: string) => {
+    if (!user || (!user.isDoctorAccount && user.role !== 'doctor')) return;
+
+    const originalDoctorId = user.doctorAccountId || user.id;
+    const mirrorPatient = await syncDoctorMirrorPatient(user);
+    const patientModeUser: User = {
+      ...user,
+      ...(mirrorPatient ? {
+        id: mirrorPatient.id || user.id,
+        age: mirrorPatient.age ?? user.age ?? null,
+        birthDate: mirrorPatient.birthDate ?? user.birthDate ?? null,
+        gender: mirrorPatient.gender ?? user.gender ?? null,
+        bloodType: mirrorPatient.bloodType ?? user.bloodType ?? null,
+        favoriteDoctorIds: mirrorPatient.favoriteDoctorIds || user.favoriteDoctorIds || [],
+        favoriteClinicIds: mirrorPatient.favoriteClinicIds || user.favoriteClinicIds || [],
+        profileCompleted: mirrorPatient.profileCompleted ?? true,
+      } : {
+        profileCompleted: true,
+      }),
+      role: 'patient',
+      isDoctorAccount: true,
+      doctorAccountId: originalDoctorId,
+    };
+
+    localStorage.setItem('suma_doctor_active_mode', 'patient');
+    setUser(patientModeUser);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _p, ...userNoPass } = patientModeUser;
+    localStorage.setItem('user', JSON.stringify(userNoPass));
+
+    await setAuthToken(patientModeUser.id, patientModeUser.email, 'patient', patientModeUser.name);
+
+    toast({
+      title: 'Modo Paciente Activado',
+      description: 'Ahora estás en tu espacio personal de salud y familia. Puedes agendar citas con otros especialistas.',
+    });
+
+    router.push(redirectPath || '/dashboard');
+  }, [user, syncDoctorMirrorPatient, toast, router]);
+
+  const switchToDoctorMode = useCallback(async () => {
+    if (!user) return;
+    localStorage.removeItem('suma_doctor_active_mode');
+
+    const freshDoctor = await supabaseService.findUserByEmail(user.email);
+    const doctorUser: User = freshDoctor ? buildUserFromData(freshDoctor) : {
+      ...user,
+      id: user.doctorAccountId || user.id,
+      role: 'doctor',
+      isDoctorAccount: true,
+    };
+
+    const { list, active } = await loadDoctorWorkspaces(doctorUser.id);
+    doctorUser.workspaces = list;
+    doctorUser.activeWorkspace = active;
+    doctorUser.isDoctorAccount = true;
+    doctorUser.doctorAccountId = doctorUser.id;
+
+    setUser(doctorUser);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _d, ...docNoPass } = doctorUser;
+    localStorage.setItem('user', JSON.stringify(docNoPass));
+
+    await setAuthToken(
+      doctorUser.id,
+      doctorUser.email,
+      'doctor',
+      doctorUser.name,
+      active?.clinicId || doctorUser.clinicId
+    );
+
+    toast({
+      title: 'Modo Médico Activado',
+      description: 'Has regresado a tu panel médico profesional.',
+    });
+
+    router.push('/doctor/dashboard');
+  }, [user, loadDoctorWorkspaces, toast, router]);
+
   const fetchUserFromStorage = useCallback(async () => {
     setLoading(true);
     try {
@@ -472,11 +575,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (targetEmail) {
         const freshUser = await supabaseService.findUserByEmail(targetEmail);
         if (freshUser) {
-          const builtUser = buildUserFromData(freshUser);
+          let builtUser = buildUserFromData(freshUser);
           if (builtUser.role === 'doctor') {
             const { list, active } = await loadDoctorWorkspaces(builtUser.id);
             builtUser.workspaces = list;
             builtUser.activeWorkspace = active;
+            builtUser.isDoctorAccount = true;
+
+            const originalDocId = builtUser.id;
+            builtUser.doctorAccountId = originalDocId;
+            const savedMode = localStorage.getItem('suma_doctor_active_mode');
+            if (savedMode === 'patient') {
+              const mirrorPatient = await syncDoctorMirrorPatient(builtUser);
+              builtUser = {
+                ...builtUser,
+                ...(mirrorPatient ? {
+                  id: mirrorPatient.id || builtUser.id,
+                  age: mirrorPatient.age ?? builtUser.age ?? null,
+                  birthDate: mirrorPatient.birthDate ?? builtUser.birthDate ?? null,
+                  gender: mirrorPatient.gender ?? builtUser.gender ?? null,
+                  bloodType: mirrorPatient.bloodType ?? builtUser.bloodType ?? null,
+                  favoriteDoctorIds: mirrorPatient.favoriteDoctorIds || [],
+                  favoriteClinicIds: mirrorPatient.favoriteClinicIds || [],
+                  profileCompleted: mirrorPatient.profileCompleted ?? true,
+                } : {
+                  profileCompleted: true,
+                }),
+                role: 'patient',
+                isDoctorAccount: true,
+                doctorAccountId: originalDocId,
+              };
+            }
           }
           setUser(builtUser);
           localStorage.setItem('user', JSON.stringify(builtUser));
@@ -487,7 +616,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             builtUser.email,
             builtUser.role,
             builtUser.name,
-            builtUser.activeWorkspace?.clinicId || builtUser.clinicId
+            builtUser.role === 'doctor' ? (builtUser.activeWorkspace?.clinicId || builtUser.clinicId) : undefined
           ).catch((err) => console.error('[Auth] Error sync auth token:', err));
         } else if (existingParsed?.role === 'admin') {
           setUser(existingParsed); // Mantener sesión admin
@@ -504,7 +633,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [loadDoctorWorkspaces]);
+  }, [loadDoctorWorkspaces, syncDoctorMirrorPatient]);
 
   useEffect(() => {
     fetchUserFromStorage();
@@ -602,9 +731,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Cargar espacios de trabajo si es médico
     if (loggedInUser.role === 'doctor') {
+      localStorage.removeItem('suma_doctor_active_mode');
       const { list, active } = await loadDoctorWorkspaces(loggedInUser.id);
       loggedInUser.workspaces = list;
       loggedInUser.activeWorkspace = active;
+      loggedInUser.isDoctorAccount = true;
 
       // Si tiene más de un espacio, abrir el selector modal
       if (list.length > 1) {
@@ -1018,6 +1149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShowWorkspaceModal(false);
     localStorage.removeItem('user');
     localStorage.removeItem('activeWorkspace');
+    localStorage.removeItem('suma_doctor_active_mode');
     sessionStorage.removeItem('user');
     sessionStorage.removeItem('activeWorkspace');
     router.push('/');
@@ -1063,15 +1195,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const hashedNewPassword = await hashPassword(newPassword);
-      let updatePromise;
-      if (user.role === 'patient') {
-        updatePromise = supabaseService.updatePatient(user.id, { password: hashedNewPassword });
-      } else if (user.role === 'doctor') {
-        updatePromise = supabaseService.updateDoctor(user.id, { password: hashedNewPassword });
+      if (user.isDoctorAccount || user.role === 'doctor') {
+        await supabaseService.updateDoctor(user.id, { password: hashedNewPassword });
+        if (user.role === 'patient') {
+          await supabaseService.updatePatient(user.id, { password: hashedNewPassword }).catch(() => {});
+        }
+      } else if (user.role === 'patient') {
+        await supabaseService.updatePatient(user.id, { password: hashedNewPassword });
       } else {
         return { success: false, message: 'Rol de usuario no soportado para cambio de contraseña.' };
       }
-      await updatePromise;
       const updatedUser = { ...user, password: hashedNewPassword };
       setUser(updatedUser as User);
       localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -1124,6 +1257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const isDoctorInPatientMode = Boolean(user && user.role === 'patient' && user.isDoctorAccount);
+
   const value: AuthContextType = {
     user,
     loading,
@@ -1133,6 +1268,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShowWorkspaceModal,
     switchWorkspace,
     refreshWorkspaces,
+    isDoctorInPatientMode,
+    switchToPatientMode,
+    switchToDoctorMode,
     login,
     register,
     registerDoctor,
@@ -1165,6 +1303,9 @@ export function useAuth() {
       setShowWorkspaceModal: () => { },
       switchWorkspace: async () => { },
       refreshWorkspaces: async () => { },
+      isDoctorInPatientMode: false,
+      switchToPatientMode: async () => { },
+      switchToDoctorMode: async () => { },
       login: async () => { },
       register: async () => { },
       registerDoctor: async () => { },

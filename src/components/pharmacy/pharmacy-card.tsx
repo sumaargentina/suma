@@ -261,8 +261,8 @@ export function AlliedPharmaciesSection({
 
   if (!pharmacies || pharmacies.length === 0) return null;
 
-  // En una sola línea caben: 2 (móvil), 3 (sm), 4 (md), 5 (lg) para que se aprecien un poquito más grandes
-  const SINGLE_ROW_MAX = 5;
+  // Mostrar máximo 3 en una sola línea en computadora y luego "Ver más"
+  const SINGLE_ROW_MAX = 3;
   const visibleList = isExpanded ? pharmacies : pharmacies.slice(0, SINGLE_ROW_MAX);
   const hasMoreDesktop = pharmacies.length > SINGLE_ROW_MAX;
   const hasMoreMobileOrTablet = pharmacies.length > 2;
@@ -271,9 +271,7 @@ export function AlliedPharmaciesSection({
   const getSingleRowVisibilityClass = (index: number) => {
     if (isExpanded) return '';
     if (index < 2) return ''; // visible en todos (2 cols en móvil)
-    if (index === 2) return 'hidden sm:flex'; // 3ra visible desde sm (3 cols)
-    if (index === 3) return 'hidden md:flex'; // 4ta visible desde md (4 cols)
-    if (index === 4) return 'hidden lg:flex'; // 5ta visible desde lg (5 cols)
+    if (index === 2) return 'hidden sm:flex'; // 3ra visible desde sm/lg (3 cols)
     return 'hidden';
   };
 
@@ -316,8 +314,8 @@ export function AlliedPharmaciesSection({
         </div>
       </div>
 
-      {/* Grid de minitarjetas un poquito más grandes y apreciables */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 md:gap-3">
+      {/* Grid de minitarjetas (3 por fila en computadora + Ver más) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-2.5 md:gap-3">
         {visibleList.map((pharmacy, idx) => (
           <PharmacyMiniCard
             key={pharmacy.id}

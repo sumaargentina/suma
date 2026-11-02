@@ -78,7 +78,14 @@ export function CouponsTab() {
 
             if (editingCoupon) {
                 // Edit existing
-                newList = list.map(c => c.id === editingCoupon.id ? { ...c, ...result.data, code: result.data.code.toUpperCase() } : c);
+                newList = list.map(c => c.id === editingCoupon.id ? {
+                    ...c,
+                    ...result.data,
+                    discountValue: result.data.value,
+                    value: result.data.value,
+                    code: result.data.code.toUpperCase(),
+                    updatedAt: new Date().toISOString()
+                } : c);
             } else {
                 // Add new
                 // Check duplicate code
@@ -174,7 +181,7 @@ export function CouponsTab() {
                                         {coupon.discountType === 'fixed' ? 'Monto Fijo' : 'Porcentaje'}
                                     </TableCell>
                                     <TableCell className="text-right font-mono">
-                                        {coupon.discountType === 'fixed' ? `$${coupon.value}` : `${coupon.value}%`}
+                                        {coupon.discountType === 'fixed' ? `$${coupon.value ?? coupon.discountValue}` : `${coupon.value ?? coupon.discountValue}%`}
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <div className="flex justify-center gap-2">

@@ -6,14 +6,15 @@ import { updateDoctorWorkspace, unlinkClinicDoctor } from '@/lib/supabaseService
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Building2, Stethoscope, Landmark, CheckCircle2, ShieldAlert, ArrowRight, BellRing, XCircle, Loader2, UserMinus, Lock, CreditCard } from 'lucide-react';
+import { Building2, Stethoscope, Landmark, CheckCircle2, ShieldAlert, ArrowRight, BellRing, XCircle, Loader2, UserMinus, Lock, CreditCard, HeartHandshake } from 'lucide-react';
 import type { DoctorWorkspace } from '@/lib/types';
 
 export function WorkspaceSelectorModal() {
-  const { user, workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, showWorkspaceModal, setShowWorkspaceModal } = useAuth();
+  const { user, workspaces, activeWorkspace, switchWorkspace, switchToPatientMode, refreshWorkspaces, showWorkspaceModal, setShowWorkspaceModal } = useAuth();
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [confirmingLeaveId, setConfirmingLeaveId] = useState<string | null>(null);
+  const [isSwitchingPatient, setIsSwitchingPatient] = useState<boolean>(false);
 
   if (!user || user.role !== 'doctor') {
     return null;
@@ -344,6 +345,58 @@ export function WorkspaceSelectorModal() {
               </div>
             );
           })}
+
+          {/* ESPACIO PERSONAL COMO PACIENTE (MI SALUD Y FAMILIA) */}
+          <div className="pt-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 px-1">
+              Espacio Personal y Familiar
+            </p>
+            <div
+              onClick={async () => {
+                if (isSwitchingPatient) return;
+                setIsSwitchingPatient(true);
+                try {
+                  setShowWorkspaceModal(false);
+                  await switchToPatientMode();
+                } finally {
+                  setIsSwitchingPatient(false);
+                }
+              }}
+              className="relative group flex items-start gap-4 p-4 rounded-xl border-2 border-rose-200/80 bg-gradient-to-r from-rose-50/50 to-teal-50/40 hover:border-rose-400 hover:shadow-md cursor-pointer transition-all duration-200"
+            >
+              <div className="p-3 rounded-xl flex-shrink-0 bg-rose-100 text-rose-600">
+                <HeartHandshake className="w-6 h-6" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <h4 className="text-base font-bold text-gray-900 group-hover:text-rose-600 transition-colors">
+                    Modo Paciente (Mi Salud y Familia)
+                  </h4>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-200">
+                    Cuenta Personal • Núcleo Familiar
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600">
+                  Usa tu misma cuenta para agendar citas médicas con otros colegas especialistas, gestionar a tus familiares (hijos, padres, pareja) y consultar tus récipes personales.
+                </p>
+              </div>
+
+              <div className="flex items-center self-center pl-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSwitchingPatient}
+                  className="border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-semibold"
+                >
+                  {isSwitchingPatient ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                  ) : null}
+                  Entrar como Paciente <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500">

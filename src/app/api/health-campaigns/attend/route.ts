@@ -41,12 +41,30 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 1. Obtener información de la jornada
+        // 1. Obtener información de la jornada y verificar que no haya culminado
         const { data: campaign } = await supabaseAdmin
             .from('health_campaigns')
-            .select('id, title, organizer_name')
+            .select('id, title, organizer_name, start_date, end_date, end_time, status')
             .eq('id', campaignId)
             .maybeSingle();
+
+        if (campaign) {
+            const targetEndDate = (campaign.end_date || campaign.start_date || '').trim();
+            const rawEndTime = (campaign.end_time || '23:59').trim();
+            const normalizedTime = /^\d{2}:\d{2}$/.test(rawEndTime) ? `${rawEndTime}:59` : '23:59:59';
+            const expiryMs = targetEndDate ? Date.parse(`${targetEndDate}T${normalizedTime}-04:00`) : NaN;
+            const isDateExpired = !Number.isNaN(expiryMs) && Date.now() > expiryMs;
+
+            if (campaign.status === 'completed' || campaign.status === 'cancelled' || isDateExpired) {
+                return NextResponse.json(
+                    {
+                        error: 'Este evento o jornada de salud ya culminó según su fecha de vencimiento. No se pueden registrar nuevas atenciones.',
+                        expired: true,
+                    },
+                    { status: 400 }
+                );
+            }
+        }
 
         const campaignTitle = campaign?.title || 'Jornada de Salud SUMA';
         const organizerName = campaign?.organizer_name || 'SUMA Salud';

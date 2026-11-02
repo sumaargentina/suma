@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users, Video, Pill, Printer, Sparkles, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Bot, BedDouble, Store } from 'lucide-react';
+import { CalendarPlus, ClipboardList, User, Edit, CalendarDays, Clock, ThumbsUp, CalendarX, CheckCircle, XCircle, MessageSquare, Send, Loader2, FileText, MapPin, Star, Stethoscope, RefreshCw, Search, Filter, ArrowDown, Users, Video, Pill, Printer, Sparkles, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Bot, BedDouble, Store, Ticket, HeartHandshake, QrCode, ExternalLink, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -383,8 +383,21 @@ export default function DashboardPage() {
 
   const [patientRecords, setPatientRecords] = useState<MedicalRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
-  const [activePatientTab, setActivePatientTab] = useState<'upcoming' | 'recipes' | 'reports' | 'history'>('upcoming');
+  const [patientCampaignRegistrations, setPatientCampaignRegistrations] = useState<any[]>([]);
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+  const [selectedCampaignTicket, setSelectedCampaignTicket] = useState<any | null>(null);
+  const [activePatientTab, setActivePatientTab] = useState<'upcoming' | 'recipes' | 'reports' | 'history' | 'campaigns'>('upcoming');
   const [readPrescriptionIds, setReadPrescriptionIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'campaigns' || tabParam === 'recipes' || tabParam === 'reports' || tabParam === 'history' || tabParam === 'upcoming') {
+        setActivePatientTab(tabParam);
+      }
+    }
+  }, []);
 
   // Estados para paginación y filtros del historial
   const [currentPage, setCurrentPage] = useState(1);
@@ -672,9 +685,30 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchPatientCampaigns = async () => {
+    if (!user?.id || user.role !== 'patient') return;
+    try {
+      setIsLoadingCampaigns(true);
+      const cedulaParam = encodeURIComponent((user as any).cedula || '');
+      const emailParam = encodeURIComponent(user.email || '');
+      const res = await fetch(
+        `/api/health-campaigns/register?myRegistrations=true&patientId=${encodeURIComponent(user.id)}&cedula=${cedulaParam}&email=${emailParam}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPatientCampaignRegistrations(Array.isArray(data.registrations) ? data.registrations : []);
+      }
+    } catch (e) {
+      console.error('Error loading patient campaigns:', e);
+    } finally {
+      setIsLoadingCampaigns(false);
+    }
+  };
+
   useEffect(() => {
     if (user?.id && user.role === 'patient') {
       fetchPatientRecords();
+      fetchPatientCampaigns();
     }
   }, [user?.id, user?.role]);
 
@@ -795,8 +829,8 @@ export default function DashboardPage() {
 
   const handleRefreshAppointments = async () => {
     try {
-      await Promise.all([refreshAppointments(), fetchPatientRecords()]);
-      toast({ title: 'Datos actualizados', description: 'Se han refrescado las citas y tus récipes.' });
+      await Promise.all([refreshAppointments(), fetchPatientRecords(), fetchPatientCampaigns()]);
+      toast({ title: 'Datos actualizados', description: 'Se han refrescado tus citas, récipes y jornadas.' });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron actualizar los datos.' });
     }
@@ -953,9 +987,9 @@ export default function DashboardPage() {
           </div>
 
           {/* ========================================================================= */}
-          {/* 5 CUADRITOS DE ACCESO RÁPIDO INTERACTIVOS (HUB MÓVIL Y DESKTOP)            */}
+          {/* 6 CUADRITOS DE ACCESO RÁPIDO INTERACTIVOS (HUB MÓVIL Y DESKTOP)            */}
           {/* ========================================================================= */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5 mb-6">
             
             {/* Cuadrito 1: Próximas Citas */}
             <button
@@ -1119,7 +1153,46 @@ export default function DashboardPage() {
               )}
             </button>
 
-            {/* Cuadrito 5: Agendar Cita con Asistente / IA */}
+            {/* Cuadrito 5: Mis Jornadas / Eventos de Salud */}
+            <button
+              type="button"
+              onClick={() => setActivePatientTab('campaigns')}
+              className={cn(
+                "p-3.5 sm:p-4 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between group cursor-pointer",
+                activePatientTab === 'campaigns'
+                  ? "bg-gradient-to-br from-emerald-500/10 via-white to-teal-50/60 border-emerald-600 shadow-md ring-2 ring-emerald-500/20"
+                  : "bg-white border-slate-200 hover:border-emerald-300 hover:shadow-xs"
+              )}
+            >
+              <div className="flex items-center justify-between w-full mb-2.5">
+                <div className={cn(
+                  "h-8.5 w-8.5 rounded-xl flex items-center justify-center transition-colors shadow-xs",
+                  activePatientTab === 'campaigns'
+                    ? "bg-emerald-600 text-white"
+                    : "bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100"
+                )}>
+                  <Ticket className="h-4 w-4" />
+                </div>
+                {patientCampaignRegistrations.length > 0 && (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+                    {patientCampaignRegistrations.length}
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">Mis Jornadas</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {patientCampaignRegistrations.length > 0
+                    ? `${patientCampaignRegistrations.length} evento${patientCampaignRegistrations.length === 1 ? '' : 's'} suscrito${patientCampaignRegistrations.length === 1 ? '' : 's'}`
+                    : 'Tickets y eventos'}
+                </p>
+              </div>
+              {activePatientTab === 'campaigns' && (
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-600 rounded-b-2xl" />
+              )}
+            </button>
+
+            {/* Cuadrito 6: Agendar Cita con Asistente / IA */}
             <Link
               href="/ai-assistant"
               className="p-3.5 sm:p-4 rounded-2xl border border-teal-400/80 bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 text-white shadow-md hover:shadow-lg transition-all flex flex-col justify-between group hover:scale-[1.02] active:scale-[0.98]"
@@ -1594,6 +1667,201 @@ export default function DashboardPage() {
               </Card>
             )}
 
+            {/* 5. SECCIÓN: MIS JORNADAS Y EVENTOS DE SALUD SUSCRITOS */}
+            {activePatientTab === 'campaigns' && (
+              <Card className="border-emerald-200 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-white pb-3 border-b border-emerald-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-base md:text-xl font-bold text-emerald-950 flex items-center gap-2">
+                        <Ticket className="h-5 w-5 text-emerald-600" />
+                        Mis Jornadas y Eventos de Salud Suscritos
+                      </CardTitle>
+                      <CardDescription className="text-xs md:text-sm">
+                        Aquí aparecen todos los eventos y jornadas de salud en los que tienes cupo reservado. Haz clic en cualquier tarjeta para abrir tu Ficha de Ticket de Entrada con código QR.
+                      </CardDescription>
+                    </div>
+                    <Button asChild size="sm" className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shrink-0">
+                      <Link href="/jornadas">
+                        <HeartHandshake className="h-3.5 w-3.5 mr-1.5" />
+                        Explorar Más Jornadas
+                      </Link>
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  {isLoadingCampaigns ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
+                    </div>
+                  ) : patientCampaignRegistrations.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {patientCampaignRegistrations.map((reg) => {
+                        const camp = reg.campaign;
+                        const isExpired = Boolean(camp?.isExpired);
+                        const isAttended = reg.status === 'attended' || (reg.attendances && reg.attendances.length > 0);
+                        const firstAttendance = reg.attendances?.[0] || null;
+
+                        return (
+                          <div
+                            key={reg.id}
+                            onClick={() => setSelectedCampaignTicket(reg)}
+                            className={cn(
+                              "cursor-pointer rounded-2xl border p-4 transition-all flex flex-col justify-between gap-3 group",
+                              isExpired
+                                ? "bg-slate-100/85 border-slate-200/90 opacity-85 hover:opacity-100"
+                                : "bg-white border-emerald-200 hover:border-teal-500 hover:shadow-md"
+                            )}
+                          >
+                            <div className="space-y-2.5">
+                              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <Badge className="bg-teal-700 text-white font-mono text-[11px] font-bold">
+                                    🎟️ Cupo #{String(reg.spotNumber || 1).padStart(3, '0')}
+                                  </Badge>
+                                  {isAttended ? (
+                                    <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                                      ✅ Atendido en Jornada
+                                    </Badge>
+                                  ) : isExpired ? (
+                                    <Badge className="bg-slate-200 text-slate-700 border border-slate-300 text-[10px] font-bold">
+                                      🏁 Evento Culminado
+                                    </Badge>
+                                  ) : (
+                                    <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                                      🟢 Evento Vigente
+                                    </Badge>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] font-bold",
+                                    camp?.campaignType === 'free'
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                      : "bg-amber-50 text-amber-800 border-amber-200"
+                                  )}
+                                >
+                                  {camp?.campaignType === 'free' ? 'Gratuita' : 'Privada'}
+                                </Badge>
+                              </div>
+
+                              <div>
+                                <h4 className={cn(
+                                  "font-extrabold text-sm sm:text-base line-clamp-2 group-hover:text-teal-700 transition-colors",
+                                  isExpired ? "text-slate-700" : "text-slate-900"
+                                )}>
+                                  {camp?.title || 'Jornada de Salud SUMA'}
+                                </h4>
+                                <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-1">
+                                  <Building2 className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                                  <span className="truncate">
+                                    Organiza: <strong>{camp?.organizerName || 'SUMA Salud'}</strong>
+                                  </span>
+                                </p>
+                              </div>
+
+                              <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 space-y-1 text-xs text-slate-700">
+                                <p className="flex items-center gap-1.5 font-medium">
+                                  <CalendarDays className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                                  <span>
+                                    {camp?.startDate}
+                                    {camp?.endDate && camp.endDate !== camp.startDate ? ` al ${camp.endDate}` : ''} ({camp?.startTime} a {camp?.endTime})
+                                  </span>
+                                </p>
+                                <p className="flex items-center gap-1.5">
+                                  <MapPin className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                                  <span className="truncate">
+                                    {[camp?.city, camp?.state, camp?.address].filter(Boolean).join(', ') || 'Ubicación del evento'}
+                                  </span>
+                                </p>
+                                <div className="pt-1 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                  <span>
+                                    👤 Paciente: <strong>{reg.name}</strong> ({reg.cedula})
+                                  </span>
+                                  {reg.interestSpecialty && (
+                                    <span className="font-semibold text-teal-800">
+                                      🩺 {reg.interestSpecialty}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {firstAttendance && (
+                                <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-bold truncate">
+                                      Atendido por Dr(a). {firstAttendance.doctorName} ({firstAttendance.specialty})
+                                    </p>
+                                    {firstAttendance.diagnosis && (
+                                      <p className="text-[11px] text-emerald-800 truncate">
+                                        Diagnóstico: {firstAttendance.diagnosis}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {firstAttendance.medicalRecordId && (
+                                    <Button
+                                      asChild
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-[11px] bg-white border-emerald-300 text-emerald-800 shrink-0"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      <Link href={`/ver-recipe/${firstAttendance.medicalRecordId}`} target="_blank">
+                                        <Pill className="h-3 w-3 mr-1" />
+                                        Récipe
+                                      </Link>
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                              <span className="text-[11px] font-mono font-bold text-slate-500">
+                                {reg.ticketCode}
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedCampaignTicket(reg);
+                                }}
+                              >
+                                <QrCode className="h-3.5 w-3.5 mr-1.5" />
+                                Ver Ticket de Entrada
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10 md:py-14 text-muted-foreground space-y-3">
+                      <div className="h-14 w-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 mx-auto mb-1">
+                        <Ticket className="h-7 w-7" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-800 text-sm md:text-base">
+                          Aún no estás suscrito a ninguna Jornada de Salud
+                        </p>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
+                          Cuando reserves tu cupo en una jornada médica gratuita o privada de SUMA, tu tarjeta y tu Ticket QR de entrada aparecerán aquí automáticamente.
+                        </p>
+                      </div>
+                      <div className="pt-1">
+                        <Button asChild size="sm" className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold">
+                          <Link href="/jornadas">Ver Jornadas de Salud Disponibles</Link>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
           </div>
 
         </div>
@@ -1875,6 +2143,188 @@ export default function DashboardPage() {
         recipeUrl={typeof window !== 'undefined' && selectedPrescriptionRecord?.id ? `${window.location.origin}/ver-recipe/${selectedPrescriptionRecord.id}` : ''}
         defaultCity={(user as any)?.city || undefined}
       />
+
+      {/* Modal de Ficha Oficial del Ticket de Entrada a la Jornada de Salud */}
+      <Dialog
+        open={Boolean(selectedCampaignTicket)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedCampaignTicket(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto p-0 rounded-2xl overflow-hidden">
+          {selectedCampaignTicket && (() => {
+            const camp = selectedCampaignTicket.campaign;
+            const spotStr = String(selectedCampaignTicket.spotNumber || 1).padStart(3, '0');
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+              `SUMA-JORNADA:${selectedCampaignTicket.campaignId}|TICKET:${selectedCampaignTicket.ticketCode}|CUPO:${spotStr}|CEDULA:${selectedCampaignTicket.cedula}`
+            )}`;
+
+            return (
+              <div className="space-y-0">
+                <div className="bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 text-white p-5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-teal-200 flex items-center gap-1.5">
+                      <Ticket className="h-3.5 w-3.5" />
+                      Ticket Oficial de Entrada • SUMA Salud
+                    </span>
+                    <Badge className="bg-white/20 text-white border-white/30 text-[10px]">
+                      {camp?.campaignType === 'free' ? 'Jornada Gratuita' : 'Jornada Privada'}
+                    </Badge>
+                  </div>
+                  <h3 className="text-lg font-extrabold leading-snug">
+                    {camp?.title || 'Jornada de Salud SUMA'}
+                  </h3>
+                  <p className="text-xs text-teal-100">
+                    Organizado por: <strong>{camp?.organizerName || 'SUMA Salud'}</strong>
+                  </p>
+                </div>
+
+                <div className="p-5 space-y-4 bg-white">
+                  {/* Cupo + QR */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-teal-50/70 border-2 border-dashed border-teal-300">
+                    <div className="space-y-1 text-center sm:text-left">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-700">
+                        Número de Cupo Reservado
+                      </span>
+                      <p className="text-4xl font-black text-teal-900 font-mono">
+                        #{spotStr}
+                      </p>
+                      <p className="text-xs font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded border border-teal-200 inline-block">
+                        {selectedCampaignTicket.ticketCode}
+                      </p>
+                      <div className="pt-1">
+                        {selectedCampaignTicket.status === 'attended' ? (
+                          <Badge className="bg-emerald-600 text-white text-[10px]">
+                            ✅ Paciente Atendido
+                          </Badge>
+                        ) : camp?.isExpired ? (
+                          <Badge className="bg-slate-600 text-white text-[10px]">
+                            🏁 Evento Culminado
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px]">
+                            🟢 Entrada Confirmada
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs shrink-0 text-center">
+                      <img
+                        src={qrUrl}
+                        alt="QR Ticket Jornada"
+                        className="h-28 w-28 mx-auto"
+                      />
+                      <span className="text-[9px] text-slate-400 font-medium block mt-1">
+                        Presentar al llegar
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Ficha de Datos del Paciente y del Evento */}
+                  <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 text-xs">
+                    <div className="p-3 flex items-center justify-between gap-2">
+                      <span className="text-slate-500">Paciente / Asistente:</span>
+                      <span className="font-bold text-slate-900 text-right">
+                        {selectedCampaignTicket.name} ({selectedCampaignTicket.cedula})
+                      </span>
+                    </div>
+                    {selectedCampaignTicket.interestSpecialty && (
+                      <div className="p-3 flex items-center justify-between gap-2">
+                        <span className="text-slate-500">Especialidad solicitada:</span>
+                        <Badge variant="secondary" className="bg-teal-50 text-teal-800 text-xs font-bold">
+                          {selectedCampaignTicket.interestSpecialty}
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="p-3 flex items-center justify-between gap-2">
+                      <span className="text-slate-500">Fecha y Horario:</span>
+                      <span className="font-semibold text-slate-800 text-right">
+                        📅 {camp?.startDate}
+                        {camp?.endDate && camp.endDate !== camp.startDate ? ` al ${camp.endDate}` : ''} • {camp?.startTime} a {camp?.endTime}
+                      </span>
+                    </div>
+                    <div className="p-3 flex items-start justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Ubicación:</span>
+                      <span className="font-medium text-slate-800 text-right">
+                        📍 {[camp?.address, camp?.sector, camp?.city, camp?.state].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                    {camp?.campaignType === 'paid' && (
+                      <div className="p-3 flex items-center justify-between gap-2 bg-amber-50/50">
+                        <span className="text-amber-900 font-medium">Aporte / Pago reportado:</span>
+                        <span className="font-bold text-amber-900">
+                          ${Number(selectedCampaignTicket.amountPaid || camp?.priceAmount || 0).toFixed(2)} USD
+                          {selectedCampaignTicket.paymentMethod ? ` (${selectedCampaignTicket.paymentMethod})` : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Si ya fue atendido, mostrar acceso directo a su récipe */}
+                  {selectedCampaignTicket.attendances && selectedCampaignTicket.attendances.length > 0 && (
+                    <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2">
+                      <p className="text-xs font-extrabold text-emerald-950">
+                        🩺 Atención Médica Registrada en esta Jornada:
+                      </p>
+                      {selectedCampaignTicket.attendances.map((att: any) => (
+                        <div key={att.id} className="flex items-center justify-between gap-2 text-xs bg-white p-2.5 rounded-lg border border-emerald-100">
+                          <div>
+                            <p className="font-bold text-slate-900">
+                              Dr(a). {att.doctorName} ({att.specialty})
+                            </p>
+                            {att.diagnosis && (
+                              <p className="text-[11px] text-slate-600">{att.diagnosis}</p>
+                            )}
+                          </div>
+                          {att.medicalRecordId && (
+                            <Button asChild size="sm" className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white">
+                              <Link href={`/ver-recipe/${att.medicalRecordId}`} target="_blank">
+                                <Pill className="h-3.5 w-3.5 mr-1" />
+                                Ver Récipe
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => window.print()}
+                      >
+                        <Printer className="h-3.5 w-3.5 mr-1.5" />
+                        Imprimir / Guardar PDF
+                      </Button>
+                      <Button asChild size="sm" variant="secondary" className="text-xs">
+                        <Link href={`/jornadas/${selectedCampaignTicket.campaignId}`}>
+                          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                          Página del Evento
+                        </Link>
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs"
+                      onClick={() => setSelectedCampaignTicket(null)}
+                    >
+                      Cerrar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

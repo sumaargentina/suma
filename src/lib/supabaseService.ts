@@ -131,7 +131,21 @@ export const getDoctorsLite = async (): Promise<Partial<Doctor>[]> => {
     }
 };
 
-export const getDoctor = (id: string) => getDocumentData<Doctor>('doctors', id);
+export const getDoctor = async (id: string): Promise<Doctor | null> => {
+    if (typeof window !== 'undefined') {
+        try {
+            const res = await fetch(`/api/doctors?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) return (data[0] as Doctor) || null;
+                if (data && typeof data === 'object' && 'id' in data) return data as Doctor;
+            }
+        } catch (err) {
+            console.warn('[supabaseService] Fallback to getDocumentData for getDoctor:', err);
+        }
+    }
+    return getDocumentData<Doctor>('doctors', id);
+};
 export const getSellers = async (): Promise<Seller[]> => {
     if (typeof window !== 'undefined') {
         try {

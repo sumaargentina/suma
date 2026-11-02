@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as supabaseService from "@/lib/supabaseService";
 import { Doctor, Appointment, Service, BankDetail, Clinic, PaymentSettings, FamilyMember, FamilyRelationship } from "@/lib/types";
 import { getExchangeRate } from "@/lib/currency-utils";
+import { findProfessionBySpecialty } from "@/lib/professions-catalog";
 import { useAuth } from "@/lib/auth";
 import { HeaderWrapper, BottomNav } from "@/components/header";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -117,7 +118,7 @@ export default function DoctorProfile() {
   const id = params?.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, switchToPatientMode } = useAuth();
 
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -292,7 +293,7 @@ export default function DoctorProfile() {
   // Cargar familiares cuando el usuario está autenticado
   useEffect(() => {
     const loadFamilyMembers = async () => {
-      if (user && user.role === 'patient') {
+      if (user && (user.role === 'patient' || user.role === 'doctor')) {
         setIsLoadingFamily(true);
         try {
           const members = await supabaseService.getFamilyMembersForBooking(user.id);
@@ -502,114 +503,172 @@ export default function DoctorProfile() {
     );
   };
 
+  const normalizeTextCompare = useCallback((val?: string | null) => {
+    if (!val) return '';
+    return val
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  }, []);
+
+  const calculateCouponDiscount = useCallback((coupon: any, basePrice: number) => {
+    const discountVal = Number(coupon?.value !== undefined ? coupon.value : coupon?.discountValue);
+    if (isNaN(discountVal) || discountVal <= 0) return 0;
+
+    let discount = 0;
+    if (coupon.discountType === 'percentage') {
+      discount = (basePrice * discountVal) / 100;
+      if (coupon.maxDiscount && discount > Number(coupon.maxDiscount)) {
+        discount = Number(coupon.maxDiscount);
+      }
+    } else {
+      discount = discountVal;
+    }
+
+    if (discount > basePrice) {
+      discount = basePrice;
+    }
+    return isNaN(discount) || discount < 0 ? 0 : discount;
+  }, []);
+
+  // Recalcular monto de descuento si cambia el consultorio o modalidad (ej. Presencial vs Online)
+  useEffect(() => {
+    if (!appliedCoupon || !doctor) return;
+    const basePrice = (currentAddress && currentAddress.consultationFee !== undefined)
+      ? currentAddress.consultationFee
+      : (doctor.consultationFee || 0);
+    setDiscountAmount(calculateCouponDiscount(appliedCoupon, basePrice));
+  }, [appliedCoupon, currentAddress, doctor, calculateCouponDiscount]);
+
   const handleApplyCoupon = () => {
     if (!id || !couponInput || !doctor) return;
 
     const inputCode = couponInput.trim().toUpperCase();
-    console.log('🔍 Intentando aplicar cupón:', inputCode);
-    console.log('👨‍⚕️ Doctor ID:', doctor.id);
-    console.log('🎫 Total cupones disponibles en contexto:', coupons.length);
+    const now = new Date();
 
-    // Filtrar cupones que aplican a este médico
-    const applicableCoupons = coupons.filter(c => {
-      // Verificar si el cupón está activo
-      if (c.isActive === false) return false;
+    const parseDateStart = (dStr?: string) => {
+      if (!dStr) return null;
+      const clean = dStr.includes('T') ? dStr.split('T')[0] : dStr;
+      const d = new Date(`${clean}T00:00:00`);
+      return isNaN(d.getTime()) ? null : d;
+    };
 
-      // Verificar fecha de validez
-      const now = new Date();
-      if (c.validFrom && new Date(c.validFrom) > now) return false;
-      if (c.validTo && new Date(c.validTo) < now) return false;
+    const parseDateEnd = (dStr?: string) => {
+      if (!dStr) return null;
+      const clean = dStr.includes('T') ? dStr.split('T')[0] : dStr;
+      const d = new Date(`${clean}T23:59:59.999`);
+      return isNaN(d.getTime()) ? null : d;
+    };
 
-      // Verificar alcance del cupón
-      let applies = false;
+    const checkScopeApplies = (c: any): boolean => {
+      const resolvedProf = doctor.profession || findProfessionBySpecialty(doctor.specialty)?.name || 'Medicina';
       switch (c.scopeType) {
         case 'all':
-          applies = true;
-          break;
+          return true;
+        case 'profession':
+          return normalizeTextCompare(c.scopeProfession) === normalizeTextCompare(resolvedProf);
         case 'specialty':
-          applies = c.scopeSpecialty === doctor.specialty;
-          break;
+          return normalizeTextCompare(c.scopeSpecialty) === normalizeTextCompare(doctor.specialty);
         case 'city':
-          applies = c.scopeCity === doctor.city;
-          break;
+          return (
+            normalizeTextCompare(c.scopeCity) === normalizeTextCompare(doctor.city) ||
+            normalizeTextCompare(c.scopeCity) === normalizeTextCompare(currentAddress?.city)
+          );
+        case 'clinic': {
+          const clinicTargets: string[] = [
+            ...(Array.isArray(c.scopeClinics) ? c.scopeClinics : []),
+            ...(c.scopeClinic ? [c.scopeClinic] : []),
+            ...(c.clinicId ? [c.clinicId] : []),
+          ];
+          const activeClinicId = clinic?.id || doctor.clinicId;
+          return Boolean(activeClinicId && clinicTargets.includes(activeClinicId));
+        }
         case 'specific':
-          applies = c.scopeDoctors?.includes(doctor.id);
-          break;
+          return Boolean(c.scopeDoctors?.includes(doctor.id));
         default:
-          // Compatibilidad con formato antiguo
-          applies = c.scope === 'general' || c.scope === id ||
-            (c.scope === 'specialty' && c.specialty === doctor.specialty);
+          return (
+            c.scope === 'general' ||
+            c.scope === id ||
+            (c.scope === 'specialty' && normalizeTextCompare(c.specialty) === normalizeTextCompare(doctor.specialty))
+          );
       }
+    };
 
-      console.log(`🎫 Evaluando cupón [${c.code}]: Scope=${c.scopeType}, Applies=${applies}`);
-      return applies;
-    });
+    // Buscar todos los cupones que coincidan con el código escrito
+    const matchingCodeCoupons = coupons.filter(c => c.code?.toUpperCase().trim() === inputCode);
 
-    console.log('✅ Cupones aplicables encontrados:', applicableCoupons.length);
-
-    const coupon = applicableCoupons.find(c => c.code.toUpperCase().trim() === inputCode);
-
-    if (!coupon) {
+    if (matchingCodeCoupons.length === 0) {
       toast({
         variant: "destructive",
-        title: "Cupón Inválido",
-        description: "El código ingresado no es válido o no aplica para este médico.",
+        title: "Cupón no encontrado",
+        description: "El código ingresado no existe o no está activo.",
       });
+      return;
+    }
+
+    // Buscar uno que aplique a este médico/especialidad/clínica/ciudad y esté vigente
+    let expiredReason = false;
+    let scopeReason = false;
+
+    const validCoupon = matchingCodeCoupons.find(c => {
+      if (c.isActive === false) return false;
+
+      const fromDate = parseDateStart(c.validFrom);
+      const toDate = parseDateEnd(c.validTo);
+      if ((fromDate && fromDate > now) || (toDate && toDate < now)) {
+        expiredReason = true;
+        return false;
+      }
+
+      if (!checkScopeApplies(c)) {
+        scopeReason = true;
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!validCoupon) {
+      if (expiredReason) {
+        toast({
+          variant: "destructive",
+          title: "Cupón Vencido",
+          description: "Este código promocional ha expirado o aún no está en fecha de vigencia.",
+        });
+      } else if (scopeReason) {
+        toast({
+          variant: "destructive",
+          title: "Cupón no aplicable",
+          description: "Este cupón corresponde a otra especialidad, clínica, ciudad o médico.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Cupón Inválido",
+          description: "El código ingresado no es válido para esta consulta.",
+        });
+      }
       return;
     }
 
     // Verificar límite de usos
-    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+    if (validCoupon.maxUses && (validCoupon.usedCount || 0) >= validCoupon.maxUses) {
       toast({
         variant: "destructive",
         title: "Cupón Agotado",
-        description: "Este cupón ha alcanzado su límite de usos.",
+        description: "Este cupón ha alcanzado su límite máximo de usos.",
       });
       return;
     }
 
-    setAppliedCoupon(coupon);
-
-    // Calular descuento
-    let discount = 0;
     const basePrice = (currentAddress && currentAddress.consultationFee !== undefined)
       ? currentAddress.consultationFee
       : (doctor.consultationFee || 0);
 
-    // Obtener el valor del descuento (soporte para 'value' o 'discountValue')
-    const discountVal = coupon.value !== undefined ? coupon.value : coupon.discountValue;
+    const discount = calculateCouponDiscount(validCoupon, basePrice);
 
-    if (discountVal === undefined) {
-      console.error('El cupón no tiene valor de descuento definido:', coupon);
-      toast({
-        variant: "destructive",
-        title: "Error de Cupón",
-        description: "El cupón no tiene un valor válido.",
-      });
-      return;
-    }
-
-    if (coupon.discountType === 'percentage') {
-      discount = (basePrice * discountVal) / 100;
-      // Aplicar límite máximo de descuento si existe
-      if (coupon.maxDiscount && discount > coupon.maxDiscount) {
-        discount = coupon.maxDiscount;
-      }
-    } else {
-      // Monto fijo
-      discount = discountVal;
-    }
-
-    // No permitir descuento mayor al precio base
-    if (discount > basePrice) {
-      discount = basePrice;
-    }
-
-    // Asegurar que discount sea un número válido
-    if (isNaN(discount)) {
-      discount = 0;
-    }
-
+    setAppliedCoupon(validCoupon);
     setDiscountAmount(discount);
 
     toast({
@@ -630,7 +689,7 @@ export default function DoctorProfile() {
     }
   };
 
-  const handleDateTimeSubmit = () => {
+  const handleDateTimeSubmit = async () => {
     if (!selectedDate || !selectedTime) {
       toast({
         variant: "destructive",
@@ -641,11 +700,52 @@ export default function DoctorProfile() {
     }
 
     if (!authLoading) {
+      const isSelfDoctor = Boolean(
+        user &&
+        doctor &&
+        (user.id === doctor.id ||
+          user.doctorAccountId === doctor.id ||
+          (user.email && doctor.email && user.email.toLowerCase() === doctor.email.toLowerCase()))
+      );
+
+      if (isSelfDoctor) {
+        toast({
+          variant: "destructive",
+          title: "Es tu propio perfil profesional",
+          description: "No puedes agendar una cita contigo mismo. Selecciona a otro colega especialista para agendar como paciente.",
+        });
+        return;
+      }
+
+      if (user && user.role === 'doctor') {
+        const pendingAppointmentData = {
+          doctorId: id,
+          selectedDate: selectedDate.toISOString(),
+          selectedTime,
+          selectedServices: [],
+          paymentMethod: null,
+          selectedBankDetail: null,
+          appliedCoupon: null,
+          discountAmount: 0,
+          couponInput: "",
+          step: 'selectDateTime',
+          selectedAddressId,
+        };
+        sessionStorage.setItem('pendingAppointment', JSON.stringify(pendingAppointmentData));
+
+        toast({
+          title: "Activando Modo Paciente...",
+          description: "Cambiando a tu espacio personal de salud para continuar con la reserva.",
+        });
+        await switchToPatientMode(`/doctors/${id}`);
+        return;
+      }
+
       if (user && user.role !== 'patient') {
         toast({
           variant: "destructive",
           title: "Acceso Restringido",
-          description: `Estás conectado como ${user.role === 'doctor' ? 'Médico' : user.role}. Debes iniciar sesión como Paciente para agendar.`,
+          description: `Estás conectado como ${user.role}. Debes iniciar sesión como Paciente para agendar.`,
         });
         return;
       }

@@ -309,7 +309,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       });
     } else if (listName === 'specialties') {
       newList = list.map(item => item === itemIdOrName ? newItem : item);
-    } else { // bank, expense, coupon
+    } else if (listName === 'coupons') {
+      newList = list.map(item => {
+        if (!item || (item as { id?: string }).id !== itemIdOrName) return item;
+        const cleanNew = { ...(newItem as object) } as Record<string, unknown>;
+        Object.keys(cleanNew).forEach(k => {
+          if (cleanNew[k] === undefined) delete cleanNew[k];
+        });
+        return {
+          createdAt: (item as Record<string, unknown>).createdAt,
+          usedCount: (item as Record<string, unknown>).usedCount || 0,
+          ...cleanNew,
+          id: itemIdOrName,
+        };
+      });
+    } else { // bank, expense
       newList = list.map(item => (item && (item as { id?: string }).id === itemIdOrName) ? { ...(item as object), ...(newItem as object) } : item);
     }
 

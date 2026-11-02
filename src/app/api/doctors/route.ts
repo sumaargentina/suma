@@ -76,8 +76,19 @@ export async function PATCH(req: Request) {
         }
         const isVerifying = snakeCaseData.verification_status === 'verified';
 
-        // Sincronizar el estado del Consultorio Privado según pago/mensualidad:
-        // Si se activa la suscripción o el estado del médico, habilitar su consultorio privado
+        // Sincronizar el estado del Consultorio Privado según pago/mensualidad o verificación:
+        // Si se verifica o activa el médico, habilitar su consultorio privado y suscripción activa
+        if (isVerifying) {
+            if (snakeCaseData.status === undefined) {
+                snakeCaseData.status = 'active';
+            }
+            if (snakeCaseData.subscription_status === undefined) {
+                snakeCaseData.subscription_status = 'active';
+            }
+            if (snakeCaseData.is_clinic_employee === undefined) {
+                snakeCaseData.is_clinic_employee = false;
+            }
+        }
         if (snakeCaseData.subscription_status === 'active') {
             snakeCaseData.status = 'active';
             snakeCaseData.is_clinic_employee = false;

@@ -6,8 +6,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { format, addDays, parseISO, isBefore, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
-import { Clinic, ClinicBranch, ClinicService } from "@/lib/types";
-import { getClinicBySlug, getClinicBranches, getClinicServices, addAppointment, getServiceAppointments } from "@/lib/supabaseService";
+import { Clinic, ClinicBranch, ClinicService, Coupon } from "@/lib/types";
+import { getClinicBySlug, getClinicBranches, getClinicServices, addAppointment, getServiceAppointments, getSettings } from "@/lib/supabaseService";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +60,8 @@ export default function ServiceBookingPage() {
     // New state for item selection
     const [selectedItemIndices, setSelectedItemIndices] = useState<number[]>([]);
     const [couponCode, setCouponCode] = useState("");
-    const [appliedCoupon, setAppliedCoupon] = useState<any>(null); // Using any temporarily to avoid import issues if Coupon is not exported
+    const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+    const [platformCoupons, setPlatformCoupons] = useState<Coupon[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
@@ -100,10 +101,14 @@ export default function ServiceBookingPage() {
             }
             setClinic(clinicData);
 
-            const [servicesData, branchesData] = await Promise.all([
+            const [servicesData, branchesData, settingsData] = await Promise.all([
                 getClinicServices(clinicData.id),
-                getClinicBranches(clinicData.id)
+                getClinicBranches(clinicData.id),
+                getSettings().catch(() => null),
             ]);
+            if (settingsData?.coupons) {
+                setPlatformCoupons(settingsData.coupons);
+            }
 
             const foundService = servicesData.find(s => s.id === serviceId);
             if (!foundService) {
@@ -136,36 +141,67 @@ export default function ServiceBookingPage() {
         const subtotal = base + extras;
 
         if (appliedCoupon) {
+            const val = Number(appliedCoupon.value ?? appliedCoupon.discountValue ?? 0);
             if (appliedCoupon.discountType === 'percentage') {
-                const discount = subtotal * (appliedCoupon.value / 100);
+                let discount = subtotal * (val / 100);
+                if (appliedCoupon.maxDiscount && discount > Number(appliedCoupon.maxDiscount)) {
+                    discount = Number(appliedCoupon.maxDiscount);
+                }
                 return Math.max(0, subtotal - discount);
             } else {
-                return Math.max(0, subtotal - appliedCoupon.value);
+                return Math.max(0, subtotal - val);
             }
         }
         return subtotal;
     }, [service, selectedItemIndices, appliedCoupon]);
 
     const handleApplyCoupon = () => {
-        if (!couponCode.trim()) return;
+        if (!couponCode.trim() || !clinic) return;
+        const inputCode = couponCode.trim().toUpperCase();
+        const now = new Date();
 
-        const coupons = clinic?.coupons || [];
-        const found = coupons.find(c => c.code.toUpperCase() === couponCode.trim().toUpperCase() && c.isActive);
+        const normalizeStr = (s?: string | null) =>
+            (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+        const clinicCoupons = (clinic.coupons || []).map(c => ({ ...c, _source: 'clinic' }));
+        const adminCoupons = (platformCoupons || []).filter(c => {
+            if (c.scopeType === 'all') return true;
+            if (c.scopeType === 'city') {
+                return normalizeStr(c.scopeCity) === normalizeStr(clinic.city) || normalizeStr(c.scopeCity) === normalizeStr(branch?.city);
+            }
+            if (c.scopeType === 'clinic') {
+                const targets = [
+                    ...(Array.isArray(c.scopeClinics) ? c.scopeClinics : []),
+                    ...(c.scopeClinic ? [c.scopeClinic] : []),
+                    ...(c.clinicId ? [c.clinicId] : []),
+                ];
+                return targets.includes(clinic.id);
+            }
+            return false;
+        });
+
+        const allAvailable = [...clinicCoupons, ...adminCoupons];
+        const found = allAvailable.find(c => c.code?.toUpperCase().trim() === inputCode && c.isActive !== false);
 
         if (!found) {
-            toast({ variant: 'destructive', title: 'Cupón no válido', description: 'El código ingresado no existe o ha expirado.' });
+            toast({ variant: 'destructive', title: 'Cupón no válido', description: 'El código ingresado no existe o no aplica para esta clínica.' });
             return;
         }
 
-        // Validate dates
-        const now = new Date();
-        if (new Date(found.validFrom) > now || new Date(found.validTo) < now) {
-            toast({ variant: 'destructive', title: 'Cupón vencido', description: 'Este cupón ya no es válido.' });
+        // Validate dates (end of day for validTo)
+        const fromStr = found.validFrom ? (found.validFrom.includes('T') ? found.validFrom.split('T')[0] : found.validFrom) : '';
+        const toStr = found.validTo ? (found.validTo.includes('T') ? found.validTo.split('T')[0] : found.validTo) : '';
+        const fromDate = fromStr ? new Date(`${fromStr}T00:00:00`) : null;
+        const toDate = toStr ? new Date(`${toStr}T23:59:59.999`) : null;
+
+        if ((fromDate && !isNaN(fromDate.getTime()) && fromDate > now) || (toDate && !isNaN(toDate.getTime()) && toDate < now)) {
+            toast({ variant: 'destructive', title: 'Cupón vencido', description: 'Este cupón ya no se encuentra vigente.' });
             return;
         }
 
-        setAppliedCoupon(found);
-        toast({ title: 'Cupón aplicado', description: `Se ha aplicado un descuento de ${found.discountType === 'percentage' ? `${found.value}%` : `$${found.value}`}` });
+        const val = Number(found.value ?? found.discountValue ?? 0);
+        setAppliedCoupon({ ...found, value: val, discountValue: val });
+        toast({ title: 'Cupón aplicado', description: `Se ha aplicado un descuento de ${found.discountType === 'percentage' ? `${val}%` : `$${val}`}` });
     };
 
     const handleRemoveCoupon = () => {

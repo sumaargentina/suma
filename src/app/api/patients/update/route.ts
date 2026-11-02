@@ -15,7 +15,7 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 export async function PATCH(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Verificar autenticación
-        const authResult = await requireAuth(request, ['patient', 'admin']);
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'admin']);
 
         if (authResult instanceof NextResponse) {
             logSecurityEvent('PATIENT_UPDATE_UNAUTHORIZED', {

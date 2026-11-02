@@ -146,16 +146,20 @@ export type Coupon = {
   discountValue: number;
   minAmount?: number;
   maxDiscount?: number;
-  validFrom: string; // ISO string
-  validTo: string; // ISO string
+  validFrom: string; // ISO string or YYYY-MM-DD
+  validTo: string; // ISO string or YYYY-MM-DD
   maxUses?: number;
+  usedCount?: number;
   isActive: boolean;
   createdAt: string; // ISO string
   updatedAt: string; // ISO string
-  scopeType: 'all' | 'specialty' | 'city' | 'specific';
+  scopeType: 'all' | 'profession' | 'specialty' | 'city' | 'specific' | 'clinic';
+  scopeProfession?: string;
   scopeSpecialty?: string;
   scopeCity?: string;
   scopeDoctors?: string[];
+  scopeClinic?: string;
+  scopeClinics?: string[];
   scope?: 'general' | string;
   value?: number;
   clinicId?: string;

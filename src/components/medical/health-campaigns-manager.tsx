@@ -112,6 +112,18 @@ function buildCampaignPrescriptionString(items: CampaignMedicationItem[]): strin
     .join('\n');
 }
 
+function isCampaignEnded(camp: HealthCampaign | null | undefined): boolean {
+  if (!camp) return false;
+  if (camp.status === 'completed' || camp.status === 'cancelled') return true;
+  const targetDate = (camp.endDate || camp.startDate || '').trim();
+  if (!targetDate) return false;
+  const rawTime = (camp.endTime || '23:59').trim();
+  const normalizedTime = /^\d{2}:\d{2}$/.test(rawTime) ? `${rawTime}:59` : '23:59:59';
+  const expiryMs = Date.parse(`${targetDate}T${normalizedTime}-04:00`);
+  if (Number.isNaN(expiryMs)) return false;
+  return Date.now() > expiryMs;
+}
+
 interface HealthCampaignsManagerProps {
   organizerId: string;
   organizerRole: HealthCampaignOrganizerRole;
@@ -136,9 +148,13 @@ export function HealthCampaignsManager({
   const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Jornada seleccionada para ver Detalle / Atender en Vivo / Estadísticas
+  // Jornada seleccionada para ver Detalle / Atender en Vivo / Estadísticas (null = vista de tarjetas/etiquetas)
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(initialCampaignId || null);
   const [detailTab, setDetailTab] = useState<'attend' | 'stats' | 'doctors' | 'registrations'>('attend');
+  const [campaignFilterStatus, setCampaignFilterStatus] = useState<'all' | 'active' | 'completed'>('all');
+  const [doctorScopeFilter, setDoctorScopeFilter] = useState<'all' | 'subscribed'>('all');
+  const [campaignListSearch, setCampaignListSearch] = useState('');
+  const [isAttendModalOpen, setIsAttendModalOpen] = useState(false);
   const [attendanceDoctorFilter, setAttendanceDoctorFilter] = useState<'all' | 'mine'>(
     organizerRole === 'doctor' ? 'mine' : 'all'
   );
@@ -275,9 +291,6 @@ export function HealthCampaignsManager({
       if (campRes.ok) {
         const data: HealthCampaign[] = await campRes.json();
         setCampaigns(Array.isArray(data) ? data : []);
-        if (data.length > 0 && !selectedCampaignId) {
-          setSelectedCampaignId(data[0].id);
-        }
       }
       if (orgAccRes.ok) {
         const accJson = await orgAccRes.json();
@@ -291,16 +304,42 @@ export function HealthCampaignsManager({
     } finally {
       setLoading(false);
     }
-  }, [organizerId, organizerRole, selectedCampaignId]);
+  }, [organizerId, organizerRole]);
 
   useEffect(() => {
     fetchCampaignsAndDoctors();
   }, [fetchCampaignsAndDoctors]);
 
   const selectedCampaign = useMemo(
-    () => campaigns.find(c => c.id === selectedCampaignId) || campaigns[0] || null,
+    () => campaigns.find(c => c.id === selectedCampaignId) || null,
     [campaigns, selectedCampaignId]
   );
+
+  const selectedCampaignExpired = useMemo(
+    () => isCampaignEnded(selectedCampaign),
+    [selectedCampaign]
+  );
+
+  const filteredCampaignsList = useMemo(() => {
+    const q = campaignListSearch.toLowerCase().trim();
+    return campaigns.filter(camp => {
+      const ended = isCampaignEnded(camp);
+      if (campaignFilterStatus === 'active' && ended) return false;
+      if (campaignFilterStatus === 'completed' && !ended) return false;
+      if (organizerRole === 'doctor' && doctorScopeFilter === 'subscribed') {
+        const myDocEntry = camp.doctors?.find(d => d.doctorId === organizerId);
+        const isSubscribed = camp.organizerId === organizerId || myDocEntry?.status === 'accepted';
+        if (!isSubscribed) return false;
+      }
+      if (!q) return true;
+      return (
+        camp.title.toLowerCase().includes(q) ||
+        (camp.city || '').toLowerCase().includes(q) ||
+        (camp.organizerName || '').toLowerCase().includes(q) ||
+        (camp.specialties || []).some(s => s.toLowerCase().includes(q))
+      );
+    });
+  }, [campaigns, campaignFilterStatus, doctorScopeFilter, campaignListSearch, organizerRole, organizerId]);
 
   // Configurar valores por defecto de médico y especialidad en la consola de atención cuando cambia la jornada
   useEffect(() => {
@@ -1311,52 +1350,183 @@ export function HealthCampaignsManager({
             </Button>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Columna Izquierda (4/12): Lista de Jornadas */}
-          <div className="lg:col-span-4 space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 px-1">
-              {organizerRole === 'doctor'
-                ? `Jornadas Suscritas y Disponibles (${campaigns.length})`
-                : `Mis Jornadas de Salud (${campaigns.length})`}
-            </h3>
-            <div className="space-y-3 max-h-[750px] overflow-y-auto pr-1">
-              {campaigns.map(camp => {
-                const isSelected = selectedCampaign?.id === camp.id;
+      ) : !selectedCampaign ? (
+        /* VISTA 1: ETIQUETAS / TARJETAS DE EVENTOS (SELECCIONA UN EVENTO PARA ABRIRLO) */
+        <div className="space-y-5">
+          {/* Barra de Filtros y Buscador de Eventos */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  {organizerRole === 'doctor'
+                    ? 'Selecciona la Jornada de Salud donde deseas participar o pasar consulta'
+                    : 'Selecciona una Jornada de Salud para abrir su panel y gestionar pacientes'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Haz clic sobre cualquiera de las tarjetas de eventos para desplegar sus detalles, estadísticas o consola de atención.
+                </p>
+              </div>
+
+              <div className="relative w-full lg:w-72 shrink-0">
+                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                <Input
+                  value={campaignListSearch}
+                  onChange={e => setCampaignListSearch(e.target.value)}
+                  placeholder="Buscar evento por nombre, ciudad..."
+                  className="pl-9 h-9 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCampaignFilterStatus('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    campaignFilterStatus === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Todas ({campaigns.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCampaignFilterStatus('active')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    campaignFilterStatus === 'active'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                  }`}
+                >
+                  🟢 Vigentes / Próximas ({campaigns.filter(c => !isCampaignEnded(c)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCampaignFilterStatus('completed')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    campaignFilterStatus === 'completed'
+                      ? 'bg-slate-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  🏁 Culminadas ({campaigns.filter(c => isCampaignEnded(c)).length})
+                </button>
+              </div>
+
+              {organizerRole === 'doctor' && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDoctorScopeFilter('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      doctorScopeFilter === 'all'
+                        ? 'bg-teal-700 text-white'
+                        : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200'
+                    }`}
+                  >
+                    Todas las Jornadas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDoctorScopeFilter('subscribed')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      doctorScopeFilter === 'subscribed'
+                        ? 'bg-teal-700 text-white'
+                        : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200'
+                    }`}
+                  >
+                    ✅ Solo Mis Jornadas Suscritas
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {filteredCampaignsList.length === 0 ? (
+            <Card className="border-dashed py-10 text-center">
+              <CardContent className="space-y-2">
+                <p className="text-sm font-bold text-slate-700">
+                  No se encontraron eventos con los filtros seleccionados.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setCampaignFilterStatus('all');
+                    setDoctorScopeFilter('all');
+                    setCampaignListSearch('');
+                  }}
+                >
+                  Ver todos los eventos
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredCampaignsList.map(camp => {
+                const ended = isCampaignEnded(camp);
                 const isCreator = camp.organizerId === organizerId || organizerRole === 'admin';
                 const myDocEntry = camp.doctors?.find(d => d.doctorId === organizerId);
                 const isSubscribed =
                   camp.organizerId === organizerId || myDocEntry?.status === 'accepted';
                 const isPendingInvite = myDocEntry?.status === 'pending';
                 const myAttCount = (camp.attendances || []).filter(a => a.doctorId === organizerId).length;
+
                 return (
                   <Card
                     key={camp.id}
-                    onClick={() => setSelectedCampaignId(camp.id)}
-                    className={`cursor-pointer transition-all overflow-hidden ${
-                      isSelected
-                        ? 'border-2 border-teal-600 ring-2 ring-teal-500/20 shadow-md'
-                        : 'border-slate-200 hover:border-teal-300'
+                    onClick={() => {
+                      setSelectedCampaignId(camp.id);
+                      setDetailTab(ended ? 'stats' : 'attend');
+                    }}
+                    className={`cursor-pointer transition-all overflow-hidden flex flex-col justify-between ${
+                      ended
+                        ? 'bg-slate-100/90 border-slate-200/90 opacity-80 hover:opacity-95'
+                        : 'bg-white border-slate-200 hover:border-teal-500 hover:shadow-md'
                     }`}
                   >
-                    {camp.coverImage && (
-                      <div className="h-28 w-full bg-slate-100 overflow-hidden relative">
-                        <img src={camp.coverImage} alt={camp.title} className="w-full h-full object-cover" />
-                        <Badge
-                          className={`absolute top-2 right-2 text-[10px] ${
-                            camp.campaignType === 'free'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-amber-500 text-white'
-                          }`}
-                        >
-                          {camp.campaignType === 'free' ? 'Gratuita' : 'Privada'}
-                        </Badge>
-                      </div>
-                    )}
-                    <CardContent className="p-4 space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-bold text-slate-900 text-sm line-clamp-2">{camp.title}</h4>
-                        {!camp.coverImage && (
+                    <div>
+                      {camp.coverImage ? (
+                        <div className="h-36 w-full bg-slate-100 overflow-hidden relative">
+                          <img
+                            src={camp.coverImage}
+                            alt={camp.title}
+                            className={`w-full h-full object-cover ${ended ? 'grayscale-[35%]' : ''}`}
+                          />
+                          <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
+                            {ended ? (
+                              <Badge className="bg-slate-800/90 text-slate-100 border border-slate-600 text-[10px] font-bold">
+                                🏁 Evento Culminado
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-emerald-600 text-white text-[10px] font-bold shadow-xs">
+                                🟢 Evento Vigente
+                              </Badge>
+                            )}
+                          </div>
+                          <Badge
+                            className={`absolute top-2.5 right-2.5 text-[10px] ${
+                              camp.campaignType === 'free'
+                                ? 'bg-teal-700 text-white'
+                                : 'bg-amber-500 text-white'
+                            }`}
+                          >
+                            {camp.campaignType === 'free' ? 'Gratuita' : 'Privada'}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="px-4 pt-4 flex items-center justify-between gap-2">
+                          {ended ? (
+                            <Badge className="bg-slate-200 text-slate-700 border border-slate-300 text-[10px] font-bold">
+                              🏁 Evento Culminado
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                              🟢 Evento Vigente
+                            </Badge>
+                          )}
                           <Badge
                             className={`shrink-0 text-[10px] ${
                               camp.campaignType === 'free'
@@ -1366,97 +1536,146 @@ export function HealthCampaignsManager({
                           >
                             {camp.campaignType === 'free' ? 'Gratuita' : 'Privada'}
                           </Badge>
-                        )}
-                      </div>
-
-                      {organizerRole === 'doctor' && (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {isSubscribed ? (
-                            <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
-                              ✅ Suscrito • Pasar Consulta ({myAttCount} atendidos por mí)
-                            </Badge>
-                          ) : isPendingInvite ? (
-                            <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
-                              ⏳ Invitación Pendiente
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-sky-50 text-sky-800 border-sky-200 text-[10px] font-semibold">
-                              🩺 Jornada Disponible para Suscribirte
-                            </Badge>
-                          )}
                         </div>
                       )}
 
-                      <div className="text-xs text-slate-600 space-y-1">
-                        <p className="flex items-center gap-1.5 font-medium text-slate-800">
-                          <Building2 className="h-3.5 w-3.5 text-teal-600 shrink-0" />
-                          <span className="truncate">
-                            Organiza: <strong>{camp.organizerName}</strong>{' '}
-                            <span className="text-[11px] text-teal-700">
-                              ({camp.organizerRole === 'pharmacy'
-                                ? 'Farmacia'
-                                : camp.organizerRole === 'laboratory'
-                                ? 'Laboratorio'
-                                : camp.organizerRole === 'clinic'
-                                ? 'Clínica'
-                                : camp.organizerRole === 'doctor'
-                                ? 'Médico'
-                                : 'SUMA'})
+                      <CardContent className="p-4 space-y-3">
+                        <div>
+                          <h4 className={`font-extrabold text-base line-clamp-2 ${ended ? 'text-slate-600' : 'text-slate-900'}`}>
+                            {camp.title}
+                          </h4>
+                        </div>
+
+                        {organizerRole === 'doctor' && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {isSubscribed ? (
+                              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                                ✅ Suscrito • ({myAttCount} atendidos por mí)
+                              </Badge>
+                            ) : isPendingInvite ? (
+                              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
+                                ⏳ Invitación Pendiente
+                              </Badge>
+                            ) : !ended ? (
+                              <Badge variant="outline" className="bg-sky-50 text-sky-800 border-sky-200 text-[10px] font-semibold">
+                                🩺 Disponible para Suscribirte
+                              </Badge>
+                            ) : null}
+                          </div>
+                        )}
+
+                        <div className="text-xs text-slate-600 space-y-1">
+                          <p className="flex items-center gap-1.5 font-medium text-slate-800">
+                            <Building2 className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                            <span className="truncate">
+                              Organiza: <strong>{camp.organizerName}</strong>{' '}
+                              <span className="text-[11px] text-teal-700">
+                                ({camp.organizerRole === 'pharmacy'
+                                  ? 'Farmacia'
+                                  : camp.organizerRole === 'laboratory'
+                                  ? 'Laboratorio'
+                                  : camp.organizerRole === 'clinic'
+                                  ? 'Clínica'
+                                  : camp.organizerRole === 'doctor'
+                                  ? 'Médico'
+                                  : 'SUMA'})
+                              </span>
                             </span>
-                          </span>
-                        </p>
-                        <p className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-teal-600 shrink-0" />
-                          <span>
-                            {camp.startDate} ({camp.startTime} - {camp.endTime})
-                          </span>
-                        </p>
-                        <p className="flex items-center gap-1.5 truncate">
-                          <MapPin className="h-3.5 w-3.5 text-teal-600 shrink-0" />
-                          <span className="truncate">
-                            {[camp.city, camp.state, camp.address].filter(Boolean).join(', ') || 'Sin dirección'}
-                          </span>
-                        </p>
-                      </div>
+                          </p>
+                          <p className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                            <span>
+                              {camp.startDate}
+                              {camp.endDate && camp.endDate !== camp.startDate ? ` al ${camp.endDate}` : ''} ({camp.startTime} - {camp.endTime})
+                            </span>
+                          </p>
+                          <p className="flex items-center gap-1.5 truncate">
+                            <MapPin className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                            <span className="truncate">
+                              {[camp.city, camp.state, camp.address].filter(Boolean).join(', ') || 'Sin dirección'}
+                            </span>
+                          </p>
+                        </div>
 
-                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t text-center">
-                        <div className="bg-slate-50 rounded p-1.5">
-                          <p className="text-xs font-extrabold text-teal-700">
-                            {camp.stats?.totalAttended || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">Atendidos</p>
+                        <div className="grid grid-cols-3 gap-1.5 pt-2 border-t text-center">
+                          <div className="bg-white/80 rounded p-1.5 border border-slate-100">
+                            <p className="text-xs font-extrabold text-teal-700">
+                              {camp.stats?.totalAttended || 0}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Atendidos</p>
+                          </div>
+                          <div className="bg-white/80 rounded p-1.5 border border-slate-100">
+                            <p className="text-xs font-extrabold text-blue-700">
+                              {camp.registrations?.length || 0}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Anotados</p>
+                          </div>
+                          <div className="bg-white/80 rounded p-1.5 border border-slate-100">
+                            <p className="text-xs font-extrabold text-emerald-700">
+                              {camp.doctors?.filter(d => d.status === 'accepted').length || 0}/
+                              {camp.doctors?.length || 0}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Médicos</p>
+                          </div>
                         </div>
-                        <div className="bg-slate-50 rounded p-1.5">
-                          <p className="text-xs font-extrabold text-blue-700">
-                            {camp.stats?.totalWithPrescription || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">Con Récipe</p>
-                        </div>
-                        <div className="bg-slate-50 rounded p-1.5">
-                          <p className="text-xs font-extrabold text-emerald-700">
-                            {camp.doctors?.filter(d => d.status === 'accepted').length || 0}/
-                            {camp.doctors?.length || 0}
-                          </p>
-                          <p className="text-[10px] text-slate-500">Médicos</p>
-                        </div>
-                      </div>
+                      </CardContent>
+                    </div>
 
-                      {organizerRole === 'doctor' && !isSubscribed && (
-                        <div className="pt-1" onClick={e => e.stopPropagation()}>
+                    <div className="px-4 pb-4 pt-1 space-y-2" onClick={e => e.stopPropagation()}>
+                      {organizerRole === 'doctor' && !isSubscribed && !ended ? (
+                        <Button
+                          size="sm"
+                          disabled={isSubscribingDoctor}
+                          className="w-full h-9 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                          onClick={() => handleSubscribeAsDoctor(camp.id)}
+                        >
+                          <Stethoscope className="h-3.5 w-3.5 mr-1.5" />
+                          Suscribirme y Pasar Consulta
+                        </Button>
+                      ) : !ended && (organizerRole !== 'doctor' || isSubscribed) ? (
+                        <div className="grid grid-cols-2 gap-2">
                           <Button
                             size="sm"
-                            disabled={isSubscribingDoctor}
-                            className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold"
-                            onClick={() => handleSubscribeAsDoctor(camp.id)}
+                            className="h-9 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                            onClick={() => {
+                              setSelectedCampaignId(camp.id);
+                              setDetailTab('attend');
+                              resetAttendanceForm();
+                              setIsAttendModalOpen(true);
+                            }}
                           >
                             <Stethoscope className="h-3.5 w-3.5 mr-1.5" />
-                            Suscribirme y Pasar Consulta
+                            Atender Paciente
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-xs font-bold border-teal-300 text-teal-800 hover:bg-teal-50"
+                            onClick={() => {
+                              setSelectedCampaignId(camp.id);
+                              setDetailTab('attend');
+                            }}
+                          >
+                            Abrir Evento →
                           </Button>
                         </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full h-9 text-xs font-bold text-slate-700"
+                          onClick={() => {
+                            setSelectedCampaignId(camp.id);
+                            setDetailTab('stats');
+                          }}
+                        >
+                          <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+                          Ver Resultados y Estadísticas
+                        </Button>
                       )}
 
                       {isCreator && (
-                        <div className="flex items-center justify-end gap-1 pt-1" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1 pt-1 border-t border-slate-200/60">
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1476,18 +1695,94 @@ export function HealthCampaignsManager({
                           </Button>
                         </div>
                       )}
-                    </CardContent>
+                    </div>
                   </Card>
                 );
               })}
             </div>
+          )}
+        </div>
+      ) : (
+        /* VISTA 2: PANEL OPERATIVO DE LA JORNADA SELECCIONADA */
+        <div className="space-y-6">
+          {/* Barra de Navegación para Volver a la Lista de Etiquetas + Botón Rápido de Atención */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedCampaignId(null)}
+                className="font-bold text-xs border-slate-300 text-slate-800 hover:bg-slate-100"
+              >
+                ← Volver a Todas las Jornadas ({campaigns.length})
+              </Button>
+              {selectedCampaignExpired ? (
+                <Badge className="bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold px-3 py-1">
+                  🏁 Evento Culminado (Cerrado para nuevos registros)
+                </Badge>
+              ) : (
+                <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-3 py-1">
+                  🟢 Jornada Activa / Vigente
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {!selectedCampaignExpired && (organizerRole !== 'doctor' || isDoctorSubscribedToSelected) && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                  resetAttendanceForm();
+                    setDetailTab('attend');
+                    setIsAttendModalOpen(true);
+                  }}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-extrabold shadow-sm text-xs px-4"
+                >
+                  <Stethoscope className="h-4 w-4 mr-1.5" />
+                  🩺 Registrar / Atender Paciente (Ventana Rápida)
+                </Button>
+              )}
+              {(selectedCampaign.organizerId === organizerId || organizerRole === 'admin') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleOpenEditModal(selectedCampaign)}
+                  className="text-xs"
+                >
+                  <Edit className="h-3.5 w-3.5 mr-1.5" />
+                  Editar Evento / Fecha
+                </Button>
+              )}
+            </div>
           </div>
 
-          {/* Columna Derecha (8/12): Panel Operativo y Estadístico de la Jornada Seleccionada */}
-          {selectedCampaign && (
-            <div className="lg:col-span-8 space-y-6">
+          {selectedCampaignExpired && (
+            <div className="p-4 rounded-2xl border border-slate-300 bg-slate-100/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-slate-700">
+              <div className="space-y-0.5">
+                <p className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  🏁 Este evento ya culminó ({selectedCampaign.endDate || selectedCampaign.startDate} • {selectedCampaign.endTime})
+                </p>
+                <p className="text-xs text-slate-600">
+                  La fecha de vencimiento de esta jornada ha finalizado, por lo que no permite registrar ni atender nuevos pacientes. Puedes consultar todo el historial de pacientes atendidos, récipes y estadísticas.
+                </p>
+              </div>
+              {(selectedCampaign.organizerId === organizerId || organizerRole === 'admin') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleOpenEditModal(selectedCampaign)}
+                  className="shrink-0 bg-white text-xs font-bold"
+                >
+                  <Edit className="h-3.5 w-3.5 mr-1.5" />
+                  Cambiar Fecha de Vencimiento
+                </Button>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-6">
               {/* Barra Superior del Evento Seleccionado con Link para Compartir */}
-              <Card className="border-slate-200 shadow-xs">
+              <Card className={selectedCampaignExpired ? 'border-slate-200 bg-slate-50/80 opacity-90' : 'border-slate-200 shadow-xs'}>
                 <CardContent className="p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div className="space-y-1">
@@ -1522,8 +1817,11 @@ export function HealthCampaignsManager({
                           )
                         </Badge>
                         <span className="text-xs text-slate-500">
-                          📅 <strong>{selectedCampaign.startDate}</strong> ({selectedCampaign.startTime} a{' '}
-                          {selectedCampaign.endTime})
+                          📅 <strong>{selectedCampaign.startDate}</strong>
+                          {selectedCampaign.endDate && selectedCampaign.endDate !== selectedCampaign.startDate
+                            ? ` al ${selectedCampaign.endDate}`
+                            : ''}{' '}
+                          ({selectedCampaign.startTime} a {selectedCampaign.endTime})
                         </span>
                         <Badge
                           variant="outline"
@@ -1538,6 +1836,20 @@ export function HealthCampaignsManager({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {!selectedCampaignExpired && (organizerRole !== 'doctor' || isDoctorSubscribedToSelected) && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            resetAttendanceForm();
+                            setDetailTab('attend');
+                            setIsAttendModalOpen(true);
+                          }}
+                          className="bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                        >
+                          <Stethoscope className="h-3.5 w-3.5 mr-1.5" />
+                          Pasar Consulta / Atender Paciente
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -1580,7 +1892,7 @@ export function HealthCampaignsManager({
                 <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto gap-1 bg-slate-200/70 p-1">
                   <TabsTrigger value="attend" className="text-xs font-bold py-2">
                     <Stethoscope className="h-3.5 w-3.5 mr-1.5" />
-                    Día del Evento: Atender
+                    {selectedCampaignExpired ? 'Atención (Culminado)' : 'Día del Evento: Atender'}
                   </TabsTrigger>
                   <TabsTrigger value="stats" className="text-xs font-bold py-2">
                     <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
@@ -1598,68 +1910,142 @@ export function HealthCampaignsManager({
 
                 {/* TAB 1: CONSOLA DE ATENCIÓN EN VIVO (DÍA DEL EVENTO - SIN CITAS) */}
                 <TabsContent value="attend" className="mt-4 space-y-4">
-                  {organizerRole === 'doctor' && !isDoctorSubscribedToSelected && (
-                    <div className="p-4 rounded-2xl border-2 border-teal-500 bg-teal-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-sm font-extrabold text-teal-950 flex items-center gap-1.5">
-                          <Stethoscope className="h-4 w-4 text-teal-600" />
-                          ¿Participarás como médico en esta Jornada de Salud?
+                  {selectedCampaignExpired ? (
+                    <Card className="border-slate-300 bg-slate-100/80 py-8 text-center">
+                      <CardContent className="space-y-3 max-w-lg mx-auto">
+                        <Badge className="bg-slate-700 text-white text-xs px-3 py-1">
+                          🏁 Evento Culminado
+                        </Badge>
+                        <h4 className="text-lg font-extrabold text-slate-800">
+                          La recepción y atención de nuevos pacientes en esta jornada ha finalizado
+                        </h4>
+                        <p className="text-xs text-slate-600">
+                          La fecha límite configurada ({selectedCampaign.endDate || selectedCampaign.startDate} a las {selectedCampaign.endTime}) ya se cumplió. Puedes revisar las estadísticas completas y los récipes emitidos en la pestaña de Estadísticas.
                         </p>
-                        <p className="text-xs text-teal-800">
-                          Suscríbete con un clic para aparecer en el equipo médico oficial del evento y pasar tu consulta independiente con tu propio usuario (<strong>Dr(a). {organizerName}</strong>).
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={isSubscribingDoctor}
-                        onClick={() => handleSubscribeAsDoctor(selectedCampaign.id)}
-                        className="bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0"
-                      >
-                        <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                        Suscribirme a esta Jornada
-                      </Button>
-                    </div>
-                  )}
-
-                  {organizerRole === 'doctor' && isDoctorSubscribedToSelected && (
-                    <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-950">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>
-                          <strong>Consulta Independiente Activa:</strong> Estás pasando consulta con tu usuario{' '}
-                          <strong>Dr(a). {organizerName}</strong>. Cada paciente que atiendas aquí se guardará directamente en la jornada{' '}
-                          <strong>«{selectedCampaign.title}»</strong>.
-                        </span>
-                      </div>
-                      <Badge className="bg-emerald-600 text-white shrink-0 w-fit">
-                        Mis consultas en esta jornada: {myAttendedInSelectedCampaign}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {organizerRole !== 'doctor' && (
-                    <div className="p-3.5 rounded-xl border border-sky-200 bg-sky-50/80 flex items-start gap-2.5 text-xs text-sky-950">
-                      <Stethoscope className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong>Acceso Independiente para Cada Médico:</strong> Todos los médicos suscritos a esta jornada tienen acceso directo desde su propio Panel Médico (pestaña <strong>Jornadas</strong>) para pasar su consulta independiente con su propio usuario, y cada atención que registren se guarda automáticamente en esta jornada. También puedes registrar atenciones desde aquí seleccionando al médico tratante.
-                      </div>
-                    </div>
-                  )}
-
-                  <Card className="border-2 border-teal-500/80 shadow-sm">
-                    <CardHeader className="bg-teal-50/70 border-b pb-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <CardTitle className="text-lg text-teal-950 flex items-center gap-2">
-                            <Stethoscope className="h-5 w-5 text-teal-600" />
-                            Consola de Atención de Pacientes en la Jornada (Sin Cita Previa)
-                          </CardTitle>
-                          <CardDescription className="text-xs text-teal-800">
-                            Ingresa la cédula del paciente que se sienta a consulta. Si ya es usuario SUMA se guarda en su historial; si no, recibe todo su récipe por correo con invitación para registrarse en SUMA.
-                          </CardDescription>
+                        <div className="flex justify-center gap-2 pt-2">
+                          <Button size="sm" onClick={() => setDetailTab('stats')} className="bg-teal-600 hover:bg-teal-700 text-white font-bold">
+                            <BarChart3 className="h-4 w-4 mr-1.5" />
+                            Ver Estadísticas e Historial ({selectedCampaign.stats?.totalAttended || 0})
+                          </Button>
                         </div>
-                      </div>
-                    </CardHeader>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <>
+                      {organizerRole === 'doctor' && !isDoctorSubscribedToSelected && (
+                        <div className="p-4 rounded-2xl border-2 border-teal-500 bg-teal-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-extrabold text-teal-950 flex items-center gap-1.5">
+                              <Stethoscope className="h-4 w-4 text-teal-600" />
+                              ¿Participarás como médico en esta Jornada de Salud?
+                            </p>
+                            <p className="text-xs text-teal-800">
+                              Suscríbete con un clic para aparecer en el equipo médico oficial del evento y pasar tu consulta independiente con tu propio usuario (<strong>Dr(a). {organizerName}</strong>).
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            disabled={isSubscribingDoctor}
+                            onClick={() => handleSubscribeAsDoctor(selectedCampaign.id)}
+                            className="bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                            Suscribirme a esta Jornada
+                          </Button>
+                        </div>
+                      )}
+
+                      {organizerRole === 'doctor' && isDoctorSubscribedToSelected && (
+                        <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-950">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                            <span>
+                              <strong>Consulta Independiente Activa:</strong> Estás pasando consulta con tu usuario{' '}
+                              <strong>Dr(a). {organizerName}</strong>. Cada paciente que atiendas aquí se guardará directamente en la jornada{' '}
+                              <strong>«{selectedCampaign.title}»</strong>.
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge className="bg-emerald-600 text-white">
+                              Mis consultas: {myAttendedInSelectedCampaign}
+                            </Badge>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                resetAttendanceForm();
+                                setIsAttendModalOpen(true);
+                              }}
+                              className="h-7 text-xs bg-teal-700 hover:bg-teal-800 text-white font-bold"
+                            >
+                              Abrir en Modal
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {organizerRole !== 'doctor' && (
+                        <div className="p-3.5 rounded-xl border border-sky-200 bg-sky-50/80 flex items-start gap-2.5 text-xs text-sky-950">
+                          <Stethoscope className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Acceso Independiente para Cada Médico:</strong> Todos los médicos suscritos a esta jornada tienen acceso directo desde su propio Panel Médico (pestaña <strong>Jornadas</strong>) para pasar su consulta independiente con su propio usuario, y cada atención que registren se guarda automáticamente en esta jornada. También puedes registrar atenciones desde aquí seleccionando al médico tratante.
+                          </div>
+                        </div>
+                      )}
+
+                      <div
+                        className={
+                          isAttendModalOpen
+                            ? 'fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto'
+                            : ''
+                        }
+                        onClick={() => {
+                          if (isAttendModalOpen) setIsAttendModalOpen(false);
+                        }}
+                      >
+                        <Card
+                          id="campaign-attendance-console"
+                          onClick={e => e.stopPropagation()}
+                          className={`border-2 border-teal-500/80 shadow-sm ${
+                            isAttendModalOpen
+                              ? 'w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-white shadow-2xl ring-4 ring-teal-500/20'
+                              : ''
+                          }`}
+                        >
+                          <CardHeader className="bg-teal-50/70 border-b pb-4 sticky top-0 z-20">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <CardTitle className="text-lg text-teal-950 flex items-center gap-2">
+                                  <Stethoscope className="h-5 w-5 text-teal-600" />
+                                  Consola de Atención de Pacientes en la Jornada (Sin Cita Previa)
+                                </CardTitle>
+                                <CardDescription className="text-xs text-teal-800">
+                                  Ingresa la cédula del paciente que se sienta a consulta o selecciónalo de la lista de pre-anotados.
+                                </CardDescription>
+                              </div>
+                              {isAttendModalOpen ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setIsAttendModalOpen(false)}
+                                  className="bg-white border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold shrink-0"
+                                >
+                                  <X className="h-3.5 w-3.5 mr-1" />
+                                  Cerrar Ventana
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setIsAttendModalOpen(true)}
+                                  className="bg-white border-teal-300 text-teal-800 hover:bg-teal-100 text-xs font-bold shrink-0"
+                                >
+                                  Abrir en Ventana Modal
+                                </Button>
+                              )}
+                            </div>
+                          </CardHeader>
 
                     <CardContent className="pt-5">
                       {lastAttendanceResult ? (
@@ -2447,7 +2833,10 @@ export function HealthCampaignsManager({
                       )}
                     </CardContent>
                   </Card>
-                </TabsContent>
+                </div>
+              </>
+            )}
+          </TabsContent>
 
                 {/* TAB 2: ESTADÍSTICAS E HISTORIAL DE LA JORNADA */}
                 <TabsContent value="stats" className="mt-4 space-y-6">
@@ -2892,7 +3281,7 @@ export function HealthCampaignsManager({
                                   )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  {reg.status !== 'attended' && (
+                                  {reg.status !== 'attended' && !selectedCampaignExpired && (
                                     <Button
                                       size="sm"
                                       className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white"
@@ -2910,10 +3299,16 @@ export function HealthCampaignsManager({
                                         }
                                         setPatientLookupStatus(reg.patientId ? 'registered' : 'guest');
                                         setDetailTab('attend');
+                                        setIsAttendModalOpen(true);
                                       }}
                                     >
                                       Pasar a Consulta
                                     </Button>
+                                  )}
+                                  {reg.status !== 'attended' && selectedCampaignExpired && (
+                                    <span className="text-[11px] text-slate-400 font-medium">
+                                      Evento culminado
+                                    </span>
                                   )}
                                 </TableCell>
                               </TableRow>
@@ -2930,7 +3325,6 @@ export function HealthCampaignsManager({
                 </TabsContent>
               </Tabs>
             </div>
-          )}
         </div>
       )}
 

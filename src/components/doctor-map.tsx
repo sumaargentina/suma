@@ -73,8 +73,8 @@ function toMapItems(doctors: Doctor[], clinics: Clinic[], pharmacies: Pharmacy[]
       consultationFee: d.consultationFee,
     });
 
-    if (d.addresses && d.addresses.length > 0) {
-      d.addresses.forEach((addr, addrIdx) => {
+    if (d.addresses && d.addresses.length > 1) {
+      d.addresses.slice(1).forEach((addr, addrIdx) => {
         let addrLat = Number(addr.lat);
         let addrLng = Number(addr.lng);
         if (!addrLat || !addrLng || (addrLat === 0 && addrLng === 0) || isNaN(addrLat) || isNaN(addrLng)) {
@@ -88,7 +88,7 @@ function toMapItems(doctors: Doctor[], clinics: Clinic[], pharmacies: Pharmacy[]
         }
 
         items.push({
-          id: `${d.id}-${addr.id || addrIdx}`,
+          id: `${d.id}-${addr.id || addrIdx + 1}`,
           doctorId: d.id,
           type: "doctor",
           name: d.name,
@@ -167,6 +167,21 @@ function toMapItems(doctors: Doctor[], clinics: Clinic[], pharmacies: Pharmacy[]
       is24Hours: Boolean(p.is24Hours || p.is_24_hours),
     });
   });
+
+  // Evitar que marcadores con la misma coordenada base (ej. centro de la ciudad 9.7469, -63.1831)
+  // se apilen uno encima del otro haciéndose invisibles en el mapa.
+  const coordGroups = new Map<string, number>();
+  for (const item of items) {
+    const key = `${item.lat.toFixed(3)}_${item.lng.toFixed(3)}`;
+    const count = coordGroups.get(key) || 0;
+    coordGroups.set(key, count + 1);
+    if (count > 0) {
+      const angle = (count * 137.508) * (Math.PI / 180);
+      const radius = 0.0028 * Math.sqrt(count);
+      item.lat += Math.sin(angle) * radius;
+      item.lng += Math.cos(angle) * radius;
+    }
+  }
 
   return items;
 }

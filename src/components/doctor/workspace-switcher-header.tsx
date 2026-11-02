@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Building2, Stethoscope, Landmark, ChevronDown, Check, PlusCircle, BellRing, CheckCircle2, XCircle, Loader2, Lock } from 'lucide-react';
+import { Building2, Stethoscope, Landmark, ChevronDown, Check, PlusCircle, BellRing, CheckCircle2, XCircle, Loader2, Lock, HeartHandshake } from 'lucide-react';
 import type { WorkspaceType, DoctorWorkspace } from '@/lib/types';
 
 export function WorkspaceSwitcherHeader() {
-  const { user, workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, setShowWorkspaceModal } = useAuth();
+  const { user, workspaces, activeWorkspace, switchWorkspace, switchToPatientMode, refreshWorkspaces, setShowWorkspaceModal } = useAuth();
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -231,6 +231,20 @@ export function WorkspaceSwitcherHeader() {
           )}
 
           <DropdownMenuSeparator className="my-1" />
+          <DropdownMenuItem
+            onClick={() => switchToPatientMode()}
+            className="flex items-center gap-2.5 p-2.5 text-xs font-semibold text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 rounded-lg cursor-pointer my-0.5 border border-rose-200/70"
+          >
+            <div className="p-1.5 rounded-md bg-rose-100 text-rose-600">
+              <HeartHandshake className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex flex-col">
+              <span>Modo Paciente (Mi Salud y Familia)</span>
+              <span className="text-[10px] font-normal text-rose-600/90">
+                Agendar con colegas y gestionar familiares
+              </span>
+            </div>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setShowWorkspaceModal(true)}
             className="flex items-center gap-2 p-2 text-xs font-medium text-primary hover:bg-primary/5 rounded-lg cursor-pointer"

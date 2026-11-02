@@ -341,7 +341,7 @@ export function NotificationBellPopover({
 }
 
 export function Header() {
-  const { user, logout, activeWorkspace } = useAuth();
+  const { user, logout, activeWorkspace, isDoctorInPatientMode, switchToPatientMode, switchToDoctorMode } = useAuth();
   const { professionsCatalog } = useSettings();
   const doctorCapabilities = resolveDoctorCapabilities(user?.role === 'doctor' ? user : null, professionsCatalog);
   const { notifications, unreadCount, markNotificationAsRead, markAllAsRead, clearReadNotifications } = useNotifications();
@@ -851,6 +851,18 @@ export function Header() {
             </div>
           )}
 
+          {user && isDoctorInPatientMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => switchToDoctorMode()}
+              className="mr-1 h-9 px-3 rounded-lg border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-semibold text-xs flex items-center gap-1.5 shadow-2xs"
+            >
+              <Stethoscope className="h-3.5 w-3.5" />
+              <span>Volver a mi Panel Médico</span>
+            </Button>
+          )}
+
           {user && isDoctor && (
             <NotificationBellPopover
               items={doctorNotifications}
@@ -961,10 +973,30 @@ export function Header() {
                         </DropdownMenuItem>
                       </>
                     )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => switchToPatientMode()}
+                      className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 dark:text-rose-400 dark:focus:bg-rose-950/40 font-semibold cursor-pointer"
+                    >
+                      <Heart className="mr-2 h-4 w-4" />
+                      <span>Modo Paciente (Mi Salud)</span>
+                    </DropdownMenuItem>
                   </>
                 )}
                 {user.role === 'patient' && (
                   <>
+                    {isDoctorInPatientMode && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={() => switchToDoctorMode()}
+                          className="text-blue-600 focus:text-blue-700 focus:bg-blue-50 dark:text-blue-400 dark:focus:bg-blue-950/40 font-semibold cursor-pointer"
+                        >
+                          <Stethoscope className="mr-2 h-4 w-4" />
+                          <span>Volver a mi Panel Médico</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     <DropdownMenuItem asChild>
                       <Link href="/profile">
                         <User className="mr-2 h-4 w-4" />
@@ -1204,6 +1236,15 @@ export function Header() {
                           </SheetClose>
                         </>
                       )}
+                      <SheetClose asChild>
+                        <button
+                          type="button"
+                          onClick={() => switchToPatientMode()}
+                          className="w-full flex items-center gap-2 text-sm font-semibold py-2 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60 transition mt-1"
+                        >
+                          <Heart className="h-4 w-4 text-rose-500" /> Modo Paciente (Mi Salud)
+                        </button>
+                      </SheetClose>
                     </div>
 
                     {/* Explorar sitio */}
@@ -1249,6 +1290,17 @@ export function Header() {
 
                 {(!user || user.role === 'patient') && (
                   <div className="flex flex-col gap-1.5">
+                    {isDoctorInPatientMode && (
+                      <SheetClose asChild>
+                        <button
+                          type="button"
+                          onClick={() => switchToDoctorMode()}
+                          className="w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 px-3 mb-2 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700 transition"
+                        >
+                          <Stethoscope className="h-4 w-4" /> Volver a mi Panel Médico
+                        </button>
+                      </SheetClose>
+                    )}
                     <p className="text-muted-foreground font-semibold text-xs mb-1">NAVEGACIÓN</p>
                     {patientNavLinks.map((link) => (
                       <SheetClose key={link.href} asChild>

@@ -208,8 +208,12 @@ export default function ProfilePage() {
     }
 
     // Refrescar directamente desde la base de datos para cargar datos completos y actualizados
-    if (user.email) {
-      supabaseService.findUserByEmail(user.email).then((fresh) => {
+    if (user.id || user.email) {
+      const fetchProfilePromise = user.id
+        ? supabaseService.getPatient(user.id).then((pat) => pat || (user.email ? supabaseService.findUserByEmail(user.email) : null))
+        : supabaseService.findUserByEmail(user.email);
+
+      fetchProfilePromise.then((fresh: any) => {
         if (fresh) {
           setFullName(fresh.name ?? '');
           setBirthDate(fresh.birthDate ?? '');

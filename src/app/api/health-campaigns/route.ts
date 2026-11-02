@@ -252,11 +252,41 @@ async function resolveOrganizerAccounts(organizerId: string, organizerRole: stri
                 }
                 if (list.length > 0) return list;
             }
+        } else if (organizerRole === 'pharmacy') {
+            const { data: pharm } = await supabaseAdmin
+                .from('pharmacies')
+                .select('name, rif, phone, whatsapp')
+                .eq('id', organizerId)
+                .maybeSingle();
+            if (pharm && (pharm.phone || pharm.whatsapp)) {
+                return [
+                    {
+                        currency: 'VES',
+                        bank: 'Pago Móvil / Contacto Farmacia',
+                        accountType: 'Pago Móvil / Transferencia',
+                        accountHolder: pharm.name || '',
+                        idNumber: pharm.rif || '',
+                        accountNumber: pharm.phone || pharm.whatsapp || '',
+                        phone: pharm.phone || pharm.whatsapp || '',
+                    },
+                ];
+            }
         }
     } catch {
         // ignore
     }
     return [];
+}
+
+function isCampaignDateTimeExpired(startDate?: string | null, endDate?: string | null, endTime?: string | null): boolean {
+    const targetDate = (endDate || startDate || '').trim();
+    if (!targetDate) return false;
+    const rawTime = (endTime || '23:59').trim();
+    const normalizedTime = /^\d{2}:\d{2}$/.test(rawTime) ? `${rawTime}:59` : '23:59:59';
+    const expiryIso = `${targetDate}T${normalizedTime}-04:00`;
+    const expiryMs = Date.parse(expiryIso);
+    if (Number.isNaN(expiryMs)) return false;
+    return Date.now() > expiryMs;
 }
 
 function mapCampaignRow(
@@ -265,6 +295,14 @@ function mapCampaignRow(
     registrations: ReturnType<typeof mapRegistrationRow>[],
     attendances: ReturnType<typeof mapAttendanceRow>[]
 ) {
+    const expiredByDate = isCampaignDateTimeExpired(row.start_date, row.end_date, row.end_time);
+    const effectiveStatus =
+        row.status === 'cancelled'
+            ? 'cancelled'
+            : row.status === 'completed' || expiredByDate
+            ? 'completed'
+            : row.status || 'upcoming';
+
     return {
         id: row.id,
         title: row.title,
@@ -294,7 +332,7 @@ function mapCampaignRow(
         address: row.address,
         coverImage: row.cover_image,
         galleryImages: Array.isArray(row.gallery_images) ? row.gallery_images : [],
-        status: row.status || 'upcoming',
+        status: effectiveStatus,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         doctors,

@@ -70,10 +70,14 @@ const ServiceFormSchema = z.object({
 const CouponFormSchema = z.object({
     name: z.string().optional(),
     description: z.string().optional(),
-    code: z.string().min(3, "El código debe tener al menos 3 caracteres.").toUpperCase(),
+    code: z.string().trim().min(3, "El código debe tener al menos 3 caracteres.").toUpperCase(),
     discountType: z.enum(['percentage', 'fixed']),
-    value: z.preprocess((val) => Number(val), z.number().positive("El valor debe ser positivo.")),
-});
+    value: z.preprocess((val) => Number(val), z.number().positive("El valor debe ser mayor a 0.")),
+    validTo: z.string().optional(),
+}).refine(
+    (data) => data.discountType !== 'percentage' || data.value <= 100,
+    { message: "El porcentaje de descuento no puede ser mayor a 100%.", path: ["value"] }
+);
 
 const ExpenseFormSchema = z.object({
     date: z.string().min(1, "La fecha es requerida."),
@@ -201,6 +205,13 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
         setIsBankDetailDialogOpen(true);
     };
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+    const [couponDiscountType, setCouponDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+
+    const handleOpenCouponDialog = (c: Coupon | null) => {
+        setEditingCoupon(c);
+        setCouponDiscountType(c?.discountType || 'fixed');
+        setIsCouponDialogOpen(true);
+    };
     const [selectedSupportTicket, setSelectedSupportTicket] = useState<AdminSupportTicket | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{ type: 'expense' | 'service' | 'bank' | 'coupon', id: string } | null>(null);
 
@@ -371,32 +382,78 @@ export function DoctorDashboardClient({ currentTab }: { currentTab: string }) {
         const list = (doctorData[listKey as keyof Doctor] || []) as unknown[];
         const editingEntity = type === 'expense' ? editingExpense : type === 'service' ? editingService : type === 'bank' ? editingBankDetail : editingCoupon;
 
+        let payloadData = { ...(data as Record<string, unknown>) };
+
+        if (type === 'coupon') {
+            const cleanCode = String(payloadData.code || '').trim().toUpperCase();
+            const isDuplicate = list.some(item => {
+                if (!item || typeof item !== 'object' || !('code' in item)) return false;
+                const existing = item as Coupon;
+                if (editingEntity && existing.id === editingEntity.id) return false;
+                return existing.code?.trim().toUpperCase() === cleanCode;
+            });
+            if (isDuplicate) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Código duplicado',
+                    description: `Ya tienes un cupón con el código "${cleanCode}".`,
+                });
+                return;
+            }
+
+            const numVal = Number(payloadData.value ?? payloadData.discountValue ?? 0);
+            const nowIso = new Date().toISOString();
+            const todayStr = nowIso.split('T')[0];
+            const defaultValidTo = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const validToStr = payloadData.validTo && String(payloadData.validTo).trim()
+                ? String(payloadData.validTo).trim()
+                : ((editingEntity as Coupon | null)?.validTo || defaultValidTo);
+
+            payloadData = {
+                ...payloadData,
+                code: cleanCode,
+                value: numVal,
+                discountValue: numVal,
+                isActive: true,
+                scopeType: 'specific',
+                scopeDoctors: [doctorData.id],
+                validFrom: (editingEntity as Coupon | null)?.validFrom || todayStr,
+                validTo: validToStr,
+                createdAt: (editingEntity as Coupon | null)?.createdAt || nowIso,
+                updatedAt: nowIso,
+            };
+        }
+
         let newList;
         if (editingEntity) {
-            newList = list.map(item => (typeof item === 'object' && item && 'id' in item && item.id === editingEntity.id) ? { ...item, ...(data as object) } : item);
+            newList = list.map(item => (typeof item === 'object' && item && 'id' in item && item.id === editingEntity.id) ? { ...item, ...payloadData } : item);
         } else {
-            newList = [...list, { ...(data as object), id: `${type}-${Date.now()}` }];
+            newList = [...list, { ...payloadData, id: `${type}-${Date.now()}` }];
         }
 
-        // Logs específicos para cupones
-        if (type === 'coupon') {
-            console.log('💾 Guardando cupón:', {
-                doctorId: doctorData.id,
-                cuponData: data,
-                cuponesActuales: list.length,
-                cuponesNuevos: newList.length,
-                nuevoCupon: newList[newList.length - 1]
+        try {
+            await supabaseService.updateDoctor(doctorData.id, { [listKey]: newList });
+            await fetchData();
+            const labelMap: Record<string, string> = {
+                expense: 'Gasto',
+                service: 'Servicio',
+                bank: 'Cuenta bancaria',
+                coupon: 'Cupón',
+            };
+            toast({ title: `${labelMap[type] || type} guardado exitosamente.` });
+
+            if (type === 'expense') setIsExpenseDialogOpen(false);
+            if (type === 'service') setIsServiceDialogOpen(false);
+            if (type === 'bank') setIsBankDetailDialogOpen(false);
+            if (type === 'coupon') setIsCouponDialogOpen(false);
+        } catch (err: any) {
+            console.error(`Error guardando ${type}:`, err);
+            toast({
+                variant: 'destructive',
+                title: 'Error al guardar',
+                description: err?.message || 'No se pudieron guardar los cambios.',
             });
         }
-
-        await supabaseService.updateDoctor(doctorData.id, { [listKey]: newList });
-        await fetchData();
-        toast({ title: `${type.charAt(0).toUpperCase() + type.slice(1)} guardado.` });
-
-        if (type === 'expense') setIsExpenseDialogOpen(false);
-        if (type === 'service') setIsServiceDialogOpen(false);
-        if (type === 'bank') setIsBankDetailDialogOpen(false);
-        if (type === 'coupon') setIsCouponDialogOpen(false);
     };
 
     const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -989,7 +1046,7 @@ ID Transacción: ${transactionId}`;
                         {currentTab === "coupons" && (
                             !isClinicDoctor ? (
                                 isPrivateWorkspaceLocked ? renderPrivateWorkspaceLockedCard() : (
-                                    <CouponsTab coupons={doctorData.coupons || []} doctorId={doctorData.id} onOpenDialog={(c) => { setEditingCoupon(c); setIsCouponDialogOpen(true); }} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
+                                    <CouponsTab coupons={doctorData.coupons || []} doctorId={doctorData.id} onOpenDialog={handleOpenCouponDialog} onDeleteItem={(type, id) => { setItemToDelete({ type, id }); setIsDeleteDialogOpen(true); }} />
                                 )
                             ) : (
                                 <div className="text-center py-10 text-muted-foreground">Esta sección es gestionada por la clínica.</div>
@@ -1392,14 +1449,112 @@ ID Transacción: ${transactionId}`;
                 </DialogContent>
             </Dialog>
             <Dialog open={isCouponDialogOpen} onOpenChange={setIsCouponDialogOpen}>
-                <DialogContent><DialogHeader><DialogTitle>{editingCoupon ? 'Editar Cupón' : 'Nuevo Cupón'}</DialogTitle></DialogHeader>
-                    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const data = { name: fd.get('name') as string, description: fd.get('description') as string, code: fd.get('code') as string, discountType: fd.get('discountType') as 'percentage' | 'fixed', value: parseFloat(fd.get('value') as string) }; const result = CouponFormSchema.safeParse(data); if (result.success) handleSaveEntity('coupon', result.data); else toast({ variant: 'destructive', title: 'Error', description: result.error.errors.map(e => e.message).join(' ') }) }} className="space-y-4 py-4">
-                        <div><Label htmlFor="name">Nombre (Opcional)</Label><Input id="name" name="name" defaultValue={editingCoupon?.name || ''} placeholder="Ej: Promo Verano" /></div>
-                        <div><Label htmlFor="description">Descripción (Opcional)</Label><Input id="description" name="description" defaultValue={editingCoupon?.description || ''} placeholder="Detalles de condiciones..." /></div>
-                        <div><Label htmlFor="code">Código del Cupón</Label><Input id="code" name="code" defaultValue={editingCoupon?.code || ''} required /></div>
-                        <div><Label htmlFor="discountType">Tipo</Label><Select name="discountType" defaultValue={editingCoupon?.discountType || 'fixed'}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Monto Fijo ($)</SelectItem><SelectItem value="percentage">Porcentaje (%)</SelectItem></SelectContent></Select></div>
-                        <div><Label htmlFor="value">Valor</Label><Input id="value" name="value" type="number" step="0.01" defaultValue={editingCoupon?.value || ''} required /></div>
-                        <DialogFooter><DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose><Button type="submit">Guardar</Button></DialogFooter>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{editingCoupon ? 'Editar Cupón' : 'Nuevo Cupón de Descuento'}</DialogTitle>
+                        <DialogDescription>
+                            Crea un código promocional exclusivo para tus pacientes por monto fijo ($) o porcentaje (%).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form
+                        key={editingCoupon?.id || 'new-coupon'}
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const fd = new FormData(e.currentTarget);
+                            const data = {
+                                name: (fd.get('name') as string) || '',
+                                description: (fd.get('description') as string) || '',
+                                code: (fd.get('code') as string) || '',
+                                discountType: couponDiscountType,
+                                value: parseFloat(fd.get('value') as string),
+                                validTo: (fd.get('validTo') as string) || undefined,
+                            };
+                            const result = CouponFormSchema.safeParse(data);
+                            if (result.success) {
+                                handleSaveEntity('coupon', result.data);
+                            } else {
+                                toast({
+                                    variant: 'destructive',
+                                    title: 'Error de validación',
+                                    description: result.error.errors.map(err => err.message).join(' '),
+                                });
+                            }
+                        }}
+                        className="space-y-4 py-2"
+                    >
+                        <div className="space-y-1.5">
+                            <Label htmlFor="code">Código del Cupón <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="code"
+                                name="code"
+                                defaultValue={editingCoupon?.code || ''}
+                                placeholder="Ej: CONSULTA10"
+                                className="font-mono uppercase font-bold"
+                                onChange={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
+                                required
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="discountType">Tipo de Descuento <span className="text-red-500">*</span></Label>
+                                <Select
+                                    value={couponDiscountType}
+                                    onValueChange={(v) => setCouponDiscountType(v as 'fixed' | 'percentage')}
+                                >
+                                    <SelectTrigger id="discountType">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="fixed">Monto Fijo ($)</SelectItem>
+                                        <SelectItem value="percentage">Porcentaje (%)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="value">
+                                    Valor ({couponDiscountType === 'fixed' ? 'USD $' : '%'}) <span className="text-red-500">*</span>
+                                </Label>
+                                <Input
+                                    id="value"
+                                    name="value"
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    max={couponDiscountType === 'percentage' ? '100' : undefined}
+                                    defaultValue={editingCoupon?.value ?? editingCoupon?.discountValue ?? ''}
+                                    placeholder={couponDiscountType === 'fixed' ? 'Ej: 10.00' : 'Ej: 20'}
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="name">Nombre de la Promoción (Opcional)</Label>
+                            <Input id="name" name="name" defaultValue={editingCoupon?.name || ''} placeholder="Ej: Promo Primera Consulta" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="description">Descripción (Opcional)</Label>
+                            <Input id="description" name="description" defaultValue={editingCoupon?.description || ''} placeholder="Detalles o condiciones del descuento..." />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="validTo">Fecha de Caducación (Opcional)</Label>
+                            <Input
+                                id="validTo"
+                                name="validTo"
+                                type="date"
+                                defaultValue={
+                                    editingCoupon?.validTo
+                                        ? (editingCoupon.validTo.includes('T') ? editingCoupon.validTo.split('T')[0] : editingCoupon.validTo)
+                                        : ''
+                                }
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                Si lo dejas vacío, el cupón será válido por 1 año.
+                            </p>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+                            <Button type="submit">{editingCoupon ? 'Guardar Cambios' : 'Crear Cupón'}</Button>
+                        </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>

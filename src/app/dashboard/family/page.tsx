@@ -10,16 +10,20 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function FamilyPage() {
-    const { user, loading } = useAuth();
+    const { user, loading, switchToPatientMode } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading && (!user || user.role !== 'patient')) {
-            router.push('/auth/login');
+        if (!loading) {
+            if (user?.role === 'doctor') {
+                switchToPatientMode('/dashboard/family');
+            } else if (!user || user.role !== 'patient') {
+                router.push('/auth/login');
+            }
         }
-    }, [user, loading, router]);
+    }, [user, loading, router, switchToPatientMode]);
 
-    if (loading || !user) {
+    if (loading || !user || user.role !== 'patient') {
         return (
             <div className="flex flex-col min-h-screen bg-background">
                 <HeaderWrapper />

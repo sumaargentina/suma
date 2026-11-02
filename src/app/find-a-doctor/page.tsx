@@ -5,6 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DoctorCard } from "@/components/doctor-card";
 import { ClinicCard } from "@/components/clinic/clinic-card";
 import { AlliedPharmaciesSection } from "@/components/pharmacy/pharmacy-card";
+import {
+  ExpandableDoctorsSection,
+  ExpandableWellnessSection,
+  ExpandableClinicsSection,
+} from "@/components/directory-expandable-sections";
 import { Search, Stethoscope, Heart, Activity, Sparkles } from "lucide-react";
 import { getDoctors, getClinics, getPharmacies, getSettings } from "@/lib/supabaseService";
 import { Doctor, Clinic, Pharmacy } from "@/lib/types";
@@ -100,13 +105,13 @@ export default async function FindDoctorPage({
 
   // Filter Logic - Doctores (ya aislados por país)
   const filteredDoctors = doctors.filter(doctor => {
-    // La ficha individual del médico aparece en el buscador general SOLO si su Consultorio Privado
-    // tiene su mensualidad activa. Si no paga su mensualidad (o solo atiende en Hospital/Clínica sin pagar consultorio privado),
-    // no aparece aquí (pero sigue apareciendo dentro de su Hospital o Clínica).
+    // La ficha individual del médico aparece en el buscador general si está activo, verificado
+    // y su suscripción no está inactiva (incluye 'active' y 'pending_payment' una vez verificado).
     const hasActivePrivateConsultorio =
       doctor.status === 'active' &&
-      doctor.subscriptionStatus === 'active' &&
-      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate));
+      doctor.verificationStatus === 'verified' &&
+      doctor.subscriptionStatus !== 'inactive' &&
+      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate) || doctor.subscriptionStatus === 'active');
     if (!hasActivePrivateConsultorio) return false;
 
     // Búsqueda en múltiples campos
@@ -132,7 +137,7 @@ export default async function FindDoctorPage({
     );
 
     const matchesProfession = professionFilter === "all" || resolvedProf.toLowerCase() === professionFilter.toLowerCase();
-    const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
+    const matchesSpecialty = specialtyFilter === "all" || doctor.specialty?.toLowerCase() === specialtyFilter.toLowerCase();
 
     // Filtro por Estado y Ciudad
     let matchesLocation = true;
@@ -207,8 +212,9 @@ export default async function FindDoctorPage({
   const mapDoctors = doctors.filter(doctor => {
     const hasActivePrivateConsultorio =
       doctor.status === 'active' &&
-      doctor.subscriptionStatus === 'active' &&
-      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate));
+      doctor.verificationStatus === 'verified' &&
+      doctor.subscriptionStatus !== 'inactive' &&
+      (!doctor.isClinicEmployee || Boolean(doctor.lastPaymentDate) || doctor.subscriptionStatus === 'active');
     if (!hasActivePrivateConsultorio) return false;
 
     const insurancesString = doctor.acceptedInsurances?.join(' ') || '';
@@ -231,7 +237,7 @@ export default async function FindDoctorPage({
 
     const resolvedProf = doctor.profession || findProfessionBySpecialty(doctor.specialty, professionsCatalog)?.name || 'Médico';
     const matchesProfession = professionFilter === "all" || resolvedProf.toLowerCase() === professionFilter.toLowerCase();
-    const matchesSpecialty = specialtyFilter === "all" || doctor.specialty === specialtyFilter;
+    const matchesSpecialty = specialtyFilter === "all" || doctor.specialty?.toLowerCase() === specialtyFilter.toLowerCase();
     const fee = doctor.consultationFee || 0;
     const matchesPrice = fee >= minPrice && fee <= maxPrice;
     const rating = doctor.rating || 0;
@@ -353,83 +359,28 @@ export default async function FindDoctorPage({
             mapPharmacies={mapPharmacies}
             centerCity={cityFilter !== "all" ? cityFilter : (stateFilter !== "all" ? stateFilter : undefined)}
           >
-            {/* 1. MÉDICOS PARTICULARES */}
+            {/* 1. MÉDICOS PARTICULARES (3 en fila horizontal + Ver más) */}
             {regularDoctors.length > 0 && viewMode !== 'clinics' && viewMode !== 'pharmacies' && (
-              <div className="space-y-3 md:space-y-6">
-                {/* Header compacto en móvil */}
-                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
-                      <Stethoscope className="h-4 w-4 md:h-6 md:w-6 text-primary" />
-                    </div>
-                    <div>
-                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Médicos</h2>
-                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Especialistas independientes</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
-                    {regularDoctors.length}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                  {regularDoctors.map(doctor => (
-                    <DoctorCard key={doctor.id} doctor={doctor} />
-                  ))}
-                </div>
-              </div>
+              <ExpandableDoctorsSection
+                doctors={regularDoctors}
+                defaultExpanded={viewMode === 'doctors'}
+              />
             )}
 
-            {/* 2. ESPECIALISTAS DE BIENESTAR */}
+            {/* 2. ESPECIALISTAS DE BIENESTAR (3 en fila horizontal + Ver más) */}
             {wellnessDoctors.length > 0 && viewMode !== 'clinics' && viewMode !== 'pharmacies' && (
-              <div className="space-y-3 md:space-y-4">
-                <div className="flex items-center justify-between border-b pb-2 md:pb-3 border-slate-200">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="p-1.5 md:p-2 bg-gradient-to-br from-pink-500/10 to-purple-500/10 rounded-lg">
-                      <Sparkles className="h-4 w-4 md:h-5 md:w-5 text-pink-500" />
-                    </div>
-                    <div>
-                      <h2 className="text-base md:text-xl font-bold text-slate-900">Bienestar</h2>
-                      <p className="text-slate-500 text-[10px] md:text-xs hidden md:block">Estética y cuidado personal</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] md:text-xs font-semibold bg-gradient-to-r from-pink-50 to-purple-50 text-pink-600 px-2 md:px-3 py-1 rounded-full border border-pink-100">
-                    {wellnessDoctors.length}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                  {wellnessDoctors.map(doctor => (
-                    <DoctorCard key={doctor.id} doctor={doctor} />
-                  ))}
-                </div>
-              </div>
+              <ExpandableWellnessSection
+                doctors={wellnessDoctors}
+                defaultExpanded={viewMode === 'doctors'}
+              />
             )}
 
-            {/* 3. CLÍNICAS */}
+            {/* 3. CLÍNICAS (3 en fila horizontal + Ver más) */}
             {filteredClinics.length > 0 && viewMode !== 'doctors' && viewMode !== 'pharmacies' && (
-              <div className="space-y-3 md:space-y-6">
-                <div className="flex items-center justify-between border-b pb-2 md:pb-4 border-slate-200">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="p-1.5 md:p-2 bg-secondary/10 rounded-lg">
-                      <Heart className="h-4 w-4 md:h-6 md:w-6 text-secondary" />
-                    </div>
-                    <div>
-                      <h2 className="text-base md:text-2xl font-bold text-slate-900">Clínicas</h2>
-                      <p className="text-slate-500 text-[10px] md:text-sm hidden md:block">Centros médicos destacados</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] md:text-sm font-semibold bg-slate-100 text-slate-600 px-2 md:px-4 py-1 md:py-1.5 rounded-full">
-                    {filteredClinics.length}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                  {filteredClinics.map((clinic, index) => (
-                    <ClinicCard key={clinic.id} clinic={clinic} priority={index < 4} />
-                  ))}
-                </div>
-              </div>
+              <ExpandableClinicsSection
+                clinics={filteredClinics}
+                defaultExpanded={viewMode === 'clinics'}
+              />
             )}
 
             {/* 4. FARMACIAS ALIADAS (Minitarjetas en 1 línea + desplegable + modal) */}
