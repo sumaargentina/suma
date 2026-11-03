@@ -4,7 +4,23 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useAdminNotifications } from '@/lib/admin-notifications';
-import { Loader2, LayoutDashboard, Stethoscope, Briefcase, Users, DollarSign, Building2, FlaskConical, Pill, Megaphone, LifeBuoy, Settings, ClipboardList, HeartHandshake } from 'lucide-react';
+import {
+  Loader2,
+  LayoutDashboard,
+  Stethoscope,
+  Briefcase,
+  Users,
+  DollarSign,
+  Building2,
+  FlaskConical,
+  Pill,
+  Megaphone,
+  LifeBuoy,
+  Settings,
+  ClipboardList,
+  HeartHandshake,
+  BookOpen,
+} from 'lucide-react';
 import { OverviewTab } from './tabs/overview-tab';
 import { DoctorsTab } from './tabs/doctors-tab';
 import { SellersTab } from './tabs/sellers-tab';
@@ -16,6 +32,7 @@ import { SettingsTab } from './tabs/settings-tab';
 import { ClinicsTab } from './tabs/clinics-tab';
 import { PharmaciesTab } from './tabs/pharmacies-tab';
 import { LaboratoriesTab } from './tabs/laboratories-tab';
+import { SystemBlueprintTab } from './tabs/system-blueprint-tab';
 import { HealthCampaignsManager } from '@/components/medical/health-campaigns-manager';
 import { Skeleton } from '../ui/skeleton';
 import { BcvRateWidget } from './bcv-rate-widget';
@@ -23,6 +40,7 @@ import { cn } from '@/lib/utils';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
+  { id: 'blueprint', label: 'Manual Maestro (HTML)', icon: BookOpen },
   { id: 'doctors', label: 'Médicos', icon: Stethoscope },
   { id: 'clinics', label: 'Clínicas y Hospitales', icon: Building2 },
   { id: 'laboratories', label: 'Laboratorios', icon: FlaskConical },
@@ -80,6 +98,8 @@ export function AdminDashboardClient({ currentTab = 'overview' }: { currentTab?:
     switch (currentTab) {
       case 'overview':
         return <OverviewTab />;
+      case 'blueprint':
+        return <SystemBlueprintTab />;
       case 'doctors':
         return <DoctorsTab />;
       case 'sellers':

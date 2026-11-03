@@ -17,17 +17,18 @@ import {
   MapPin,
   Phone,
   Clock,
-  ExternalLink,
   MessageCircle,
   Pill,
   Loader2,
   CheckCircle2,
-  Building2,
-  Filter
+  Filter,
+  Navigation,
+  Compass
 } from 'lucide-react';
 import type { Pharmacy } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { PharmacyShowcaseModal } from './pharmacy-showcase-modal';
+import { groupPharmaciesByChainWithOptimalBranch } from './recipe-recommended-pharmacies-section';
 
 interface SendToPharmacyModalProps {
   isOpen: boolean;
@@ -78,6 +79,9 @@ export function SendToPharmacyModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('ALL');
   const [showcasePharmacy, setShowcasePharmacy] = useState<Pharmacy | null>(null);
+  const [patientCoords, setPatientCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locatingGps, setLocatingGps] = useState(false);
+  const [branchOverrides, setBranchOverrides] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isOpen) {
@@ -92,7 +96,9 @@ export function SendToPharmacyModal({
       if (res.ok) {
         const data = await res.json();
         const active = (data || []).filter(
-          (p: any) => p.status === 'active' || !p.status
+          (p: any) =>
+            (p.status === 'active' || !p.status) &&
+            (!p.branchApprovalStatus || p.branchApprovalStatus === 'approved')
         );
         setPharmacies(active);
 
@@ -112,6 +118,19 @@ export function SendToPharmacyModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRequestGps = () => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
+    setLocatingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setPatientCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocatingGps(false);
+      },
+      () => setLocatingGps(false),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   };
 
   const cities = useMemo(() => {
@@ -145,6 +164,15 @@ export function SendToPharmacyModal({
       );
     });
   }, [pharmacies, selectedCity, searchTerm]);
+
+  const groupedChains = useMemo(() => {
+    return groupPharmaciesByChainWithOptimalBranch(filteredPharmacies, pharmacies, {
+      patientLat: patientCoords?.lat ?? null,
+      patientLng: patientCoords?.lng ?? null,
+      targetCity: selectedCity !== 'ALL' ? selectedCity : defaultCity || null,
+      prescriptionText
+    });
+  }, [filteredPharmacies, pharmacies, patientCoords, selectedCity, defaultCity, prescriptionText]);
 
   const handleSendToPharmacy = (pharmacy: Pharmacy) => {
     const rawPhone = pharmacy.whatsapp || pharmacy.phone;
@@ -213,7 +241,7 @@ export function SendToPharmacyModal({
               Enviar Récipe a Farmacia
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-teal-100/90 mt-1">
-              Elige una farmacia aliada para consultar disponibilidad y precios de tus medicamentos directamente por WhatsApp.
+              Elige una farmacia o sucursal aliada. El algoritmo selecciona automáticamente la sede óptima según tu ubicación.
             </DialogDescription>
           </DialogHeader>
 
@@ -250,6 +278,22 @@ export function SendToPharmacyModal({
             />
           </div>
 
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleRequestGps}
+            disabled={locatingGps}
+            className="h-9 rounded-xl text-xs font-bold border-teal-200 bg-teal-50/70 text-teal-800 hover:bg-teal-100 shrink-0"
+          >
+            {locatingGps ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+            ) : (
+              <Navigation className="h-3.5 w-3.5 mr-1" />
+            )}
+            {patientCoords ? '📍 GPS Activo' : 'Sede más cercana'}
+          </Button>
+
           {cities.length > 0 && (
             <div className="flex items-center gap-1.5 shrink-0">
               <Filter className="h-3.5 w-3.5 text-slate-400" />
@@ -270,14 +314,14 @@ export function SendToPharmacyModal({
           )}
         </div>
 
-        {/* Listado de Farmacias */}
+        {/* Listado de Farmacias Agrupado Inteligente por Cadena */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center text-slate-500 gap-2">
               <Loader2 className="h-7 w-7 text-teal-600 animate-spin" />
-              <span className="text-xs">Cargando farmacias disponibles...</span>
+              <span className="text-xs">Cargando farmacias y calculando sucursales cercanas...</span>
             </div>
-          ) : filteredPharmacies.length === 0 ? (
+          ) : groupedChains.length === 0 ? (
             <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-200/80">
               <Store className="h-10 w-10 text-slate-300 mx-auto mb-2" />
               <h4 className="font-bold text-slate-800 text-sm">No se encontraron farmacias</h4>
@@ -286,90 +330,141 @@ export function SendToPharmacyModal({
               </p>
             </div>
           ) : (
-            filteredPharmacies.map((pharmacy) => {
-              const isChain = pharmacy.isChain || Boolean(pharmacy.chainName || pharmacy.chain_name);
+            groupedChains.map((group) => {
+              const { chainKey, bestBranch, allChainBranches, selectionReason } = group;
+              const overrideId = branchOverrides[chainKey];
+              const pharmacy =
+                (overrideId && allChainBranches.find((b) => b.id === overrideId)) || bestBranch;
+
+              const hasMultipleBranches = allChainBranches.length > 1;
+              const isChain =
+                hasMultipleBranches ||
+                pharmacy.isChain ||
+                Boolean(pharmacy.chainName || pharmacy.chain_name);
               const displayName = pharmacy.chainName || pharmacy.chain_name || pharmacy.name;
               const branch = isChain ? (pharmacy.branchName || pharmacy.branch_name) : null;
               const logo = pharmacy.logoUrl || pharmacy.logo_url;
               const is24Hours = Boolean(pharmacy.is24Hours || pharmacy.is_24_hours);
+              const activeReason = pharmacy._selectionReason || selectionReason;
 
               return (
                 <div
-                  key={pharmacy.id}
-                  className="bg-white rounded-2xl p-4 border border-slate-200/90 hover:border-teal-300 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                  key={chainKey}
+                  className="bg-white rounded-2xl p-4 border border-slate-200/90 hover:border-teal-300 shadow-xs hover:shadow-md transition-all flex flex-col gap-3 group"
                 >
-                  {/* Info Farmacia */}
-                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                    {/* Logo / Avatar */}
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                      {logo ? (
-                        <img
-                          src={logo}
-                          alt={displayName}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
-                          {displayName.substring(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Textos */}
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-700 transition-colors truncate">
-                          {displayName}
-                        </h4>
-                        {branch && (
-                          <Badge variant="outline" className="text-[10px] text-teal-700 bg-teal-50 border-teal-200 font-semibold px-2 py-0">
-                            Sucursal {branch}
-                          </Badge>
-                        )}
-                        {is24Hours && (
-                          <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-semibold px-1.5 py-0 flex items-center gap-0.5">
-                            <Clock className="h-2.5 w-2.5" /> 24h
-                          </Badge>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* Info Farmacia */}
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                      {/* Logo / Avatar */}
+                      <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                        {logo ? (
+                          <img
+                            src={logo}
+                            alt={displayName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
+                            {displayName.substring(0, 2).toUpperCase()}
+                          </div>
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-500 flex items-start gap-1 line-clamp-1">
-                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <span>
-                          {pharmacy.city ? `${pharmacy.city} — ` : ''}
-                          {pharmacy.address || 'Dirección registrada'}
-                        </span>
-                      </p>
+                      {/* Textos */}
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-sm text-slate-900 group-hover:text-teal-700 transition-colors truncate">
+                            {displayName}
+                          </h4>
+                          {branch && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-teal-700 bg-teal-50 border-teal-200 font-semibold px-2 py-0"
+                            >
+                              Sucursal {branch}
+                            </Badge>
+                          )}
+                          {is24Hours && (
+                            <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-semibold px-1.5 py-0 flex items-center gap-0.5">
+                              <Clock className="h-2.5 w-2.5" /> 24h
+                            </Badge>
+                          )}
+                        </div>
 
-                      {pharmacy.phone && (
-                        <p className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
-                          <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                          <span>{pharmacy.phone}</span>
+                        <p className="text-xs text-slate-500 flex items-start gap-1 line-clamp-1">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span>
+                            {pharmacy.city ? `${pharmacy.city} — ` : ''}
+                            {pharmacy.address || 'Dirección registrada'}
+                          </span>
                         </p>
-                      )}
+
+                        {pharmacy.phone && (
+                          <p className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span>{pharmacy.phone}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botones Ver Ficha y WhatsApp */}
+                    <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowcasePharmacy(pharmacy)}
+                        className="border-teal-600 text-teal-700 hover:bg-teal-50 font-bold text-xs rounded-xl h-9 px-3 flex items-center gap-1"
+                      >
+                        <Store className="h-3.5 w-3.5" />
+                        Ver Ficha
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleSendToPharmacy(pharmacy)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all h-9 px-4 flex items-center gap-1.5"
+                      >
+                        <MessageCircle className="h-4 w-4 fill-white" />
+                        WhatsApp
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Botones Ver Ficha y WhatsApp */}
-                  <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setShowcasePharmacy(pharmacy)}
-                      className="border-teal-600 text-teal-700 hover:bg-teal-50 font-bold text-xs rounded-xl h-9 px-3 flex items-center gap-1"
-                    >
-                      <Store className="h-3.5 w-3.5" />
-                      Ver Ficha
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => handleSendToPharmacy(pharmacy)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs hover:shadow-md transition-all h-9 px-4 flex items-center gap-1.5"
-                    >
-                      <MessageCircle className="h-4 w-4 fill-white" />
-                      WhatsApp
-                    </Button>
-                  </div>
+                  {/* Si la cadena tiene múltiples sucursales, mostrar por qué se eligió esta sede y permitir cambiarla */}
+                  {hasMultipleBranches && (
+                    <div className="bg-teal-50/80 border border-teal-200/80 rounded-xl p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <span className="font-bold text-teal-900 flex items-center gap-1.5">
+                        <Compass className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                        Sede recomendada: {activeReason}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-600">
+                          Cambiar sucursal ({allChainBranches.length}):
+                        </span>
+                        <select
+                          value={pharmacy.id}
+                          aria-label="Seleccionar sucursal"
+                          onChange={(e) =>
+                            setBranchOverrides((prev) => ({
+                              ...prev,
+                              [chainKey]: e.target.value
+                            }))
+                          }
+                          className="h-7 rounded-lg border border-teal-300 bg-white px-2 text-xs font-bold text-slate-800"
+                        >
+                          {allChainBranches.map((b, idx) => (
+                            <option key={b.id} value={b.id}>
+                              {idx === 0 ? '⭐ ' : '📍 '}
+                              {b.branchName || b.name} ({b.city})
+                              {b._distanceKm !== null && b._distanceKm !== undefined
+                                ? ` — ${b._distanceKm} km`
+                                : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })

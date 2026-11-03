@@ -44,8 +44,9 @@ import { es } from 'date-fns/locale';
 import { uploadPublicImage } from '@/lib/supabaseService';
 import { PharmacyCard } from '@/components/pharmacy/pharmacy-card';
 import { PharmacyB2BModule } from '@/components/pharmacy/pharmacy-b2b-module';
+import { PharmacyBranchesManager } from '@/components/pharmacy/pharmacy-branches-manager';
 import { HealthCampaignsManager } from '@/components/medical/health-campaigns-manager';
-import { Handshake, Crown, HeartHandshake } from 'lucide-react';
+import { Handshake, Crown, HeartHandshake, Network } from 'lucide-react';
 
 interface PatientData {
   id: string;
@@ -105,7 +106,7 @@ export default function PharmacyDashboardPage() {
   const [isDispensing, setIsDispensing] = useState(false);
 
   // Tabs & Historial
-  const [activeTab, setActiveTab] = useState<'search' | 'b2b' | 'campaigns' | 'history' | 'location'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'b2b' | 'branches' | 'campaigns' | 'history' | 'location'>('search');
   const [historyRecords, setHistoryRecords] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
@@ -521,6 +522,19 @@ export default function PharmacyDashboardPage() {
 
               <button
                 type="button"
+                onClick={() => setActiveTab('branches')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'branches'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Network className={`h-3.5 w-3.5 ${activeTab === 'branches' ? 'text-white' : 'text-teal-600'}`} />
+                <span>Casa Matriz y Sucursales</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab('campaigns')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
                   activeTab === 'campaigns'
@@ -619,6 +633,16 @@ export default function PharmacyDashboardPage() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('branches')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'branches' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            <Network className="h-3.5 w-3.5" />
+            Sucursales
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('campaigns')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'campaigns' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600'
@@ -676,6 +700,13 @@ export default function PharmacyDashboardPage() {
               longitude: locationForm.longitude ? parseFloat(locationForm.longitude) : undefined,
             }}
             onPharmacyUpdated={loadPharmacyData}
+          />
+        )}
+
+        {activeTab === 'branches' && user?.id && (
+          <PharmacyBranchesManager
+            pharmacyId={user.id}
+            onUpdated={loadPharmacyData}
           />
         )}
 

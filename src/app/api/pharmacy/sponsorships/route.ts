@@ -147,20 +147,30 @@ export async function GET(request: NextRequest) {
             ]);
 
             const activeLinks = activeLinksRes.data || [];
-            // Filtrar farmacias por el país activo (con fallback a todas las activas si no hay coincidencias en ese país)
-            const rawActivePharms = allPharmaciesRes.data || [];
+            // Filtrar farmacias por el país activo y excluir sucursales que aún no han sido aprobadas por su Casa Matriz
+            const rawActivePharms = (allPharmaciesRes.data || []).filter(
+                p => (p.branch_approval_status || 'approved') === 'approved'
+            );
             const countryMatchedPharms = rawActivePharms.filter(p => isSameCountry(p.country, activeCountry));
             const effectivePharms = countryMatchedPharms.length > 0 ? countryMatchedPharms : rawActivePharms;
             const allPharmsCamel: any[] = effectivePharms.map(toCamel);
             const allProdsCamel: any[] = (allProductsRes.data || []).map(toCamel);
 
-            // Agrupar productos por farmacia
+            // Agrupar productos por farmacia (y heredar catálogo de la Casa Matriz si una sucursal no tiene catálogo propio cargado)
             const productsByPharmacy = new Map<string, any[]>();
             for (const prod of allProdsCamel) {
                 const pid = prod.pharmacyId;
                 if (!productsByPharmacy.has(pid)) productsByPharmacy.set(pid, []);
                 productsByPharmacy.get(pid)!.push(prod);
             }
+            const getEffectiveProducts = (pharm: any) => {
+                const own = productsByPharmacy.get(pharm.id) || [];
+                if (own.length > 0) return own;
+                if (pharm.parentPharmacyId) {
+                    return productsByPharmacy.get(pharm.parentPharmacyId) || [];
+                }
+                return [];
+            };
 
             // Incrementar impresiones ROI en segundo plano para las alianzas activas de este médico
             if (activeLinks.length > 0) {
@@ -174,6 +184,7 @@ export async function GET(request: NextRequest) {
             }
 
             const linkByPharmacyId = new Map<string, any>();
+            const linkByHeadquartersId = new Map<string, any>();
             const linkByChainName = new Map<string, any>();
 
             for (const link of activeLinks) {
@@ -186,10 +197,15 @@ export async function GET(request: NextRequest) {
             }
 
             for (const p of allPharmsCamel) {
-                if (linkByPharmacyId.has(p.id) && p.chainName) {
+                if (linkByPharmacyId.has(p.id)) {
                     const link = linkByPharmacyId.get(p.id);
-                    if (link?.scope_type === 'national') {
-                        linkByChainName.set(String(p.chainName).toLowerCase().trim(), link);
+                    // Si el convenio lo firmó la Casa Matriz (o alcance nacional/ciudad de una cadena), aplica a sus sucursales aprobadas
+                    if (p.isHeadquarters || link?.scope_type === 'national' || link?.scope_type === 'city') {
+                        const rootId = p.isHeadquarters ? p.id : (p.parentPharmacyId || p.id);
+                        linkByHeadquartersId.set(rootId, link);
+                        if (p.chainName) {
+                            linkByChainName.set(String(p.chainName).toLowerCase().trim(), link);
+                        }
                     }
                 }
             }
@@ -197,16 +213,21 @@ export async function GET(request: NextRequest) {
             const recommendedPharmacies = allPharmsCamel
                 .filter(p => {
                     if (linkByPharmacyId.has(p.id)) return true;
+                    if (p.parentPharmacyId && linkByHeadquartersId.has(p.parentPharmacyId)) return true;
                     const cName = String(p.chainName || '').toLowerCase().trim();
                     if (cName && linkByChainName.has(cName)) return true;
                     return false;
                 })
                 .map(p => {
                     const cName = String(p.chainName || '').toLowerCase().trim();
-                    const link = linkByPharmacyId.get(p.id) || (cName ? linkByChainName.get(cName) : null);
+                    const link =
+                        linkByPharmacyId.get(p.id) ||
+                        (p.parentPharmacyId ? linkByHeadquartersId.get(p.parentPharmacyId) : null) ||
+                        (cName ? linkByChainName.get(cName) : null);
                     return {
                         ...p,
                         isDoctorRecommended: true,
+                        isDirectBranchSponsorship: linkByPharmacyId.has(p.id),
                         sponsorshipId: link?.id || null,
                         sponsorshipScope: link?.scope_type || 'city',
                         hasPatientCoupon: Boolean(link?.has_patient_coupon),
@@ -214,7 +235,7 @@ export async function GET(request: NextRequest) {
                         couponDiscountPercent: link?.coupon_discount_percent ? Number(link.coupon_discount_percent) : 0,
                         couponDescription: link?.coupon_description || null,
                         sponsorship: link ? toCamel(link) : null,
-                        products: productsByPharmacy.get(p.id) || [],
+                        products: getEffectiveProducts(p),
                     };
                 });
 
@@ -229,7 +250,7 @@ export async function GET(request: NextRequest) {
                 .map(p => ({
                     ...p,
                     isDoctorRecommended: false,
-                    products: productsByPharmacy.get(p.id) || [],
+                    products: getEffectiveProducts(p),
                 }));
 
             return NextResponse.json({
@@ -239,7 +260,7 @@ export async function GET(request: NextRequest) {
                 cityPharmacies,
                 allPharmacies: allPharmsCamel.map(p => ({
                     ...p,
-                    products: productsByPharmacy.get(p.id) || [],
+                    products: getEffectiveProducts(p),
                 })),
             });
         }

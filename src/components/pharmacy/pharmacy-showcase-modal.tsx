@@ -140,14 +140,18 @@ export function PharmacyShowcaseModal({
 
   const chainBranches = useMemo(() => {
     if (!pharmacy) return [];
+    const hqId = pharmacy.parentPharmacyId || pharmacy.parent_pharmacy_id || (pharmacy.isHeadquarters || pharmacy.is_headquarters ? pharmacy.id : null);
     const chainName = (pharmacy.chainName || pharmacy.chain_name || '').trim().toLowerCase();
-    if (!chainName && !pharmacy.isChain && !pharmacy.is_chain) {
+    if (!hqId && !chainName && !pharmacy.isChain && !pharmacy.is_chain) {
       return [pharmacy];
     }
     const targetChain = chainName || pharmacy.name.toLowerCase();
     const matches = effectiveAllPharmacies.filter((p) => {
+      if (p.branchApprovalStatus && p.branchApprovalStatus !== 'approved') return false;
+      const pHqId = p.parentPharmacyId || p.parent_pharmacy_id || (p.isHeadquarters || p.is_headquarters ? p.id : null);
+      if (hqId && pHqId && hqId === pHqId) return true;
       const pChain = (p.chainName || p.chain_name || '').trim().toLowerCase();
-      return pChain === targetChain || p.id === pharmacy.id;
+      return (targetChain && pChain === targetChain) || p.id === pharmacy.id;
     });
     const list = matches.length > 0 ? matches : [pharmacy];
 
