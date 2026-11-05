@@ -24,6 +24,10 @@ export async function POST(req: NextRequest) {
             password,
             profileImage,
             bannerImage,
+            consultationFee,
+            services,
+            slotDuration,
+            schedule,
         } = body;
 
         if (!clinicId) {
@@ -57,26 +61,30 @@ export async function POST(req: NextRequest) {
 
             const existingWs = existingWsRows && existingWsRows.length > 0 ? existingWsRows[0] : null;
 
+            const resolvedFee = consultationFee !== undefined ? Number(consultationFee || 0) : undefined;
+            const resolvedServices = Array.isArray(services) ? services : undefined;
+            const resolvedDuration = slotDuration !== undefined ? Number(slotDuration || 30) : undefined;
+
             if (existingWs) {
-                if (existingWs.status === 'active') {
-                    return {
-                        alreadyActive: true,
-                        workspaceStatus: 'active',
-                    };
-                }
+                const wsUpdateObj: Record<string, any> = {
+                    status: 'active',
+                    workspace_type: targetWorkspaceType,
+                    custom_name: clinic.name,
+                    updated_at: new Date().toISOString(),
+                };
+                if (resolvedFee !== undefined) wsUpdateObj.consultation_fee = resolvedFee;
+                if (resolvedServices !== undefined) wsUpdateObj.services = resolvedServices;
+                if (resolvedDuration !== undefined) wsUpdateObj.slot_duration = resolvedDuration;
+                if (schedule !== undefined) wsUpdateObj.schedule = schedule;
+
                 const { error: updErr } = await supabaseAdmin
                     .from('doctor_workspaces')
-                    .update({
-                        status: 'active',
-                        workspace_type: targetWorkspaceType,
-                        custom_name: clinic.name,
-                        updated_at: new Date().toISOString(),
-                    })
+                    .update(wsUpdateObj)
                     .eq('id', existingWs.id);
 
                 if (updErr) throw new Error(updErr.message);
                 return {
-                    alreadyActive: false,
+                    alreadyActive: existingWs.status === 'active',
                     workspaceStatus: 'active',
                 };
             }
@@ -91,7 +99,10 @@ export async function POST(req: NextRequest) {
                     role_in_workplace: 'staff_doctor',
                     can_manage_finances: false,
                     can_manage_schedule: true,
-                    consultation_fee: 0,
+                    consultation_fee: resolvedFee ?? 0,
+                    slot_duration: resolvedDuration ?? 30,
+                    services: resolvedServices ?? [],
+                    schedule: schedule ?? null,
                     is_default: false,
                     status: 'active',
                 }]);
@@ -201,6 +212,19 @@ export async function POST(req: NextRequest) {
         const paymentDateArgentina = getPaymentDateInArgentina(new Date());
         const resolvedPhone = phone ? String(phone).trim() : (clinic.phone || clinic.whatsapp || '');
 
+        const initialFee = consultationFee !== undefined ? Number(consultationFee || 0) : 0;
+        const initialServices = Array.isArray(services) ? services : [];
+        const initialSlotDuration = slotDuration !== undefined ? Number(slotDuration || 30) : 30;
+        const initialSchedule = schedule || {
+            monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+            tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+            wednesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+            thursday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+            friday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
+            saturday: { active: false, slots: [] },
+            sunday: { active: false, slots: [] },
+        };
+
         const newDoctorPayload = {
             name: sanitizeString(name),
             email: normalizedEmail,
@@ -215,8 +239,8 @@ export async function POST(req: NextRequest) {
             sector: clinic.sector || '',
             phone: resolvedPhone,
             whatsapp: resolvedPhone,
-            consultation_fee: 0,
-            slot_duration: 30,
+            consultation_fee: initialFee,
+            slot_duration: initialSlotDuration,
             password: hashedPassword,
             profile_image: profileImage || 'https://placehold.co/400x400.png',
             banner_image: bannerImage || 'https://placehold.co/1200x400.png',
@@ -232,19 +256,11 @@ export async function POST(req: NextRequest) {
             subscription_status: 'inactive',
             rating: 0,
             review_count: 0,
-            services: [],
+            services: initialServices,
             bank_details: [],
             coupons: [],
             expenses: [],
-            schedule: {
-                monday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                tuesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                wednesday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                thursday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                friday: { active: true, slots: [{ start: "09:00", end: "17:00" }] },
-                saturday: { active: false, slots: [] },
-                sunday: { active: false, slots: [] },
-            },
+            schedule: initialSchedule,
         };
 
         const { data: createdDoctor, error: insertError } = await supabaseAdmin
@@ -293,7 +309,10 @@ export async function POST(req: NextRequest) {
                     role_in_workplace: 'staff_doctor',
                     can_manage_finances: false,
                     can_manage_schedule: true,
-                    consultation_fee: 0,
+                    consultation_fee: initialFee,
+                    slot_duration: initialSlotDuration,
+                    services: initialServices,
+                    schedule: initialSchedule,
                     is_default: true,
                     status: 'active',
                 }

@@ -149,6 +149,21 @@ export async function POST(request: NextRequest) {
             cleanInsert.rest_justification = null;
         }
 
+        // Control de Tratamiento Crónico / Continuo
+        if (cleanInsert.is_chronic_treatment) {
+            const intervalDays = Number(cleanInsert.refill_interval_days) > 0 ? Number(cleanInsert.refill_interval_days) : 30;
+            cleanInsert.is_chronic_treatment = true;
+            cleanInsert.refill_interval_days = intervalDays;
+            if (!cleanInsert.next_refill_date) {
+                const nextRefill = new Date(Date.now() + intervalDays * 24 * 60 * 60 * 1000);
+                cleanInsert.next_refill_date = nextRefill.toISOString().split('T')[0];
+            }
+        } else {
+            cleanInsert.is_chronic_treatment = false;
+            cleanInsert.refill_interval_days = null;
+            cleanInsert.next_refill_date = null;
+        }
+
         logSecurityEvent('MEDICAL_RECORD_CREATE', {
             userId: authResult.user?.id || resolvedDoctorId,
             role: authResult.user?.role || 'doctor',
@@ -158,7 +173,10 @@ export async function POST(request: NextRequest) {
         const { data, error } = await supabaseAdmin
             .from('medical_records')
             .insert([cleanInsert])
-            .select()
+            .select(`
+                *,
+                doctors ( id, name, specialty, medical_license, signature_url, stamp_url, phone, whatsapp, address, city )
+            `)
             .single();
 
         if (error) {
@@ -179,10 +197,45 @@ export async function POST(request: NextRequest) {
                     recipe_status: data.recipe_status || 'active',
                 })
                 .eq('id', data.id)
-                .select()
+                .select(`
+                    *,
+                    doctors ( id, name, specialty, medical_license, signature_url, stamp_url, phone, whatsapp, address, city )
+                `)
                 .single();
             if (updatedRecord) {
                 Object.assign(data, updatedRecord);
+            }
+        }
+
+        // ✅ Si la evolución proviene de una cita (appointment_id), marcar la cita como 'Atendido' automáticamente
+        if (cleanInsert.appointment_id) {
+            try {
+                await supabaseAdmin
+                    .from('appointments')
+                    .update({ attendance: 'Atendido' })
+                    .eq('id', cleanInsert.appointment_id);
+            } catch (aptErr) {
+                console.warn('⚠️ Nota: error no bloqueante marcando cita como Atendido:', aptErr);
+            }
+        }
+
+        // ⚖️ Sincronizar peso y talla en la ficha del paciente si se registraron signos vitales
+        if (!cleanInsert.family_member_id && (cleanInsert.weight || cleanInsert.height)) {
+            try {
+                const patientVitalUpdate: Record<string, number> = {};
+                const parsedWeight = parseFloat(String(cleanInsert.weight).replace(',', '.'));
+                const parsedHeight = parseFloat(String(cleanInsert.height).replace(',', '.'));
+                if (!isNaN(parsedWeight) && parsedWeight > 0) patientVitalUpdate.weight = parsedWeight;
+                if (!isNaN(parsedHeight) && parsedHeight > 0) patientVitalUpdate.height = parsedHeight;
+
+                if (Object.keys(patientVitalUpdate).length > 0) {
+                    await supabaseAdmin
+                        .from('patients')
+                        .update(patientVitalUpdate)
+                        .eq('id', cleanInsert.patient_id);
+                }
+            } catch (vitalErr) {
+                console.warn('⚠️ Nota: error no bloqueante actualizando peso/talla del paciente:', vitalErr);
             }
         }
 
@@ -243,7 +296,7 @@ export async function GET(request: NextRequest) {
             .from('medical_records')
             .select(`
                 *,
-                doctors ( id, name, specialty, medical_license, signature_url, phone, whatsapp, address, city )
+                doctors ( id, name, specialty, medical_license, signature_url, stamp_url, phone, whatsapp, address, city )
             `)
             .order('visit_date', { ascending: false });
 

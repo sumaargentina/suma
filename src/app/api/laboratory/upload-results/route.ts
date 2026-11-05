@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
@@ -20,6 +22,7 @@ export async function POST(request: NextRequest) {
             fileName,
             fileType,
             fileSize,
+            category,
             bioanalystName
         } = body;
 
@@ -31,12 +34,18 @@ export async function POST(request: NextRequest) {
         }
 
         const now = new Date().toISOString();
-        const bioNote = bioanalystName ? `\n\n[Bioanalista/Responsable: ${bioanalystName} - ${laboratoryName || 'Laboratorio'}]` : '';
-        const finalNotes = (resultsSummary || '') + bioNote;
+        const labTag = laboratoryName ? `Laboratorio: ${laboratoryName}` : 'Laboratorio SUMA';
+        const bioNote = bioanalystName
+            ? `\n\n[Bioanalista/Responsable: ${bioanalystName} - ${labTag}]`
+            : `\n\n[Subido por ${labTag}]`;
+        const finalNotes = ((resultsSummary || '').trim() + bioNote).trim();
 
-        // 1. Si existe orderId en laboratory_orders, actualizarlo
+        const safeLabId = laboratoryId && UUID_REGEX.test(String(laboratoryId)) ? String(laboratoryId) : null;
+        const safeDocId = doctorId && UUID_REGEX.test(String(doctorId)) ? String(doctorId) : null;
+
+        // 1. Si existe orderId en laboratory_orders, actualizarlo; si no existe, crear la orden completada si aplica
         let updatedOrder = null;
-        if (orderId) {
+        if (orderId && UUID_REGEX.test(String(orderId))) {
             const { data: existingOrder } = await supabaseAdmin
                 .from('laboratory_orders')
                 .select('id')
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
                         results_available: true,
                         results_url: resultsUrl || null,
                         laboratory_notes: finalNotes,
-                        laboratory_id: laboratoryId || null,
+                        laboratory_id: safeLabId,
                         completed_date: now,
                         results_uploaded_at: now,
                         updated_at: now
@@ -65,55 +74,68 @@ export async function POST(request: NextRequest) {
                 } else {
                     updatedOrder = updateRes;
                 }
-            } else {
-                // Puede ser que orderId provenga de un medical_record_id
-                // Crear una orden completada directamente en laboratory_orders
-                const insertPayload: Record<string, any> = {
-                    patient_id: patientId,
-                    order_number: orderNumber || `SUMA-LAB-${Date.now().toString().slice(-6)}`,
-                    studies: [{ name: studies || fileName || 'Estudios de Laboratorio' }],
-                    diagnosis: diagnosis || '',
-                    clinical_indications: studies || '',
-                    status: 'completed',
-                    results_available: true,
-                    results_url: resultsUrl || null,
-                    laboratory_notes: finalNotes,
-                    laboratory_id: laboratoryId || null,
-                    completed_date: now,
-                    results_uploaded_at: now,
-                    valid_from: now
-                };
-                if (doctorId) {
-                    insertPayload.doctor_id = doctorId;
-                }
-                const { data: insertRes, error: insertErr } = await supabaseAdmin
-                    .from('laboratory_orders')
-                    .insert([insertPayload])
-                    .select()
-                    .single();
-
-                if (insertErr) {
-                    console.error('Error creando laboratory_order tras carga:', insertErr);
-                } else {
-                    updatedOrder = insertRes;
-                }
             }
         }
 
-        // 2. Guardar en medical_attachments para que aparezca directamente en la Galería de Archivos del Paciente y Doctor
+        if (!updatedOrder) {
+            const insertPayload: Record<string, any> = {
+                patient_id: patientId,
+                order_number: orderNumber || `SUMA-LAB-${Date.now().toString().slice(-6)}`,
+                studies: [{ name: studies || fileName || 'Estudios de Laboratorio' }],
+                diagnosis: diagnosis || '',
+                clinical_indications: studies || fileName || '',
+                status: 'completed',
+                results_available: true,
+                results_url: resultsUrl || null,
+                laboratory_notes: finalNotes,
+                laboratory_id: safeLabId,
+                completed_date: now,
+                results_uploaded_at: now,
+                valid_from: now
+            };
+            if (safeDocId) {
+                insertPayload.doctor_id = safeDocId;
+            }
+            const { data: insertRes, error: insertErr } = await supabaseAdmin
+                .from('laboratory_orders')
+                .insert([insertPayload])
+                .select()
+                .single();
+
+            if (insertErr) {
+                console.warn('Nota al registrar laboratory_order tras carga:', insertErr.message);
+            } else {
+                updatedOrder = insertRes;
+            }
+        }
+
+        // 2. Guardar en medical_attachments para que aparezca directamente en la Galería de Archivos de la Historia del Paciente
         let attachment = null;
         if (resultsUrl) {
+            const resolvedCategory =
+                category && ['lab_result', 'imaging', 'prescription', 'before_after_photo', 'general'].includes(category)
+                    ? category
+                    : 'lab_result';
+
+            const resolvedFileType =
+                fileType ||
+                (resultsUrl.toLowerCase().endsWith('.pdf')
+                    ? 'application/pdf'
+                    : resultsUrl.toLowerCase().endsWith('.webp')
+                    ? 'image/webp'
+                    : 'image/jpeg');
+
             const { data: attData, error: attError } = await supabaseAdmin
                 .from('medical_attachments')
                 .insert([{
                     patient_id: patientId,
-                    uploader_id: laboratoryId || patientId,
-                    file_name: fileName || `Resultados de Laboratorio - ${new Date().toLocaleDateString('es-ES')}`,
+                    uploader_id: safeLabId || patientId,
+                    file_name: fileName || studies || `Resultados de Laboratorio - ${new Date().toLocaleDateString('es-ES')}`,
                     file_url: resultsUrl,
-                    file_type: fileType || 'image/jpeg',
-                    file_size: fileSize || 0,
-                    category: 'lab_result',
-                    description: finalNotes.trim()
+                    file_type: resolvedFileType,
+                    file_size: Number(fileSize) || 0,
+                    category: resolvedCategory,
+                    description: finalNotes
                 }])
                 .select()
                 .single();
@@ -127,7 +149,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'Resultados de laboratorio guardados y vinculados exitosamente al historial del paciente.',
+            message: 'Resultados y archivos guardados y vinculados exitosamente a la historia del paciente.',
             order: updatedOrder,
             attachment
         });

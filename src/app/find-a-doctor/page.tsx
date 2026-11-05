@@ -375,11 +375,12 @@ export default async function FindDoctorPage({
               />
             )}
 
-            {/* 3. CLÍNICAS (3 en fila horizontal + Ver más) */}
-            {filteredClinics.length > 0 && viewMode !== 'doctors' && viewMode !== 'pharmacies' && (
+            {/* 3. CLÍNICAS (Carrusel horizontal de 2 tarjetas en vista Médicos/Todos + Grilla completa en vista Clínicas) */}
+            {filteredClinics.length > 0 && viewMode !== 'pharmacies' && (
               <ExpandableClinicsSection
                 clinics={filteredClinics}
                 defaultExpanded={viewMode === 'clinics'}
+                linkToClinicsView={viewMode !== 'clinics'}
               />
             )}
 

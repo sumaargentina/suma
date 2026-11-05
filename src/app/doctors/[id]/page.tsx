@@ -46,6 +46,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { DoctorReviews } from "@/components/doctor-reviews";
 import { CalendarNotification } from "@/components/calendar-notification";
+import { EntitySilhouette, isRealImageUrl } from "@/components/ui/entity-silhouette";
 
 // Definido localmente para evitar problemas de importación
 const FAMILY_RELATIONSHIP_LABELS: Record<FamilyRelationship, string> = {
@@ -141,6 +142,7 @@ export default function DoctorProfile() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [consultationType, setConsultationType] = useState<'presencial' | 'online'>('presencial');
   const [clinic, setClinic] = useState<Clinic | null>(null); // Clínica asociada al médico (si aplica)
+  const [activeClinicWorkspace, setActiveClinicWorkspace] = useState<any | null>(null);
   const [isPrivateProfileUnavailable, setIsPrivateProfileUnavailable] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<number>(65.50);
   const [cashCurrency, setCashCurrency] = useState<'USD' | 'VES'>('USD');
@@ -247,6 +249,8 @@ export default function DoctorProfile() {
 
               // Si la consulta es en una clínica/hospital, cargar datos y cupones de la institución
               if (targetClinicId) {
+                const matchedWs = (docWorkspaces || []).find((w: any) => w.clinicId === targetClinicId);
+                setActiveClinicWorkspace(matchedWs || null);
                 const clinicData = await supabaseService.getClinic(targetClinicId);
                 if (clinicData && clinicData.status !== 'inactive') {
                   if (clinicData.coupons) {
@@ -400,18 +404,31 @@ export default function DoctorProfile() {
   const currentAddress = useMemo(() => {
     if (!doctor) return null;
 
-    // Si se está agendando dentro de un Hospital o Clínica, usar la sede y tarifa de esa institución
+    // Si se está agendando dentro de un Hospital o Clínica, usar la sede, servicios y tarifa de esa institución
     if (clinic) {
       const isPublicHospital = clinic.plan === 'hospital_gratuito';
+      const wsServices = Array.isArray((activeClinicWorkspace as any)?.services) && (activeClinicWorkspace as any).services.length > 0
+        ? (activeClinicWorkspace as any).services
+        : (doctor.clinicId === clinic.id ? (doctor.services || []) : []);
+      const wsFee = activeClinicWorkspace?.consultationFee !== undefined && activeClinicWorkspace?.consultationFee !== null && Number(activeClinicWorkspace.consultationFee) > 0
+        ? Number(activeClinicWorkspace.consultationFee)
+        : (doctor.clinicId === clinic.id ? (doctor.consultationFee || 0) : 0);
+      const wsSchedule = activeClinicWorkspace?.schedule && typeof activeClinicWorkspace.schedule === 'object' && Object.keys(activeClinicWorkspace.schedule).length > 0
+        ? activeClinicWorkspace.schedule
+        : doctor.schedule;
+      const wsSlotDuration = activeClinicWorkspace?.slotDuration
+        ? Number(activeClinicWorkspace.slotDuration)
+        : (doctor.slotDuration || 30);
+
       return {
         id: `clinic-${clinic.id}`,
         name: clinic.name,
         address: clinic.address || doctor.address,
         city: clinic.city || doctor.city,
-        schedule: doctor.schedule,
-        consultationFee: isPublicHospital ? 0 : (doctor.consultationFee || 0),
-        services: isPublicHospital ? [] : doctor.services,
-        slotDuration: doctor.slotDuration || 30
+        schedule: wsSchedule,
+        consultationFee: isPublicHospital ? 0 : wsFee,
+        services: isPublicHospital ? [] : wsServices,
+        slotDuration: wsSlotDuration
       };
     }
 
@@ -1953,19 +1970,34 @@ export default function DoctorProfile() {
 
           <Card className="mb-8 overflow-hidden">
             <div className="relative">
-              <Image
-                src={doctor.bannerImage || 'https://placehold.co/1200x400.png'}
-                alt={`Consultorio de ${doctor.name}`}
-                width={1200}
-                height={400}
-                className="w-full h-48 object-cover"
-                data-ai-hint="medical office"
-              />
+              <div className="w-full h-48 overflow-hidden relative bg-slate-900">
+                {isRealImageUrl(doctor.bannerImage) ? (
+                  <Image
+                    src={doctor.bannerImage}
+                    alt={`Consultorio de ${doctor.name}`}
+                    width={1200}
+                    height={400}
+                    className="w-full h-48 object-cover"
+                    data-ai-hint="medical office"
+                  />
+                ) : (
+                  <EntitySilhouette type="doctor" variant="banner" className="w-full h-48" />
+                )}
+              </div>
               <div className="absolute -bottom-16 left-8">
-                <Avatar className="h-32 w-32 border-4 border-background bg-muted">
-                  <AvatarImage src={doctor.profileImage || undefined} alt={doctor.name} />
-                  <AvatarFallback>{doctor.name.charAt(0)}</AvatarFallback>
-                </Avatar>
+                <div className="h-32 w-32 rounded-full border-4 border-background bg-slate-100 overflow-hidden shadow-md relative">
+                  {isRealImageUrl(doctor.profileImage) ? (
+                    <Image
+                      src={doctor.profileImage}
+                      alt={doctor.name}
+                      fill
+                      sizes="128px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <EntitySilhouette type="doctor" variant="avatar" />
+                  )}
+                </div>
               </div>
             </div>
             <div className="pt-20 px-8 pb-6">

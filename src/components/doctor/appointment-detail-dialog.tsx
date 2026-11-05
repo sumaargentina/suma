@@ -16,10 +16,11 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button, } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText, Users, Phone, User } from "lucide-react";
+import { Eye, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Save, CreditCard, FileText, Users, Phone, User, Video, ExternalLink, Stethoscope, Share2, Sparkles } from "lucide-react";
 import { format, parseISO, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ export function AppointmentDetailDialog({
     const { user } = useAuth();
     const [clinicalNotes, setClinicalNotes] = useState("");
     const [prescription, setPrescription] = useState("");
+    const [meetingLink, setMeetingLink] = useState("");
     const [editableServices, setEditableServices] = useState<Service[]>([]);
     const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
     const [isChatDialogOpen, setIsChatDialogOpen] = useState(false);
@@ -101,6 +103,7 @@ export function AppointmentDetailDialog({
             console.log('📋 AppointmentDetailDialog - appointment.services:', appointment.services);
             setClinicalNotes(appointment.clinicalNotes || "");
             setPrescription(appointment.prescription || "");
+            setMeetingLink(appointment.meetingLink || "");
             setEditableServices(appointment.services || []);
 
             if (appointment.patientId) {
@@ -550,28 +553,126 @@ export function AppointmentDetailDialog({
                                 </CardContent>
                             </Card>
 
+                            {/* SALA DE VIDEOLLAMADA / TELEMEDICINA */}
+                            <Card className={cn(
+                                "border",
+                                appointment.consultationType === 'online'
+                                    ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-300 shadow-xs"
+                                    : "bg-slate-50/70 border-slate-200"
+                            )}>
+                                <CardHeader className="py-3 px-4">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-slate-900">
+                                            <Video className="h-4 w-4 text-emerald-600" />
+                                            Videollamada / Consulta Online
+                                        </CardTitle>
+                                        {appointment.consultationType === 'online' && (
+                                            <Badge className="bg-emerald-600 text-white text-[10px]">Modalidad Online</Badge>
+                                        )}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="px-4 pb-4 pt-0 space-y-2.5">
+                                    <div className="flex gap-1.5">
+                                        <Input
+                                            placeholder="Pega enlace de Meet / Zoom o genera sala..."
+                                            value={meetingLink}
+                                            onChange={(e) => setMeetingLink(e.target.value)}
+                                            className="h-8 text-xs bg-white flex-1"
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 px-2.5 text-xs shrink-0 bg-white"
+                                            title="Generar Sala de Videollamada Instantánea"
+                                            onClick={() => {
+                                                const instantRoom = `https://meet.jit.si/SUMA-Consulta-${appointment.id.slice(0, 8).toUpperCase()}`;
+                                                setMeetingLink(instantRoom);
+                                                onUpdateAppointment(appointment.id, { meetingLink: instantRoom });
+                                            }}
+                                        >
+                                            <Sparkles className="h-3.5 w-3.5 text-emerald-600 mr-1" /> Sala
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            className="h-8 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                                            onClick={() => onUpdateAppointment(appointment.id, { meetingLink: meetingLink.trim() })}
+                                        >
+                                            <Save className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
+
+                                    {meetingLink.trim() && (
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="h-8 text-xs flex-1 bg-teal-600 hover:bg-teal-700 text-white gap-1.5"
+                                                onClick={() => window.open(meetingLink.trim(), '_blank')}
+                                            >
+                                                <ExternalLink className="h-3.5 w-3.5" /> Entrar a Videollamada
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 text-xs border-emerald-300 text-emerald-800 hover:bg-emerald-50 gap-1"
+                                                onClick={() => {
+                                                    const rawPhone = (appointment.patientPhone || patientInfo?.phone || '').replace(/\D/g, '');
+                                                    const msg = `Hola ${appointment.patientName}, te escribe ${effectiveDoctorName} desde SUMA Salud. Aquí tienes el enlace para ingresar a nuestra consulta médica online:\n\n${meetingLink.trim()}`;
+                                                    const waUrl = rawPhone
+                                                        ? `https://wa.me/${rawPhone}?text=${encodeURIComponent(msg)}`
+                                                        : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                                                    window.open(waUrl, '_blank');
+                                                }}
+                                            >
+                                                <Share2 className="h-3.5 w-3.5 text-emerald-600" /> Enviar por WhatsApp
+                                            </Button>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+
                             {capabilities.hasMedicalRecord && (
                             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-                                <CardHeader>
-                                    <CardTitle className="text-base text-blue-900">Historia Clínica del Paciente</CardTitle>
-                                    <CardDescription className="text-blue-700">
-                                        Gestiona el historial médico completo desde la página del paciente
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-base text-blue-900">Atención & Historia Clínica</CardTitle>
+                                    <CardDescription className="text-blue-700 text-xs">
+                                        Al guardar la evolución desde esta cita, el paciente queda marcado como <strong>Atendido</strong> automáticamente.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-3">
+                                <CardContent className="space-y-2.5">
                                     <Button
-                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                                         onClick={() => {
-                                            const url = `/doctor/patients/${appointment.patientId}${appointment.familyMemberId ? `?familyMemberId=${appointment.familyMemberId}` : ''}`;
-                                            window.location.href = url;
+                                            const basePath = user?.role === 'clinic' ? '/clinic' : '/doctor';
+                                            const params = new URLSearchParams();
+                                            params.set('appointmentId', appointment.id);
+                                            params.set('tab', 'new-evolution');
+                                            if (appointment.familyMemberId) params.set('familyMemberId', appointment.familyMemberId);
+                                            if (user?.role === 'clinic' && appointment.doctorId) params.set('doctorId', appointment.doctorId);
+                                            window.location.href = `${basePath}/patients/${appointment.patientId}?${params.toString()}`;
                                         }}
                                     >
-                                        <FileText className="mr-2 h-4 w-4" />
-                                        Ver/Crear Historia Clínica
+                                        <Stethoscope className="mr-2 h-4 w-4" />
+                                        Pasar a Consulta (Nueva Evolución)
                                     </Button>
-                                    <p className="text-xs text-blue-600 text-center">
-                                        Accede al historial completo, crea nuevas evoluciones y gestiona archivos médicos
-                                    </p>
+
+                                    <Button
+                                        variant="outline"
+                                        className="w-full border-blue-300 text-blue-800 hover:bg-blue-100/60 bg-white text-xs h-8"
+                                        onClick={() => {
+                                            const basePath = user?.role === 'clinic' ? '/clinic' : '/doctor';
+                                            const params = new URLSearchParams();
+                                            params.set('tab', 'history');
+                                            if (appointment.familyMemberId) params.set('familyMemberId', appointment.familyMemberId);
+                                            window.location.href = `${basePath}/patients/${appointment.patientId}?${params.toString()}`;
+                                        }}
+                                    >
+                                        <FileText className="mr-2 h-3.5 w-3.5" />
+                                        Ver Historial Clínico y Archivos
+                                    </Button>
                                 </CardContent>
                             </Card>
                             )}

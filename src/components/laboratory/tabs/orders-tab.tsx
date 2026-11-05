@@ -27,11 +27,13 @@ import {
   Stethoscope,
   Phone,
   Check,
-  UserCheck
+  UserCheck,
+  Sparkles
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { uploadPublicImage } from '@/lib/supabaseService';
+import { compressImageToWebP } from '@/lib/image-compression';
 
 interface PatientData {
   id: string;
@@ -94,8 +96,11 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
   // Modal para Cargar Resultados
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
+  const [customStudyTitle, setCustomStudyTitle] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [compressionInfo, setCompressionInfo] = useState<{ originalKB: number; compressedKB: number; ratio: number } | null>(null);
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [resultsSummary, setResultsSummary] = useState('');
   const [bioanalystName, setBioanalystName] = useState('');
@@ -245,11 +250,13 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
     }
   };
 
-  const handleOpenUploadModal = (order: LabOrder) => {
-    setSelectedOrder(order);
+  const handleOpenUploadModal = (order?: LabOrder | null) => {
+    setSelectedOrder(order || null);
+    setCustomStudyTitle(order?.studies || '');
     setUploadFile(null);
     setUploadPreview(null);
-    setResultsSummary(order.laboratoryNotes || '');
+    setCompressionInfo(null);
+    setResultsSummary(order?.laboratoryNotes || '');
     setBioanalystName(user?.name || '');
     setIsUploadModalOpen(true);
   };
@@ -258,18 +265,47 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadFile(file);
-    if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setUploadPreview(url);
+    if (!customStudyTitle.trim() && !selectedOrder) {
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      setCustomStudyTitle(cleanName);
+    }
+
+    // Si es una imagen, comprimir automáticamente a formato WebP (.webp)
+    if (file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|webp|gif|heic|bmp|tiff)$/i)) {
+      try {
+        setIsCompressingImage(true);
+        const compressed = await compressImageToWebP(file, {
+          maxWidth: 1800,
+          maxHeight: 1800,
+          quality: 0.86,
+          maxInputSizeMB: 25
+        });
+        setUploadFile(compressed.file);
+        setUploadPreview(compressed.dataUrl);
+        setCompressionInfo({
+          originalKB: Math.round(compressed.originalSize / 1024),
+          compressedKB: Math.round(compressed.compressedSize / 1024),
+          ratio: compressed.compressionRatio
+        });
+      } catch (err) {
+        console.warn('No se pudo comprimir imagen a WebP, usando archivo original:', err);
+        setUploadFile(file);
+        setUploadPreview(URL.createObjectURL(file));
+        setCompressionInfo(null);
+      } finally {
+        setIsCompressingImage(false);
+      }
     } else {
+      // PDFs y otros documentos se suben directamente sin compresión de imagen
+      setUploadFile(file);
       setUploadPreview(null);
+      setCompressionInfo(null);
     }
   };
 
   const handleUploadAndSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder || !patient) return;
+    if (!patient) return;
 
     if (!resultsSummary.trim() && !uploadFile) {
       toast({
@@ -282,7 +318,7 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
 
     try {
       setIsSubmitting(true);
-      let resultsUrl = selectedOrder.resultsUrl || '';
+      let resultsUrl = selectedOrder?.resultsUrl || '';
 
       if (uploadFile) {
         setIsUploadingFile(true);
@@ -290,22 +326,24 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
         setIsUploadingFile(false);
       }
 
+      const effectiveStudies = selectedOrder?.studies || customStudyTitle.trim() || uploadFile?.name || 'Estudios de Laboratorio';
+
       const res = await fetch('/api/laboratory/upload-results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderId: selectedOrder.id,
-          orderNumber: selectedOrder.orderNumber,
+          orderId: selectedOrder?.id || null,
+          orderNumber: selectedOrder?.orderNumber || null,
           patientId: patient.id,
-          doctorId: selectedOrder.doctorId || selectedOrder.doctor?.id,
-          studies: selectedOrder.studies,
-          diagnosis: selectedOrder.diagnosis || '',
+          doctorId: selectedOrder?.doctorId || selectedOrder?.doctor?.id || null,
+          studies: effectiveStudies,
+          diagnosis: selectedOrder?.diagnosis || '',
           laboratoryId: effectiveLabId,
           laboratoryName: user?.name,
           resultsSummary: resultsSummary.trim(),
           resultsUrl,
-          fileName: uploadFile?.name || `Resultados - ${selectedOrder.studies}`,
-          fileType: uploadFile?.type || 'image/jpeg',
+          fileName: customStudyTitle.trim() || uploadFile?.name || `Resultados - ${effectiveStudies}`,
+          fileType: uploadFile?.type || (resultsUrl.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/webp'),
           fileSize: uploadFile?.size || 0,
           bioanalystName: bioanalystName.trim()
         })
@@ -315,8 +353,8 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
       if (!res.ok) throw new Error(data.error || 'Error guardando resultados');
 
       toast({
-        title: '✅ Resultados Cargados',
-        description: 'Los resultados se han guardado y vinculado automáticamente a la historia médica del paciente.'
+        title: '✅ Resultados Cargados en la Historia del Paciente',
+        description: 'El archivo y los resultados ya están disponibles para los médicos en la sección de Archivos de la historia del paciente.'
       });
 
       setIsUploadModalOpen(false);
@@ -407,9 +445,20 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
                   </div>
                 </div>
               </div>
-              <Badge variant="outline" className="bg-teal-50 text-teal-800 border-teal-200 px-3 py-1 font-semibold">
-                Paciente Identificado por Cédula
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Badge variant="outline" className="bg-teal-50 text-teal-800 border-teal-200 px-3 py-1 font-semibold">
+                  Paciente Identificado por Cédula
+                </Badge>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleOpenUploadModal(null)}
+                  className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-9 px-4 gap-1.5 font-semibold shadow-xs"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Subir Archivo / Resultado a su Historia
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -429,12 +478,27 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
           </div>
 
           {orders.length === 0 ? (
-            <Card className="p-8 text-center border-dashed border-2 rounded-2xl">
-              <AlertCircle className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-slate-700 font-semibold">No se encontraron exámenes pendientes para esta cédula.</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Verifica el número de cédula o asegúrate de que el médico haya registrado los estudios solicitados en la historia del paciente.
-              </p>
+            <Card className="p-8 text-center border-dashed border-2 rounded-2xl space-y-3">
+              <AlertCircle className="h-10 w-10 text-slate-300 mx-auto" />
+              <div>
+                <p className="text-slate-700 font-semibold">No se encontraron órdenes previas pendientes para esta cédula.</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                  {patient
+                    ? 'Aun sin orden previa en sistema, puedes subir directamente los archivos o resultados de laboratorio a la historia clínica de este paciente:'
+                    : 'Verifica el número de cédula o asegúrate de que el paciente esté registrado en el sistema.'}
+                </p>
+              </div>
+              {patient && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleOpenUploadModal(null)}
+                  className="bg-teal-600 hover:bg-teal-700 text-white text-xs gap-1.5 font-semibold"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Subir Archivo / Resultado a la Historia de {patient.name}
+                </Button>
+              )}
             </Card>
           ) : (
             <div className="grid grid-cols-1 gap-5">
@@ -733,25 +797,38 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
           </DialogHeader>
 
           <form onSubmit={handleUploadAndSave} className="space-y-4 pt-2">
-            {/* Estudios que debe realizarse */}
-            {selectedOrder && (
+            {/* Estudios que debe realizarse o Nombre del Estudio */}
+            {selectedOrder ? (
               <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs space-y-1">
                 <span className="font-bold text-amber-900 block">
                   Exámenes Solicitados por Dr(a). {selectedOrder.doctor?.name || 'Médico Tratante'}:
                 </span>
                 <p className="text-slate-800 font-semibold">{selectedOrder.studies}</p>
               </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">
+                  Nombre del Estudio / Examen Realizado *
+                </Label>
+                <Input
+                  placeholder="Ej: Hematología Completa, Perfil 20, Examen de Orina..."
+                  value={customStudyTitle}
+                  onChange={(e) => setCustomStudyTitle(e.target.value)}
+                  className="text-xs h-9"
+                  required
+                />
+              </div>
             )}
 
             {/* Subir archivo / imagen de resultado */}
             <div className="space-y-2">
               <Label className="text-xs font-bold text-slate-800">
-                Archivo de Resultados (Imagen JPG, PNG o PDF)
+                Archivo de Resultados (PDF o Imagen — se comprime automáticamente a WebP)
               </Label>
               <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-teal-400 transition-colors bg-slate-50/50">
                 <Input
                   type="file"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,.pdf,.doc,.docx"
                   onChange={handleFileChange}
                   className="hidden"
                   id="lab-result-file-upload"
@@ -760,15 +837,38 @@ export function LaboratoryOrdersTab({ initialQuery }: LaboratoryOrdersTabProps) 
                   htmlFor="lab-result-file-upload"
                   className="cursor-pointer flex flex-col items-center justify-center space-y-2"
                 >
-                  <Upload className="h-8 w-8 text-teal-600" />
-                  <span className="text-xs font-semibold text-slate-700">
-                    {uploadFile ? uploadFile.name : 'Haz clic para seleccionar el archivo o escaneo'}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    Formatos recomendados: JPG, PNG o PDF del informe de laboratorio
-                  </span>
+                  {isCompressingImage ? (
+                    <>
+                      <Loader2 className="h-8 w-8 text-teal-600 animate-spin" />
+                      <span className="text-xs font-semibold text-teal-800">
+                        Comprimiendo imagen a formato WebP...
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 text-teal-600" />
+                      <span className="text-xs font-semibold text-slate-700">
+                        {uploadFile ? uploadFile.name : 'Haz clic para seleccionar el PDF o imagen de resultados'}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Soporta PDFs y cualquier imagen (convertida automáticamente a formato WebP comprimido)
+                      </span>
+                    </>
+                  )}
                 </label>
               </div>
+
+              {compressionInfo && (
+                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 text-emerald-900 px-3 py-2 rounded-lg text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    Imagen optimizada a WebP ({compressionInfo.originalKB} KB ➔ {compressionInfo.compressedKB} KB)
+                  </span>
+                  <Badge className="bg-emerald-600 text-white text-[10px]">
+                    -{compressionInfo.ratio}% peso
+                  </Badge>
+                </div>
+              )}
 
               {uploadPreview && (
                 <div className="mt-2 relative rounded-lg border p-2 bg-slate-100 max-h-48 overflow-hidden flex justify-center">

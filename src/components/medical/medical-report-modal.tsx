@@ -97,6 +97,7 @@ export function MedicalReportModal({
   const docAddress = doc.address || '';
   const docCity = doc.city || '';
   const docSignature = doc.signature_url || doc.signatureUrl || null;
+  const docStamp = doc.stamp_url || doc.stampUrl || null;
 
   // Resolve Dates
   let visitDateFormatted = format(new Date(), "dd 'de' MMMM, yyyy", { locale: es });
@@ -370,6 +371,24 @@ export function MedicalReportModal({
               {/* DETALLE CLÍNICO DEL INFORME                                               */}
               {/* ========================================================================= */}
               <div className="space-y-4">
+                {/* Signos Vitales Registrados (si existen) */}
+                {(record.blood_pressure || record.weight || record.height || record.temperature || record.heart_rate || record.oxygen_saturation) && (
+                  <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                      Signos Vitales & Parámetros en Consulta:
+                    </span>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-800">
+                      {record.blood_pressure && <span><strong>T.A.:</strong> {record.blood_pressure} mmHg</span>}
+                      {record.weight && <span><strong>Peso:</strong> {record.weight} kg</span>}
+                      {record.height && <span><strong>Talla:</strong> {record.height} cm</span>}
+                      {record.vital_signs?.bmi && <span><strong>IMC:</strong> {record.vital_signs.bmi}</span>}
+                      {record.temperature && <span><strong>Temp:</strong> {record.temperature} °C</span>}
+                      {record.heart_rate && <span><strong>F.C.:</strong> {record.heart_rate} lpm</span>}
+                      {record.oxygen_saturation && <span><strong>SpO2:</strong> {record.oxygen_saturation}%</span>}
+                    </div>
+                  </div>
+                )}
+
                 {/* Diagnóstico Clínico */}
                 <div className="border border-slate-200 rounded-xl p-4 bg-white">
                   <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wide block mb-1">
@@ -427,14 +446,23 @@ export function MedicalReportModal({
                 </div>
 
                 {/* Firma y Sello del Médico */}
-                <div className="flex flex-col items-center text-center min-w-[160px] max-w-[200px]">
-                  {docSignature ? (
-                    <div className="h-14 w-36 flex items-center justify-center mb-1">
-                      <img
-                        src={docSignature}
-                        alt="Firma del Médico"
-                        className="max-h-full max-w-full object-contain"
-                      />
+                <div className="flex flex-col items-center text-center min-w-[160px] max-w-[220px]">
+                  {docSignature || docStamp ? (
+                    <div className="h-14 w-44 flex items-center justify-center gap-2 mb-1">
+                      {docSignature && (
+                        <img
+                          src={docSignature}
+                          alt="Firma del Médico"
+                          className="max-h-full max-w-[110px] object-contain"
+                        />
+                      )}
+                      {docStamp && (
+                        <img
+                          src={docStamp}
+                          alt="Sello del Médico"
+                          className="max-h-full max-w-[95px] object-contain opacity-90"
+                        />
+                      )}
                     </div>
                   ) : (
                     <div className="h-10 w-32 border-b border-dashed border-slate-400 mb-1" />

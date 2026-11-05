@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { EntitySilhouette, isRealImageUrl } from "@/components/ui/entity-silhouette";
 
 export function DoctorCard({ doctor }: { doctor: Doctor }) {
   const { user, toggleFavoriteDoctor } = useAuth();
@@ -120,7 +121,7 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
           <div className="relative w-24 sm:w-28 md:w-32 shrink-0 bg-slate-100 overflow-hidden border-r border-slate-100">
             {/* Aspect ratio handled by container height stretching */}
             <div className="absolute inset-0 h-full w-full">
-              {doctor.profileImage ? (
+              {isRealImageUrl(doctor.profileImage) ? (
                 <Image
                   src={doctor.profileImage}
                   alt={`Dr. ${doctor.name}`}
@@ -129,9 +130,7 @@ export function DoctorCard({ doctor }: { doctor: Doctor }) {
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
-                  <User className="h-9 w-9 sm:h-12 sm:w-12 text-slate-300" />
-                </div>
+                <EntitySilhouette type="doctor" variant="avatar" />
               )}
             </div>
 

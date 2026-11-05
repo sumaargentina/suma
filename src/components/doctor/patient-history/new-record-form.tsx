@@ -21,7 +21,14 @@ import {
     Pill,
     Lock,
     CheckCircle2,
-    Edit3
+    Edit3,
+    Activity,
+    HeartPulse,
+    Scale,
+    Ruler,
+    Thermometer,
+    Wind,
+    RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth';
@@ -33,6 +40,7 @@ interface NewRecordFormProps {
     patientId: string;
     familyMemberId?: string;
     doctorId: string;
+    appointmentId?: string;
     onSuccess: () => void;
 }
 
@@ -68,7 +76,7 @@ function buildPrescriptionString(items: MedicationItem[]): string {
         .join('\n');
 }
 
-export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoctorId, onSuccess }: NewRecordFormProps) {
+export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoctorId, appointmentId, onSuccess }: NewRecordFormProps) {
     const { toast } = useToast();
     const { user } = useAuth();
     const { professionsCatalog } = useSettings();
@@ -244,8 +252,39 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
         rest_start_date: format(new Date(), 'yyyy-MM-dd'),
         rest_end_date: format(addDays(new Date(), 2), 'yyyy-MM-dd'),
         rest_type: 'Absoluto',
-        rest_justification: 'Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación.'
+        rest_justification: 'Por presentar cuadro clínico descrito amerita reposo de salud para su recuperación.',
+        blood_pressure: '',
+        weight: '',
+        height: '',
+        temperature: '',
+        heart_rate: '',
+        oxygen_saturation: '',
+        is_chronic_treatment: false,
+        refill_interval_days: 30,
     });
+
+    // Cálculo automático de IMC (Índice de Masa Corporal)
+    const calculatedBmi = (() => {
+        const w = parseFloat(String(formData.weight).replace(',', '.'));
+        const hCm = parseFloat(String(formData.height).replace(',', '.'));
+        if (isNaN(w) || isNaN(hCm) || w <= 0 || hCm <= 0) return null;
+        const hM = hCm > 3 ? hCm / 100 : hCm;
+        const bmi = w / (hM * hM);
+        if (!isFinite(bmi) || bmi <= 0) return null;
+        let label = 'Normal';
+        let color = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+        if (bmi < 18.5) {
+            label = 'Bajo Peso';
+            color = 'bg-amber-100 text-amber-800 border-amber-300';
+        } else if (bmi >= 25 && bmi < 30) {
+            label = 'Sobrepeso';
+            color = 'bg-amber-100 text-amber-800 border-amber-300';
+        } else if (bmi >= 30) {
+            label = 'Obesidad';
+            color = 'bg-rose-100 text-rose-800 border-rose-300';
+        }
+        return { value: bmi.toFixed(1), label, color };
+    })();
 
     // Sincronizar formData.prescription cada vez que cambian los medicationItems
     const syncMedicationItemsToPrescription = (items: MedicationItem[]) => {
@@ -393,7 +432,15 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 rest_end_date: endDateStr,
                 rest_justification: aiRequiresRest && data.rest_justification
                     ? data.rest_justification
-                    : prev.rest_justification
+                    : prev.rest_justification,
+                blood_pressure: data.blood_pressure || prev.blood_pressure,
+                weight: data.weight ? String(data.weight) : prev.weight,
+                height: data.height ? String(data.height) : prev.height,
+                temperature: data.temperature ? String(data.temperature) : prev.temperature,
+                heart_rate: data.heart_rate ? String(data.heart_rate) : prev.heart_rate,
+                oxygen_saturation: data.oxygen_saturation ? String(data.oxygen_saturation) : prev.oxygen_saturation,
+                is_chronic_treatment: typeof data.is_chronic_treatment === 'boolean' ? data.is_chronic_treatment : prev.is_chronic_treatment,
+                refill_interval_days: Number(data.refill_interval_days) > 0 ? Number(data.refill_interval_days) : prev.refill_interval_days,
             }));
 
             setHasAiGenerated(true);
@@ -441,13 +488,24 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
             const strictlyRequiresRest = Boolean(formData.requires_rest);
             const strictlyRestDays = strictlyRequiresRest ? Math.max(1, Number(formData.rest_days) || 3) : 0;
 
+            const vitalSignsJson: Record<string, string> = {};
+            if (formData.blood_pressure.trim()) vitalSignsJson.blood_pressure = formData.blood_pressure.trim();
+            if (formData.weight.trim()) vitalSignsJson.weight = formData.weight.trim();
+            if (formData.height.trim()) vitalSignsJson.height = formData.height.trim();
+            if (calculatedBmi) vitalSignsJson.bmi = `${calculatedBmi.value} (${calculatedBmi.label})`;
+            if (formData.temperature.trim()) vitalSignsJson.temperature = formData.temperature.trim();
+            if (formData.heart_rate.trim()) vitalSignsJson.heart_rate = formData.heart_rate.trim();
+            if (formData.oxygen_saturation.trim()) vitalSignsJson.oxygen_saturation = formData.oxygen_saturation.trim();
+
             const payload = {
                 patient_id: patientId,
                 family_member_id: familyMemberId || null,
                 doctor_id: validDoctorId,
                 doctor_email: user?.email,
+                appointment_id: appointmentId || null,
                 visit_date: new Date().toISOString(),
                 ...formData,
+                vital_signs: Object.keys(vitalSignsJson).length > 0 ? vitalSignsJson : null,
                 prescription: effectivePrescription,
                 diagnosis: effectiveDiagnosis,
                 treatment_plan: effectiveTreatment,
@@ -457,6 +515,11 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 rest_end_date: strictlyRequiresRest ? formData.rest_end_date : null,
                 rest_type: strictlyRequiresRest ? formData.rest_type : null,
                 rest_justification: strictlyRequiresRest ? formData.rest_justification : null,
+                is_chronic_treatment: Boolean(formData.is_chronic_treatment),
+                refill_interval_days: formData.is_chronic_treatment ? Number(formData.refill_interval_days) || 30 : null,
+                next_refill_date: formData.is_chronic_treatment
+                    ? format(addDays(new Date(), Number(formData.refill_interval_days) || 30), 'yyyy-MM-dd')
+                    : null,
             };
 
             if (user) {
@@ -504,7 +567,12 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                 throw new Error(errorData.error || 'Error del servidor');
             }
 
-            toast({ title: 'Registro Guardado', description: 'La evolución, récipe y órdenes se han guardado correctamente.' });
+            toast({
+                title: appointmentId ? '✅ Evolución Guardada y Cita Atendida' : '✅ Registro Guardado',
+                description: appointmentId
+                    ? 'La evolución se guardó y la cita quedó marcada como Atendida automáticamente.'
+                    : 'La evolución, signos vitales, récipe y órdenes se han guardado correctamente.'
+            });
             onSuccess();
         } catch (error: any) {
             console.error('❌ Error saving record:', error);
@@ -520,6 +588,14 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
 
     return (
         <div className="max-w-2xl mx-auto p-1 space-y-8">
+            {appointmentId && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5 text-xs text-emerald-900 shadow-2xs">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>
+                        <strong>Consulta vinculada a cita activa:</strong> Al guardar esta evolución, la cita del paciente se marcará como <strong>Atendido</strong> automáticamente.
+                    </span>
+                </div>
+            )}
 
             {/* AI MAGIC BOX */}
             <Card className="bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-100 shadow-sm">
@@ -636,6 +712,101 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                         />
                     </div>
                 </div>
+
+                {/* ========================================================================= */}
+                {/* SIGNOS VITALES Y ANTROPOMETRÍA (CON IMC AUTOMÁTICO)                       */}
+                {/* ========================================================================= */}
+                <Card className="border border-rose-200/80 bg-gradient-to-r from-rose-50/40 via-white to-amber-50/30 shadow-2xs">
+                    <CardContent className="p-4 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <HeartPulse className="h-4 w-4 text-rose-600" />
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                    Signos Vitales & Triaje Clínico (Opcional)
+                                </span>
+                            </div>
+                            {calculatedBmi && (
+                                <Badge variant="outline" className={`text-[11px] font-bold px-2.5 py-0.5 ${calculatedBmi.color}`}>
+                                    IMC: {calculatedBmi.value} kg/m² ({calculatedBmi.label})
+                                </Badge>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Activity className="h-3 w-3 text-rose-500" /> T.A. (mmHg)
+                                </Label>
+                                <Input
+                                    placeholder="120/80"
+                                    value={formData.blood_pressure}
+                                    onChange={(e) => setFormData({ ...formData, blood_pressure: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Scale className="h-3 w-3 text-blue-500" /> Peso (kg)
+                                </Label>
+                                <Input
+                                    placeholder="72.5"
+                                    value={formData.weight}
+                                    onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Ruler className="h-3 w-3 text-indigo-500" /> Talla (cm)
+                                </Label>
+                                <Input
+                                    placeholder="170"
+                                    value={formData.height}
+                                    onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Thermometer className="h-3 w-3 text-amber-500" /> Temp (°C)
+                                </Label>
+                                <Input
+                                    placeholder="36.6"
+                                    value={formData.temperature}
+                                    onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <HeartPulse className="h-3 w-3 text-red-500" /> F.C. (lpm)
+                                </Label>
+                                <Input
+                                    placeholder="75"
+                                    value={formData.heart_rate}
+                                    onChange={(e) => setFormData({ ...formData, heart_rate: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Wind className="h-3 w-3 text-cyan-600" /> SpO2 (%)
+                                </Label>
+                                <Input
+                                    placeholder="98"
+                                    value={formData.oxygen_saturation}
+                                    onChange={(e) => setFormData({ ...formData, oxygen_saturation: e.target.value })}
+                                    className="h-8 text-xs bg-white"
+                                />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -921,6 +1092,56 @@ export function NewRecordForm({ patientId, familyMemberId, doctorId: initialDoct
                                     <p className="text-[10px] text-teal-700/90 leading-tight">
                                         🔒 Una vez que una farmacia entregue estos medicamentos delicados bajo récipe, el récipe quedará bloqueado con el nombre de la farmacia y médico tratante para impedir doble entrega.
                                     </p>
+                                </div>
+
+                                {/* Control de Tratamiento Crónico / Continuo y Recordatorio de Recompra */}
+                                <div className="p-3 rounded-lg border border-indigo-200/80 bg-indigo-50/40 space-y-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <RefreshCw className="h-4 w-4 text-indigo-600 shrink-0" />
+                                            <div>
+                                                <Label htmlFor="chronic-treatment-switch" className="text-xs font-bold text-indigo-950 cursor-pointer block">
+                                                    ¿Es Tratamiento Crónico / Continuo?
+                                                </Label>
+                                                <span className="text-[10px] text-indigo-700">
+                                                    Programa recordatorios de recompra periódica y control de adherencia para el paciente.
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <Switch
+                                            id="chronic-treatment-switch"
+                                            checked={formData.is_chronic_treatment}
+                                            onCheckedChange={(checked) => setFormData({ ...formData, is_chronic_treatment: checked })}
+                                            className="data-[state=checked]:bg-indigo-600"
+                                        />
+                                    </div>
+
+                                    {formData.is_chronic_treatment && (
+                                        <div className="pt-2 border-t border-indigo-200/60 flex flex-wrap items-center justify-between gap-2">
+                                            <span className="text-[11px] font-semibold text-indigo-900">
+                                                Intervalo de reposición / recompra:
+                                            </span>
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                {[15, 30, 60, 90].map((days) => (
+                                                    <button
+                                                        type="button"
+                                                        key={days}
+                                                        onClick={() => setFormData({ ...formData, refill_interval_days: days })}
+                                                        className={`text-[11px] px-2.5 py-1 rounded-md font-semibold border transition-all ${
+                                                            formData.refill_interval_days === days
+                                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                                                : 'bg-white text-indigo-800 border-indigo-200 hover:bg-indigo-100/50'
+                                                        }`}
+                                                    >
+                                                        Cada {days} días
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <span className="text-[10px] text-indigo-700 font-medium w-full">
+                                                📅 Próxima reposición estimada: <strong>{format(addDays(new Date(), Number(formData.refill_interval_days) || 30), 'dd/MM/yyyy')}</strong>
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>

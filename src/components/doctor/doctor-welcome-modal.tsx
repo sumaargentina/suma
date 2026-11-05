@@ -367,7 +367,7 @@ export function DoctorWelcomeModal({ isOpen, onClose, onComplete }: DoctorWelcom
         hasPrescription,
         medicalLicense: medicalLicense.trim(),
         documentType,
-        cedula: dni.trim(),
+        cedula: dni.replace(/\D/g, ''),
         phone: fullPhone,
         whatsapp: fullPhone,
         country: locationData.country || 'VE',
@@ -563,9 +563,11 @@ export function DoctorWelcomeModal({ isOpen, onClose, onComplete }: DoctorWelcom
                   <div className="relative">
                     <Input
                       id="dni"
-                      placeholder="Ej. 18234567"
+                      placeholder="Solo números (ej. 18234567)"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={dni}
-                      onChange={(e) => setDni(e.target.value)}
+                      onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
                       className={cn(
                         "h-9 text-sm",
                         cedulaError && "border-red-500 focus-visible:ring-red-500 bg-red-50/30"

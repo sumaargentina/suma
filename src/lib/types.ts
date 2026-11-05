@@ -198,6 +198,8 @@ export interface DoctorWorkspace {
   consultationFee?: number;
   slotDuration?: number;
   schedule?: Schedule | null;
+  services?: Service[];
+  acceptedInsurances?: string[];
   isDefault: boolean;
   clinicName?: string;
   clinicSlug?: string;
@@ -976,6 +978,8 @@ export type Patient = {
   weight?: string | null;
   height?: string | null;
   whatsapp?: string | null;
+  allergies?: string | null;
+  chronicConditions?: string | null;
 };
 
 export type Appointment = {

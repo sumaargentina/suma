@@ -51,6 +51,8 @@ function AppointmentCard({
   onOpenChat,
   onOpenRecord,
   onOpenPrescription,
+  onOpenRateDoctor,
+  isRated = false,
 }: {
   appointment: Appointment,
   doctor: Doctor | undefined,
@@ -59,6 +61,8 @@ function AppointmentCard({
   onOpenChat: (appointment: Appointment) => void,
   onOpenRecord?: (appointment: Appointment) => void,
   onOpenPrescription?: (appointment: Appointment) => void,
+  onOpenRateDoctor?: (appointment: Appointment) => void,
+  isRated?: boolean,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { settings } = useSettings();
@@ -279,7 +283,7 @@ function AppointmentCard({
               </Button>
             )}
 
-            {/* Botón Ver Récipe si es pasada y atendida */}
+            {/* Botón Ver Récipe, Resumen y Calificar Doctor si es pasada y atendida */}
             {isPast && appointment.attendance === 'Atendido' && (
               <>
                 {onOpenPrescription && (
@@ -295,6 +299,23 @@ function AppointmentCard({
                 {onOpenRecord && (
                   <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => onOpenRecord(appointment)}>
                     <ClipboardList className="mr-1.5 h-3.5 w-3.5" /> Resumen
+                  </Button>
+                )}
+                {onOpenRateDoctor && appointment.doctorId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isRated ? "outline" : "default"}
+                    className={cn(
+                      "text-xs h-8 font-semibold shadow-xs",
+                      isRated
+                        ? "border-amber-300 bg-amber-50/70 text-amber-800 hover:bg-amber-100"
+                        : "bg-amber-500 hover:bg-amber-600 text-white"
+                    )}
+                    onClick={() => onOpenRateDoctor(appointment)}
+                  >
+                    <Star className="mr-1.5 h-3.5 w-3.5 fill-current" />
+                    {isRated ? 'Calificado' : 'Calificar Doctor'}
                   </Button>
                 )}
               </>
@@ -347,7 +368,7 @@ function AppointmentCard({
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const { appointments, updateAppointmentConfirmation, refreshAppointments } = useAppointments();
-  const { checkAndSetNotifications } = useNotifications();
+  const { checkAndSetNotifications, markNotificationAsRead } = useNotifications();
   const { updateUnreadChatCount } = useChatNotifications();
   const router = useRouter();
   const { toast } = useToast();
@@ -443,6 +464,125 @@ export default function DashboardPage() {
   // Estado para el modal de bienvenida
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Estado para Calificar al Doctor después de cita atendida
+  const [ratedAppointmentIds, setRatedAppointmentIds] = useState<Set<string>>(new Set());
+  const [dismissedRateIds, setDismissedRateIds] = useState<Set<string>>(new Set());
+  const [ratingAppointment, setRatingAppointment] = useState<Appointment | null>(null);
+  const [ratingStars, setRatingStars] = useState<number>(5);
+  const [ratingComment, setRatingComment] = useState<string>('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user?.id) return;
+    try {
+      const raw = localStorage.getItem(`suma-rated-appointments-${user.id}`);
+      if (raw) {
+        setRatedAppointmentIds(new Set(JSON.parse(raw) as string[]));
+      }
+      const dismissedRaw = sessionStorage.getItem(`suma-dismissed-rate-banner-${user.id}`);
+      if (dismissedRaw) {
+        setDismissedRateIds(new Set(JSON.parse(dismissedRaw) as string[]));
+      }
+    } catch {
+      // ignore
+    }
+  }, [user?.id]);
+
+  const handleOpenRateDoctor = (appt: Appointment) => {
+    setRatingAppointment(appt);
+    setRatingStars(5);
+    setRatingComment('');
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || appointments.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const rateApptId = params.get('rateAppointmentId');
+    if (rateApptId) {
+      const target = appointments.find(a => a.id === rateApptId);
+      if (target) {
+        handleOpenRateDoctor(target);
+        window.history.replaceState({}, '', '/dashboard');
+      }
+    }
+  }, [appointments]);
+
+  const pendingRateAppointment = useMemo(() => {
+    return appointments.find(
+      a =>
+        a.attendance === 'Atendido' &&
+        Boolean(a.doctorId) &&
+        !ratedAppointmentIds.has(a.id) &&
+        !dismissedRateIds.has(a.id)
+    ) || null;
+  }, [appointments, ratedAppointmentIds, dismissedRateIds]);
+
+  const handleDismissRateBanner = (apptId: string) => {
+    setDismissedRateIds(prev => {
+      const next = new Set(prev);
+      next.add(apptId);
+      if (typeof window !== 'undefined' && user?.id) {
+        try {
+          sessionStorage.setItem(`suma-dismissed-rate-banner-${user.id}`, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleSubmitDoctorRating = async () => {
+    if (!user || !ratingAppointment || !ratingAppointment.doctorId) return;
+    const finalComment = ratingComment.trim() || 'Excelente atención médica y profesionalismo.';
+
+    setIsSubmittingRating(true);
+    try {
+      await supabaseService.addDoctorReview({
+        doctorId: ratingAppointment.doctorId,
+        patientId: user.id,
+        patientName: user.name,
+        patientProfileImage: user.profileImage || null,
+        rating: ratingStars,
+        comment: finalComment,
+        date: new Date().toISOString(),
+        isVerified: true,
+      });
+
+      setRatedAppointmentIds(prev => {
+        const next = new Set(prev);
+        next.add(ratingAppointment.id);
+        if (typeof window !== 'undefined' && user?.id) {
+          try {
+            localStorage.setItem(`suma-rated-appointments-${user.id}`, JSON.stringify(Array.from(next)));
+          } catch {
+            // ignore
+          }
+        }
+        return next;
+      });
+
+      markNotificationAsRead(`rate-doctor-${ratingAppointment.id}`);
+
+      toast({
+        title: '⭐ ¡Gracias por tu calificación!',
+        description: `Tu valoración para el Dr(a). ${ratingAppointment.doctorName} ha sido registrada.`,
+      });
+
+      setRatingAppointment(null);
+      setRatingComment('');
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error al enviar calificación',
+        description: 'No se pudo guardar tu calificación. Inténtalo de nuevo.',
+      });
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
 
   // Eliminar el useEffect de refresco de usuario para restaurar el flujo básico
 
@@ -985,6 +1125,45 @@ export default function DashboardPage() {
               <span className="hidden sm:inline">Actualizar</span>
             </Button>
           </div>
+
+          {/* Aviso automático para calificar al médico después de cada cita atendida */}
+          {pendingRateAppointment && (
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-yellow-50/80 to-orange-50 border border-amber-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Star className="h-5 w-5 fill-current" />
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-extrabold text-amber-950">
+                    ¿Cómo estuvo tu consulta con el Dr(a). {pendingRateAppointment.doctorName}?
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-amber-800">
+                    Tu cita del {format(new Date(pendingRateAppointment.date + 'T00:00:00'), "d 'de' MMMM", { locale: es })} fue atendida. Califica al especialista en segundos.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-amber-800 hover:bg-amber-100/70 h-8"
+                  onClick={() => handleDismissRateBanner(pendingRateAppointment.id)}
+                >
+                  Más tarde
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold h-8 shadow-xs"
+                  onClick={() => handleOpenRateDoctor(pendingRateAppointment)}
+                >
+                  <Star className="h-3.5 w-3.5 mr-1.5 fill-current" />
+                  Calificar Ahora
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* ========================================================================= */}
           {/* 6 CUADRITOS DE ACCESO RÁPIDO INTERACTIVOS (HUB MÓVIL Y DESKTOP)            */}
@@ -1600,6 +1779,8 @@ export default function DashboardPage() {
                             onOpenChat={handleOpenChat}
                             onOpenRecord={handleOpenRecord}
                             onOpenPrescription={handleOpenPrescription}
+                            onOpenRateDoctor={handleOpenRateDoctor}
+                            isRated={ratedAppointmentIds.has(appt.id)}
                           />
                         ))}
                       </div>
@@ -2323,6 +2504,118 @@ export default function DashboardPage() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Calificar al Doctor después de la Cita Atendida */}
+      <Dialog open={Boolean(ratingAppointment)} onOpenChange={(open) => !open && setRatingAppointment(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              Calificar Atención Médica
+            </DialogTitle>
+            <DialogDescription>
+              ¿Qué tal fue tu consulta con <strong>Dr(a). {ratingAppointment?.doctorName}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Estrellas Interactivas */}
+            <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50/60 border border-amber-100">
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRatingStars(star)}
+                    className="p-1 transition-transform hover:scale-125 focus:outline-none cursor-pointer"
+                  >
+                    <Star
+                      className={cn(
+                        "h-8 w-8 transition-colors",
+                        star <= ratingStars
+                          ? "text-amber-400 fill-amber-400 drop-shadow-2xs"
+                          : "text-slate-300"
+                      )}
+                    />
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs font-bold text-amber-900">
+                {ratingStars === 5 && "⭐⭐⭐⭐⭐ Excelente atención"}
+                {ratingStars === 4 && "⭐⭐⭐⭐ Muy buena atención"}
+                {ratingStars === 3 && "⭐⭐⭐ Atención regular"}
+                {ratingStars === 2 && "⭐⭐ Mala experiencia"}
+                {ratingStars === 1 && "⭐ Muy mala experiencia"}
+              </span>
+            </div>
+
+            {/* Etiquetas rápidas de 1 clic */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-slate-600">Toque rápido para describir tu experiencia:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Excelente atención y trato humano",
+                  "Explicación muy clara y detallada",
+                  "Muy puntual y profesional",
+                  "100% recomendado",
+                ].map((phrase) => (
+                  <button
+                    key={phrase}
+                    type="button"
+                    onClick={() => setRatingComment(phrase)}
+                    className={cn(
+                      "text-[11px] px-2.5 py-1 rounded-full border transition-all cursor-pointer",
+                      ratingComment === phrase
+                        ? "bg-amber-500 text-white border-amber-500 font-semibold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200 hover:border-amber-300"
+                    )}
+                  >
+                    {phrase}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Comentario opcional o personalizado */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">
+                Tu comentario (opcional):
+              </label>
+              <textarea
+                rows={3}
+                value={ratingComment}
+                onChange={(e) => setRatingComment(e.target.value)}
+                placeholder="Escribe aquí cómo te sentiste durante la consulta..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRatingAppointment(null)}
+              disabled={isSubmittingRating}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitDoctorRating}
+              disabled={isSubmittingRating}
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
+            >
+              {isSubmittingRating ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Star className="h-4 w-4 mr-1.5 fill-current" />
+              )}
+              Enviar Calificación
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

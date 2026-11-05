@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import type { Doctor, Clinic } from "@/lib/types";
 import { DoctorCard } from "@/components/doctor-card";
 import { ClinicCard } from "@/components/clinic/clinic-card";
 import { Button } from "@/components/ui/button";
-import { Stethoscope, Sparkles, Heart, ChevronDown, ChevronUp } from "lucide-react";
+import { Stethoscope, Sparkles, Heart, ChevronDown, ChevronUp, ChevronRight, Building2 } from "lucide-react";
 
 interface ExpandableDoctorsSectionProps {
   doctors: Doctor[];
@@ -181,32 +182,29 @@ export function ExpandableWellnessSection({
 interface ExpandableClinicsSectionProps {
   clinics: Clinic[];
   defaultExpanded?: boolean;
+  linkToClinicsView?: boolean;
 }
 
 export function ExpandableClinicsSection({
   clinics,
   defaultExpanded = false,
+  linkToClinicsView = false,
 }: ExpandableClinicsSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (!clinics || clinics.length === 0) return null;
 
-  const INITIAL_VISIBLE = 3;
-  const hasMore = clinics.length > INITIAL_VISIBLE;
-  const visibleClinics = isExpanded ? clinics : clinics.slice(0, INITIAL_VISIBLE);
-  const remainingCount = Math.max(0, clinics.length - INITIAL_VISIBLE);
-
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="flex items-center justify-between border-b pb-2 md:pb-3 border-slate-200">
         <div className="flex items-center gap-2 md:gap-3">
-          <div className="p-1.5 md:p-2 bg-secondary/10 rounded-lg">
-            <Heart className="h-4 w-4 md:h-5 md:w-5 text-secondary" />
+          <div className="p-1.5 md:p-2 bg-teal-50 rounded-lg border border-teal-100">
+            <Building2 className="h-4 w-4 md:h-5 md:w-5 text-teal-700" />
           </div>
           <div>
             <h2 className="text-base md:text-xl font-bold text-slate-900">Clínicas y Centros</h2>
             <p className="text-slate-500 text-[10px] md:text-xs hidden md:block">
-              Centros médicos e instituciones afiliadas
+              Desliza horizontalmente o explora todas las instituciones afiliadas
             </p>
           </div>
         </div>
@@ -216,7 +214,15 @@ export function ExpandableClinicsSection({
             {clinics.length} {clinics.length === 1 ? "centro" : "centros"}
           </span>
 
-          {hasMore && (
+          {linkToClinicsView ? (
+            <Link
+              href="/find-a-doctor?view=clinics"
+              className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-semibold text-teal-700 hover:text-teal-800 hover:bg-teal-50 rounded-lg transition-colors"
+            >
+              <span>Ver todas</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : clinics.length > 2 ? (
             <Button
               type="button"
               variant="ghost"
@@ -224,38 +230,54 @@ export function ExpandableClinicsSection({
               onClick={() => setIsExpanded(prev => !prev)}
               className="h-7 px-2.5 text-xs font-semibold text-teal-700 hover:text-teal-800 hover:bg-teal-50 gap-1 rounded-lg"
             >
-              <span>{isExpanded ? "Ver menos" : "Ver más"}</span>
+              <span>{isExpanded ? "Ver menos" : "Ver todas"}</span>
               {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-        {visibleClinics.map((clinic, index) => (
-          <ClinicCard key={clinic.id} clinic={clinic} priority={index < 3} />
-        ))}
-      </div>
+      {isExpanded ? (
+        /* Vista Expandida: Grilla completa (2 por fila en móvil/tablet, 3 en escritorio) */
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
+          {clinics.map((clinic, index) => (
+            <ClinicCard key={clinic.id} clinic={clinic} priority={index < 4} />
+          ))}
+        </div>
+      ) : (
+        /* Vista Carrusel Horizontal: 2 tarjetas visibles en paralelo + deslizar con el dedo hacia las demás */
+        <div className="flex overflow-x-auto snap-x snap-mandatory gap-2.5 sm:gap-4 pb-2 -mx-1 px-1 scrollbar-thin">
+          {clinics.map((clinic, index) => (
+            <div
+              key={clinic.id}
+              className="w-[46%] min-w-[162px] sm:w-[47%] lg:w-[31.5%] shrink-0 snap-start"
+            >
+              <ClinicCard clinic={clinic} priority={index < 3} />
+            </div>
+          ))}
+        </div>
+      )}
 
-      {hasMore && (
+      {!isExpanded && (
         <div className="flex justify-center pt-1">
-          <button
-            type="button"
-            onClick={() => setIsExpanded(prev => !prev)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 shadow-2xs transition-all cursor-pointer"
-          >
-            {isExpanded ? (
-              <>
-                <span>Mostrar menos clínicas</span>
-                <ChevronUp className="h-3.5 w-3.5" />
-              </>
-            ) : (
-              <>
-                <span>Ver más clínicas ({remainingCount} más)</span>
-                <ChevronDown className="h-3.5 w-3.5" />
-              </>
-            )}
-          </button>
+          {linkToClinicsView ? (
+            <Link
+              href="/find-a-doctor?view=clinics"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 shadow-2xs transition-all"
+            >
+              <span>Ver todas las clínicas ({clinics.length})</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : clinics.length > 2 ? (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(prev => !prev)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 shadow-2xs transition-all cursor-pointer"
+            >
+              <span>Ver todas las clínicas ({clinics.length})</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
       )}
     </div>

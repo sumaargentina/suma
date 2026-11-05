@@ -537,6 +537,57 @@ export async function isEmailUniqueAcrossAllTables(
         };
     }
 
+    // Verificar en clinics
+    const cliQuery = supabaseAdmin
+        .from('clinics')
+        .select('id')
+        .eq('email', lowerEmail);
+    if (excludeId) cliQuery.neq('id', excludeId);
+    const { data: clinic } = await cliQuery.maybeSingle();
+
+    if (clinic) {
+        return {
+            isUnique: false,
+            field: 'email',
+            existingId: clinic.id,
+            message: 'Este correo electrónico ya está siendo usado (registrado como clínica).'
+        };
+    }
+
+    // Verificar en laboratories
+    const labQuery = supabaseAdmin
+        .from('laboratories')
+        .select('id')
+        .eq('email', lowerEmail);
+    if (excludeId) labQuery.neq('id', excludeId);
+    const { data: lab } = await labQuery.maybeSingle();
+
+    if (lab) {
+        return {
+            isUnique: false,
+            field: 'email',
+            existingId: lab.id,
+            message: 'Este correo electrónico ya está siendo usado (registrado como laboratorio).'
+        };
+    }
+
+    // Verificar en pharmacies
+    const phaQuery = supabaseAdmin
+        .from('pharmacies')
+        .select('id')
+        .eq('email', lowerEmail);
+    if (excludeId) phaQuery.neq('id', excludeId);
+    const { data: pharmacy } = await phaQuery.maybeSingle();
+
+    if (pharmacy) {
+        return {
+            isUnique: false,
+            field: 'email',
+            existingId: pharmacy.id,
+            message: 'Este correo electrónico ya está siendo usado (registrado como farmacia).'
+        };
+    }
+
     return { isUnique: true, field: 'email', message: '' };
 }
 

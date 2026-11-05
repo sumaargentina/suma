@@ -15,7 +15,7 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
 export async function PATCH(request: NextRequest) {
     try {
         // 🔐 SEGURIDAD: Verificar autenticación
-        const authResult = await requireAuth(request, ['patient', 'doctor', 'admin']);
+        const authResult = await requireAuth(request, ['patient', 'doctor', 'clinic', 'secretary', 'admin']);
 
         if (authResult instanceof NextResponse) {
             logSecurityEvent('PATIENT_UPDATE_UNAUTHORIZED', {
@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         // 🔐 SEGURIDAD: Verificar que el usuario puede modificar este paciente
-        if (!canAccessResource(user, id, ['admin'])) {
+        if (!canAccessResource(user, id, ['admin', 'doctor', 'clinic', 'secretary'])) {
             logSecurityEvent('PATIENT_UPDATE_FORBIDDEN', {
                 userId: user.id,
                 targetPatientId: id,

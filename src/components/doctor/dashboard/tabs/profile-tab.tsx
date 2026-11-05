@@ -17,6 +17,7 @@ import { Trash2, Copy, Check, Share2, ExternalLink, Link2, AlertCircle, Loader2,
 import { cn } from '@/lib/utils';
 import { DOCUMENT_TYPES, COUNTRY_CODES, DocumentType } from '@/lib/types';
 import { uploadPublicImage } from '@/lib/supabaseService';
+import { EntitySilhouette, isRealImageUrl } from '@/components/ui/entity-silhouette';
 import { CountryCodeSelect } from '@/components/ui/country-code-select';
 import { LocationSelector, LocationData } from '@/components/ui/location-selector';
 import { ProfessionSpecialtySelector } from '@/components/ui/profession-specialty-selector';
@@ -486,8 +487,11 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                     <Input
                       id="cedula"
                       name="cedula"
-                      value={doctorData.cedula || cedulaValue}
-                      onChange={(e) => setCedulaValue(e.target.value)}
+                      value={(doctorData.cedula || cedulaValue).replace(/\D/g, '')}
+                      onChange={(e) => setCedulaValue(e.target.value.replace(/\D/g, ''))}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Solo números (ej: 12345678)"
                       className={cn(
                         "h-9 md:h-10 text-xs md:text-sm w-full",
                         doctorData.cedula && "bg-slate-50 dark:bg-slate-900 cursor-not-allowed",
@@ -495,7 +499,7 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
                       )}
                       disabled={!!doctorData.cedula}
                       readOnly={!!doctorData.cedula || isClinicEmployee}
-                      maxLength={15}
+                      maxLength={12}
                     />
                     {isCheckingCedula && (
                       <Loader2 className="w-4 h-4 animate-spin text-slate-400 absolute right-3 top-2.5" />
@@ -655,13 +659,19 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
               <div className="space-y-1 md:space-y-2">
                 <Label className="text-xs md:text-sm">Foto de Perfil</Label>
-                <Image
-                  src={profileImageFile ? URL.createObjectURL(profileImageFile) : (doctorData.profileImage || 'https://placehold.co/400x400.png')}
-                  alt="Perfil"
-                  width={80}
-                  height={80}
-                  className="rounded-full border w-20 h-20 md:w-[100px] md:h-[100px] object-cover"
-                />
+                <div className="rounded-full border w-20 h-20 md:w-[100px] md:h-[100px] overflow-hidden relative bg-slate-100">
+                  {profileImageFile || isRealImageUrl(doctorData.profileImage) ? (
+                    <Image
+                      src={profileImageFile ? URL.createObjectURL(profileImageFile) : doctorData.profileImage}
+                      alt="Perfil"
+                      width={100}
+                      height={100}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <EntitySilhouette type="doctor" variant="avatar" />
+                  )}
+                </div>
                 <Input
                   type="file"
                   accept="image/*"
@@ -690,13 +700,19 @@ export function ProfileTab({ doctorData, onProfileUpdate, onOpenPasswordDialog }
 
               <div className="space-y-1 md:space-y-2">
                 <Label className="text-xs md:text-sm">Imagen de Portada / Banner</Label>
-                <Image
-                  src={bannerImageFile ? URL.createObjectURL(bannerImageFile) : (doctorData.bannerImage || 'https://placehold.co/1200x400.png')}
-                  alt="Banner"
-                  width={200}
-                  height={60}
-                  className="rounded-md border aspect-video object-cover w-full max-w-xs md:max-w-full"
-                />
+                <div className="rounded-md border aspect-video overflow-hidden w-full max-w-xs md:max-w-full relative bg-slate-900">
+                  {bannerImageFile || isRealImageUrl(doctorData.bannerImage) ? (
+                    <Image
+                      src={bannerImageFile ? URL.createObjectURL(bannerImageFile) : doctorData.bannerImage}
+                      alt="Banner"
+                      width={400}
+                      height={133}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <EntitySilhouette type="doctor" variant="banner" />
+                  )}
+                </div>
                 <Input
                   type="file"
                   accept="image/*"

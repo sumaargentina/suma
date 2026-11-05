@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { HeaderWrapper } from '@/components/header';
@@ -13,6 +13,7 @@ import { ArrowLeft, Loader2, Plus, FileText, Activity, Image as ImageIcon, Calen
 import { PatientProfileHeader } from '@/components/doctor/patient-history/patient-profile-header';
 import { MedicalRecordTimeline } from '@/components/doctor/patient-history/medical-record-timeline';
 import { NewRecordForm } from '@/components/doctor/patient-history/new-record-form';
+import { PatientFilesGallery } from '@/components/doctor/patient-history/patient-files-gallery';
 import { useToast } from '@/hooks/use-toast';
 import { getClinicAppointments, getClinicDoctors } from '@/lib/supabaseService';
 import { Appointment, Doctor } from '@/lib/types';
@@ -23,6 +24,7 @@ export default function ClinicPatientHistoryPage() {
     const { id: patientId } = useParams();
     const { user, loading } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { toast } = useToast();
 
     const [patient, setPatient] = useState<any>(null);
@@ -32,6 +34,18 @@ export default function ClinicPatientHistoryPage() {
     const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
     const [clinicDoctors, setClinicDoctors] = useState<Doctor[]>([]);
     const [selectedDoctorForRecord, setSelectedDoctorForRecord] = useState<string>('');
+    const appointmentId = searchParams?.get('appointmentId');
+    const doctorIdParam = searchParams?.get('doctorId');
+
+    useEffect(() => {
+        const tabParam = searchParams?.get('tab');
+        if (tabParam && ['summary', 'history', 'new-evolution', 'files'].includes(tabParam)) {
+            setActiveTab(tabParam);
+        }
+        if (doctorIdParam) {
+            setSelectedDoctorForRecord(doctorIdParam);
+        }
+    }, [searchParams, doctorIdParam]);
 
     useEffect(() => {
         if (!loading && (!user || user.role !== 'clinic')) {
@@ -144,15 +158,16 @@ export default function ClinicPatientHistoryPage() {
                 </Button>
 
                 {/* Patient Profile Header */}
-                <PatientProfileHeader patient={patient} />
+                <PatientProfileHeader patient={patient} onUpdated={fetchPatientData} />
 
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-4 lg:w-[700px]">
+                    <TabsList className="grid w-full grid-cols-5 lg:w-[820px]">
                         <TabsTrigger value="summary">Resumen</TabsTrigger>
                         <TabsTrigger value="appointments">Citas ({patientAppointments.length})</TabsTrigger>
                         <TabsTrigger value="history">Historial Médico</TabsTrigger>
                         <TabsTrigger value="new-evolution">Nueva Evolución</TabsTrigger>
+                        <TabsTrigger value="files">Archivos</TabsTrigger>
                     </TabsList>
 
                     {/* Summary Tab */}
@@ -234,6 +249,16 @@ export default function ClinicPatientHistoryPage() {
                                                     <p className="text-sm mt-1">{lastRecord.treatment_plan || 'Sin tratamiento'}</p>
                                                 </div>
                                             </div>
+                                            {(lastRecord.blood_pressure || lastRecord.weight || lastRecord.height || lastRecord.temperature || lastRecord.heart_rate || lastRecord.oxygen_saturation) && (
+                                                <div className="pt-2 border-t flex flex-wrap gap-2 text-xs">
+                                                    {lastRecord.blood_pressure && <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-semibold">TA: {lastRecord.blood_pressure} mmHg</span>}
+                                                    {lastRecord.weight && <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-semibold">Peso: {lastRecord.weight} kg</span>}
+                                                    {lastRecord.height && <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-semibold">Talla: {lastRecord.height} cm</span>}
+                                                    {lastRecord.temperature && <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-semibold">Temp: {lastRecord.temperature} °C</span>}
+                                                    {lastRecord.heart_rate && <span className="px-2.5 py-1 rounded-md bg-red-50 text-red-800 border border-red-200 font-semibold">FC: {lastRecord.heart_rate} lpm</span>}
+                                                    {lastRecord.oxygen_saturation && <span className="px-2.5 py-1 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 font-semibold">SpO2: {lastRecord.oxygen_saturation}%</span>}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="text-center py-6 text-muted-foreground space-y-2">
@@ -255,7 +280,10 @@ export default function ClinicPatientHistoryPage() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <p className="text-muted-foreground text-sm">Sin condiciones registradas.</p>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200/80"><strong className="text-xs text-amber-800 uppercase block">Alergias:</strong> {patient.allergies || 'Sin alergias registradas.'}</div>
+                                        <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200/80"><strong className="text-xs text-blue-800 uppercase block">Condiciones / Diagnóstico:</strong> {patient.chronic_conditions || patient.chronicConditions || lastRecord?.diagnosis || 'Sin condiciones registradas.'}</div>
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>
@@ -364,14 +392,22 @@ export default function ClinicPatientHistoryPage() {
                                     <NewRecordForm
                                         patientId={patientId as string}
                                         doctorId={selectedDoctorForRecord}
+                                        appointmentId={appointmentId || undefined}
                                         onSuccess={() => {
                                             setActiveTab('history');
                                             fetchLastRecord();
+                                            fetchPatientData();
+                                            fetchPatientAppointments();
                                         }}
                                     />
                                 )}
                             </>
                         )}
+                    </TabsContent>
+
+                    {/* Files Tab */}
+                    <TabsContent value="files">
+                        <PatientFilesGallery patientId={patientId as string} />
                     </TabsContent>
                 </Tabs>
             </main>

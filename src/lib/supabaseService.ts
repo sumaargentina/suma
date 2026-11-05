@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type {
     Doctor, Seller, Patient, Appointment, AdminSupportTicket,
     SellerPayment, DoctorPayment, AppSettings, MarketingMaterial,
-    ChatMessage, DoctorReview, Service, Clinic, ClinicBranch, ClinicService, Secretary, ClinicSpecialty, ClinicExpense, PatientCommunication, ClinicPatientMessage, ClinicChatConversation,
+    ChatMessage, DoctorReview, Service, Schedule, Clinic, ClinicBranch, ClinicService, Secretary, ClinicSpecialty, ClinicExpense, PatientCommunication, ClinicPatientMessage, ClinicChatConversation,
     FamilyMember, ClinicPayment, DoctorWorkspace, Pharmacy, Laboratory, LaboratoryService, LaboratoryOrder
 } from './types';
 import { roundPrice } from './validation-utils';
@@ -38,6 +38,9 @@ const toSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
     for (const key in obj) {
         const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
         result[snakeKey] = obj[key];
+    }
+    if (typeof result.cedula === 'string') {
+        result.cedula = result.cedula.replace(/\D/g, '');
     }
     return result;
 };
@@ -1217,17 +1220,35 @@ export const getClinicDoctors = async (clinicId: string): Promise<Doctor[]> => {
         // 1. Obtener los registros de médicos afiliados en doctor_workspaces para esta clínica
         const { data: allWorkspaces } = await supabaseAdmin
             .from('doctor_workspaces')
-            .select('id, doctor_id, status, workspace_type')
+            .select('id, doctor_id, status, workspace_type, consultation_fee, slot_duration, schedule, services, accepted_insurances')
             .eq('clinic_id', clinicId);
 
         const inactiveDoctorIds = new Set<string>();
-        const wsMap = new Map<string, { id: string; status: string; workspaceType: string }>();
+        const wsMap = new Map<string, {
+            id: string;
+            status: string;
+            workspaceType: string;
+            consultationFee?: number | null;
+            slotDuration?: number | null;
+            schedule?: any;
+            services?: any[];
+            acceptedInsurances?: string[];
+        }>();
 
         (allWorkspaces || []).forEach((w: any) => {
             if (w.status === 'inactive') {
                 inactiveDoctorIds.add(w.doctor_id);
             } else if (w.status === 'active' || w.status === 'pending_invitation') {
-                wsMap.set(w.doctor_id, { id: w.id, status: w.status, workspaceType: w.workspace_type });
+                wsMap.set(w.doctor_id, {
+                    id: w.id,
+                    status: w.status,
+                    workspaceType: w.workspace_type,
+                    consultationFee: w.consultation_fee,
+                    slotDuration: w.slot_duration,
+                    schedule: w.schedule,
+                    services: Array.isArray(w.services) ? w.services : undefined,
+                    acceptedInsurances: Array.isArray(w.accepted_insurances) ? w.accepted_insurances : undefined,
+                });
                 inactiveDoctorIds.delete(w.doctor_id);
             }
         });
@@ -1257,9 +1278,45 @@ export const getClinicDoctors = async (clinicId: string): Promise<Doctor[]> => {
         return (data || []).map(item => {
             const camel = toCamelCase(item as Record<string, unknown>) as any;
             const wsInfo = wsMap.get(camel.id);
+            const isDirectClinicDoc = camel.clinicId === clinicId;
+
+            // Preserve private consultorio data for reference without mixing catalogs
+            camel.privateServices = Array.isArray(camel.services) ? camel.services : [];
+            camel.privateConsultationFee = Number(camel.consultationFee || 0);
+
             camel.workspaceStatus = wsInfo?.status || 'active';
             camel.workspaceId = wsInfo?.id || null;
             camel.workspaceType = wsInfo?.workspaceType || 'clinic';
+
+            // Services specific to this clinic workspace
+            if (wsInfo && Array.isArray(wsInfo.services) && wsInfo.services.length > 0) {
+                camel.services = wsInfo.services;
+            } else if (isDirectClinicDoc && Array.isArray(camel.services)) {
+                camel.services = camel.services;
+            } else {
+                camel.services = wsInfo?.services || [];
+            }
+
+            // Consultation fee specific to this clinic workspace
+            if (wsInfo && wsInfo.consultationFee !== null && wsInfo.consultationFee !== undefined && Number(wsInfo.consultationFee) > 0) {
+                camel.consultationFee = Number(wsInfo.consultationFee);
+            } else if (isDirectClinicDoc) {
+                camel.consultationFee = Number(camel.consultationFee || 0);
+            } else {
+                camel.consultationFee = Number(wsInfo?.consultationFee || 0);
+            }
+
+            // Schedule & slot duration specific to this clinic workspace
+            if (wsInfo?.schedule && typeof wsInfo.schedule === 'object' && Object.keys(wsInfo.schedule).length > 0) {
+                camel.schedule = wsInfo.schedule;
+            }
+            if (wsInfo?.slotDuration && Number(wsInfo.slotDuration) > 0) {
+                camel.slotDuration = Number(wsInfo.slotDuration);
+            }
+            if (wsInfo && Array.isArray(wsInfo.acceptedInsurances) && wsInfo.acceptedInsurances.length > 0) {
+                camel.acceptedInsurances = wsInfo.acceptedInsurances;
+            }
+
             return camel as Doctor;
         });
     } catch (err) {
@@ -1293,6 +1350,10 @@ export const affiliateClinicDoctor = async (payload: {
     password?: string;
     profileImage?: string;
     bannerImage?: string;
+    consultationFee?: number;
+    services?: Service[];
+    slotDuration?: number;
+    schedule?: Schedule;
 }): Promise<{ success: boolean; isNew?: boolean; doctorId?: string; message?: string; error?: string }> => {
     const res = await fetch('/api/clinics/doctors/affiliate', {
         method: 'POST',
@@ -1304,6 +1365,27 @@ export const affiliateClinicDoctor = async (payload: {
         throw new Error(data.error || 'Error al procesar médico en la clínica');
     }
     return data;
+};
+
+export const updateClinicDoctorConfig = async (
+    clinicId: string,
+    doctorId: string,
+    data: Partial<Doctor> & { password?: string }
+): Promise<{ success: boolean }> => {
+    const res = await fetch('/api/clinics/doctors', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            clinicId,
+            doctorId,
+            ...data,
+        }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+        throw new Error(result.error || 'Error al guardar la configuración del médico en la clínica');
+    }
+    return result;
 };
 
 export const getClinicAppointments = async (clinicId: string, dateFilter?: string, endDateFilter?: string): Promise<Appointment[]> => {
@@ -3742,14 +3824,15 @@ export async function uploadPublicImage(file: File, bucket: string, path: string
 
     let fileToUpload = file;
     const isBanner = path.includes('banner') || path.includes('hero');
+    const isMedicalDoc = path.includes('laboratory') || path.includes('medical') || path.includes('patient');
 
-    // Auto-comprimir y convertir a formato WebP optimizado en el cliente
+    // Auto-comprimir y convertir imágenes a formato WebP optimizado en el cliente (PDFs y otros archivos se suben tal cual)
     if (typeof window !== 'undefined' && file.type.startsWith('image/')) {
         try {
             const compressed = await compressImageToWebP(file, {
-                maxWidth: isBanner ? 1920 : 1000,
-                maxHeight: isBanner ? 1080 : 1000,
-                quality: 0.84,
+                maxWidth: isBanner ? 1920 : isMedicalDoc ? 1800 : 1000,
+                maxHeight: isBanner ? 1080 : isMedicalDoc ? 1800 : 1000,
+                quality: isMedicalDoc ? 0.86 : 0.84,
                 maxInputSizeMB: 20,
             });
             fileToUpload = compressed.file;
@@ -3758,7 +3841,7 @@ export async function uploadPublicImage(file: File, bucket: string, path: string
         }
     }
 
-    const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase() || 'webp';
+    const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase() || (fileToUpload.type === 'application/pdf' ? 'pdf' : 'webp');
     const fileName = `${path}_${Date.now()}.${fileExt}`;
     const formData = new FormData();
     formData.append('file', fileToUpload);
@@ -3771,7 +3854,7 @@ export async function uploadPublicImage(file: File, bucket: string, path: string
     });
 
     if (!res.ok) {
-        let errorMessage = 'Error al subir imagen';
+        let errorMessage = 'Error al subir archivo';
         try {
             const errorData = await res.json();
             errorMessage = errorData.error || errorMessage;

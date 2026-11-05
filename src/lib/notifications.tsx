@@ -216,17 +216,44 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
 
         if (appt.attendance && appt.attendance !== 'Pendiente') {
-          upsert({
-            id: `attendance-marked-${appt.id}`,
-            type: 'attendance_marked',
-            appointmentId: appt.id,
-            title: `Cita Finalizada (${appt.attendance})`,
-            description: `Tu cita con el Dr(a). ${appt.doctorName} fue marcada como "${appt.attendance}".`,
-            date: `${appt.date}T${appt.time || '00:00'}`,
-            read: appt.readByPatient !== false,
-            createdAt: now.toISOString(),
-            link: '/dashboard',
-          });
+          if (appt.attendance === 'Atendido' && appt.doctorId) {
+            let alreadyRated = false;
+            try {
+              const ratedRaw = localStorage.getItem(`suma-rated-appointments-${user.id}`);
+              if (ratedRaw) {
+                const ratedArr = JSON.parse(ratedRaw) as string[];
+                alreadyRated = ratedArr.includes(appt.id);
+              }
+            } catch {
+              // ignore
+            }
+
+            if (!alreadyRated) {
+              upsert({
+                id: `rate-doctor-${appt.id}`,
+                type: 'attendance_marked',
+                appointmentId: appt.id,
+                title: `⭐ Califica al Dr(a). ${appt.doctorName}`,
+                description: `Tu consulta fue atendida. Toca aquí para calificar tu experiencia con el especialista.`,
+                date: `${appt.date}T${appt.time || '00:00'}`,
+                read: false,
+                createdAt: now.toISOString(),
+                link: `/dashboard?rateAppointmentId=${appt.id}`,
+              });
+            }
+          } else {
+            upsert({
+              id: `attendance-marked-${appt.id}`,
+              type: 'attendance_marked',
+              appointmentId: appt.id,
+              title: `Cita Finalizada (${appt.attendance})`,
+              description: `Tu cita con el Dr(a). ${appt.doctorName} fue marcada como "${appt.attendance}".`,
+              date: `${appt.date}T${appt.time || '00:00'}`,
+              read: appt.readByPatient !== false,
+              createdAt: now.toISOString(),
+              link: '/dashboard',
+            });
+          }
         }
       });
 
@@ -352,17 +379,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
 
           if (appt.attendance && appt.attendance !== 'Pendiente' && oldAppt.attendance === 'Pendiente') {
-            addNotification({
-              id: `attendance-marked-${appt.id}`,
-              type: 'attendance_marked',
-              appointmentId: appt.id,
-              title: 'Cita Finalizada',
-              description: `Tu cita fue marcada como "${appt.attendance}".`,
-              date: `${appt.date}T${appt.time || '00:00'}`,
-              read: false,
-              createdAt: now.toISOString(),
-              link: '/dashboard',
-            });
+            if (appt.attendance === 'Atendido' && appt.doctor_id) {
+              addNotification({
+                id: `rate-doctor-${appt.id}`,
+                type: 'attendance_marked',
+                appointmentId: appt.id,
+                title: `⭐ Califica al Dr(a). ${appt.doctor_name || 'Médico'}`,
+                description: `Tu consulta fue atendida. Toca aquí para calificar tu experiencia con el especialista.`,
+                date: `${appt.date}T${appt.time || '00:00'}`,
+                read: false,
+                createdAt: now.toISOString(),
+                link: `/dashboard?rateAppointmentId=${appt.id}`,
+              });
+            } else {
+              addNotification({
+                id: `attendance-marked-${appt.id}`,
+                type: 'attendance_marked',
+                appointmentId: appt.id,
+                title: 'Cita Finalizada',
+                description: `Tu cita fue marcada como "${appt.attendance}".`,
+                date: `${appt.date}T${appt.time || '00:00'}`,
+                read: false,
+                createdAt: now.toISOString(),
+                link: '/dashboard',
+              });
+            }
           }
         }
       )

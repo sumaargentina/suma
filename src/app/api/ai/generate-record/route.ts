@@ -67,7 +67,15 @@ export async function POST(req: Request) {
                 treatment: "Simulación: Acetaminofén 800mg por 3 días según indicación médica.",
                 evolution: "Simulación: Paciente refiere sintomatología descrita (No se detectó API Key).",
                 requires_rest: doctorMentionedRest,
-                rest_days: doctorMentionedRest ? 3 : 0
+                rest_days: doctorMentionedRest ? 3 : 0,
+                blood_pressure: "",
+                weight: "",
+                height: "",
+                temperature: "",
+                heart_rate: "",
+                oxygen_saturation: "",
+                is_chronic_treatment: false,
+                refill_interval_days: 30
             });
         }
 
@@ -86,6 +94,8 @@ REGLAS ESTRICTAS E INQUEBRANTABLES:
    - El campo "requires_rest" debe ser true ÚNICAMENTE si el médico dijo explícitamente que el paciente lleva reposo.
    - Si el médico NO mencionó reposo, "requires_rest" DEBE ser false, "rest_days" DEBE ser 0, y NO debes escribir la palabra reposo en "treatment" ni en ningún otro campo.
 5. NO INVENTES ESTUDIOS DE LABORATORIO: En "requested_studies" coloca únicamente los exámenes de laboratorio o estudios que el médico pidió explícitamente. Si no pidió ninguno, déjalo vacío "".
+6. SIGNOS VITALES SOLO SI SE MENCIONAN: Extrae "blood_pressure" (ej: "120/80"), "weight" (solo número en kg, ej: "72"), "height" (solo número en cm, ej: "170"), "temperature" (solo número en °C, ej: "36.8"), "heart_rate" (solo número lpm, ej: "78"), "oxygen_saturation" (solo número %, ej: "98") ÚNICAMENTE si el médico los dictó. Si no los nombró, déjalos como "".
+7. TRATAMIENTO CRÓNICO: Si el médico menciona que el tratamiento es crónico, permanente o de por vida, pon "is_chronic_treatment": true y "refill_interval_days" (15, 30, 60 o 90 según indique, por defecto 30). De lo contrario, "is_chronic_treatment": false.
 
 Formato JSON requerido:
 {
@@ -102,7 +112,15 @@ Formato JSON requerido:
   "evolution": "Historia actual de la enfermedad: evolución, antecedentes relevantes, observaciones mencionadas",
   "requires_rest": false,
   "rest_days": 0,
-  "rest_justification": "Justificación del reposo solo si requires_rest es true, de lo contrario cadena vacía"
+  "rest_justification": "Justificación del reposo solo si requires_rest es true, de lo contrario cadena vacía",
+  "blood_pressure": "",
+  "weight": "",
+  "height": "",
+  "temperature": "",
+  "heart_rate": "",
+  "oxygen_saturation": "",
+  "is_chronic_treatment": false,
+  "refill_interval_days": 30
 }
 
 Contexto del paciente: ${context || 'General'}

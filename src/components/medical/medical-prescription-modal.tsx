@@ -100,6 +100,7 @@ export function MedicalPrescriptionModal({
   const docAddress = doc.address || '';
   const docCity = doc.city || '';
   const docSignature = doc.signature_url || doc.signatureUrl || null;
+  const docStamp = doc.stamp_url || doc.stampUrl || null;
 
   // Resolve Dates
   let visitDate = format(new Date(), "dd/MM/yyyy");
@@ -240,14 +241,23 @@ export function MedicalPrescriptionModal({
       </div>
 
       {/* Sección Derecha: Firma y Sello del Médico */}
-      <div className="flex flex-col items-center text-center min-w-[130px] max-w-[160px]">
-        {docSignature ? (
-          <div className="h-11 w-32 flex items-center justify-center mb-0.5">
-            <img
-              src={docSignature}
-              alt="Firma del Médico"
-              className="max-h-full max-w-full object-contain"
-            />
+      <div className="flex flex-col items-center text-center min-w-[130px] max-w-[180px]">
+        {docSignature || docStamp ? (
+          <div className="h-12 w-36 flex items-center justify-center gap-1.5 mb-0.5">
+            {docSignature && (
+              <img
+                src={docSignature}
+                alt="Firma del Médico"
+                className="max-h-full max-w-[85px] object-contain"
+              />
+            )}
+            {docStamp && (
+              <img
+                src={docStamp}
+                alt="Sello del Médico"
+                className="max-h-full max-w-[75px] object-contain opacity-90"
+              />
+            )}
           </div>
         ) : (
           <div className="h-8 w-28 border-b border-dashed border-slate-400 mb-1" />

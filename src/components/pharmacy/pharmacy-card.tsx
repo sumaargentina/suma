@@ -13,6 +13,7 @@ import {
 import { MapPin, Pill, Phone, Clock, ShieldCheck, Navigation, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Pharmacy } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { EntitySilhouette, isRealImageUrl } from '@/components/ui/entity-silhouette';
 
 interface PharmacyCardProps {
   pharmacy: Pharmacy;
@@ -32,8 +33,10 @@ export function PharmacyCard({ pharmacy, priority = false }: PharmacyCardProps) 
   const lat = pharmacy.latitude;
   const lng = pharmacy.longitude;
 
-  const logo = (!logoError && (pharmacy.logoUrl || pharmacy.logo_url)) || null;
-  const banner = (!bannerError && (pharmacy.bannerUrl || pharmacy.banner_url || pharmacy.bannerImage || pharmacy.banner_image)) || null;
+  const rawLogo = pharmacy.logoUrl || pharmacy.logo_url;
+  const rawBanner = pharmacy.bannerUrl || pharmacy.banner_url || pharmacy.bannerImage || pharmacy.banner_image;
+  const logo = (!logoError && isRealImageUrl(rawLogo) && rawLogo) || null;
+  const banner = (!bannerError && isRealImageUrl(rawBanner) && rawBanner) || null;
 
   const mapsQuery = (lat && lng) 
     ? `${lat},${lng}` 
@@ -52,14 +55,7 @@ export function PharmacyCard({ pharmacy, priority = false }: PharmacyCardProps) 
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
           />
         ) : (
-          <div className="w-full h-full relative flex items-center justify-between px-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-600/50 via-teal-800 to-slate-900">
-            {/* Patrón decorativo suave */}
-            <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#a7f3d0_1px,transparent_1px)] [background-size:16px_16px]" />
-            <div className="text-white/20 font-bold text-xs uppercase tracking-widest relative z-1">
-              Farmacia Aliada
-            </div>
-            <Pill className="h-16 w-16 text-white/10 -rotate-12 relative z-1" />
-          </div>
+          <EntitySilhouette type="pharmacy" variant="banner" />
         )}
 
         {/* Gradiente sutil para legibilidad de badges */}
@@ -84,19 +80,17 @@ export function PharmacyCard({ pharmacy, priority = false }: PharmacyCardProps) 
       <div className="px-4 pb-4 sm:px-5 sm:pb-5 flex-1 flex flex-col justify-between">
         <div>
           {/* Header con Foto de Perfil / Logotipo solapado sobre el Banner */}
-          <div className="flex items-end justify-between -mt-7 mb-3 relative z-10">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white border-2 border-white shadow-md overflow-hidden flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:scale-105 transition-all duration-300">
+          <div className="flex items-end justify-between -mt-10 mb-3 relative z-10">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white border-2 border-white shadow-md overflow-hidden flex items-center justify-center flex-shrink-0 group-hover:shadow-lg group-hover:scale-105 transition-all duration-300">
               {logo ? (
                 <img
                   src={logo}
                   alt={displayName}
                   onError={() => setLogoError(true)}
-                  className="w-full h-full object-contain p-1"
+                  className="w-full h-full object-contain p-1.5"
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-600 font-bold text-sm">
-                  {displayName.substring(0, 2).toUpperCase()}
-                </div>
+                <EntitySilhouette type="pharmacy" variant="avatar" />
               )}
             </div>
 
@@ -186,37 +180,36 @@ export function PharmacyMiniCard({ pharmacy, onClick, className }: PharmacyMiniC
   const branchName = isChainBranch ? (pharmacy.branchName || pharmacy.branch_name) : null;
   const is24Hours = Boolean(pharmacy.is24Hours || pharmacy.is_24_hours);
   const city = pharmacy.city || pharmacy.state || '';
-  const logo = (!logoError && (pharmacy.logoUrl || pharmacy.logo_url)) || null;
+  const rawLogo = pharmacy.logoUrl || pharmacy.logo_url;
+  const logo = (!logoError && isRealImageUrl(rawLogo) && rawLogo) || null;
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative w-full text-left bg-white hover:bg-emerald-50/40 border border-slate-200/90 hover:border-emerald-400 rounded-xl p-2.5 md:p-3 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex items-center gap-2.5 md:gap-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer",
+        "group relative w-full text-left bg-white hover:bg-emerald-50/40 border border-slate-200/90 hover:border-emerald-400 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 flex items-stretch focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer min-h-[84px] md:min-h-[96px]",
         className
       )}
     >
-      {/* Logo un poquito más grande y apreciable */}
-      <div className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-slate-50 border border-slate-100 shadow-2xs overflow-hidden flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors">
+      {/* Logo del alto completo de la tarjeta */}
+      <div className="w-20 sm:w-24 md:w-28 bg-slate-50 border-r border-slate-100 overflow-hidden flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors relative">
         {logo ? (
           <img
             src={logo}
             alt={displayName}
             onError={() => setLogoError(true)}
-            className="w-full h-full object-contain p-1"
+            className="w-full h-full object-contain p-1.5 bg-white group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center text-emerald-700 font-bold text-xs md:text-sm">
-            {displayName.substring(0, 2).toUpperCase()}
-          </div>
+          <EntitySilhouette type="pharmacy" variant="avatar" className="w-full h-full" />
         )}
       </div>
 
       {/* Info fina pero más legible */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center justify-between gap-1.5">
-          <p className="font-bold text-slate-900 text-xs md:text-sm leading-tight truncate group-hover:text-emerald-700 transition-colors">
+      <div className="min-w-0 flex-1 p-2.5 md:p-3.5 flex flex-col justify-between gap-1">
+        <div className="flex items-start justify-between gap-1.5">
+          <p className="font-bold text-slate-900 text-xs sm:text-sm md:text-[15px] leading-snug line-clamp-1 group-hover:text-emerald-700 transition-colors">
             {displayName}
           </p>
           {is24Hours && (

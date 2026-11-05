@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, FileText, Stethoscope, AlertTriangle, Pill, Printer, BedDouble, Check, FlaskConical, ExternalLink } from 'lucide-react';
+import { Loader2, FileText, Stethoscope, AlertTriangle, Pill, Printer, BedDouble, Check, FlaskConical, ExternalLink, RefreshCw, Share2, HeartPulse } from 'lucide-react';
 import { MedicalPrescriptionModal } from '@/components/medical/medical-prescription-modal';
 import { MedicalReportModal } from '@/components/medical/medical-report-modal';
 
@@ -39,9 +39,9 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                 url += `&family_member_id=${familyMemberId}`;
             }
 
-            const [response, labRes] = await Promise.all([
+            const [response, filesRes] = await Promise.all([
                 fetch(url),
-                supabase.from('laboratory_orders').select('*').eq('patient_id', patientId)
+                fetch(`/api/patient-files?patientId=${patientId}`)
             ]);
 
             if (!response.ok) {
@@ -50,8 +50,9 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
             }
 
             const data = await response.json();
+            const filesData = filesRes.ok ? await filesRes.json() : { labOrders: [] };
             setRecords(data || []);
-            setLabOrders(labRes?.data || []);
+            setLabOrders(filesData?.labOrders || []);
             setError(null);
         } catch (err: any) {
             console.error('Error fetching records:', err);
@@ -93,7 +94,7 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                     <CardHeader className="pb-2">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div>
-                                <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                <CardTitle className="text-base sm:text-lg font-bold flex flex-wrap items-center gap-2">
                                     {format(parseISO(record.visit_date), "dd 'de' MMMM, yyyy", { locale: es })}
                                     <Badge variant="outline" className="capitalize font-normal text-xs">
                                         {record.record_type?.replace('_', ' ') || 'Consulta'}
@@ -101,6 +102,11 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                                     {Boolean(record.requires_rest) && (
                                         <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-200 text-xs font-semibold">
                                             <BedDouble className="h-3 w-3 mr-1" /> Reposo {record.rest_days}d
+                                        </Badge>
+                                    )}
+                                    {Boolean(record.is_chronic_treatment) && (
+                                        <Badge className="bg-indigo-100 text-indigo-900 hover:bg-indigo-100 border-indigo-200 text-xs font-semibold">
+                                            <RefreshCw className="h-3 w-3 mr-1" /> Crónico ({record.refill_interval_days || 30}d)
                                         </Badge>
                                     )}
                                 </CardTitle>
@@ -145,6 +151,63 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        {/* Barra Visual de Signos Vitales */}
+                        {(record.blood_pressure || record.weight || record.height || record.temperature || record.heart_rate || record.oxygen_saturation) && (
+                            <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-bold text-slate-700 flex items-center gap-1 mr-1">
+                                    <HeartPulse className="h-3.5 w-3.5 text-rose-500" /> Signos Vitales:
+                                </span>
+                                {record.blood_pressure && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-rose-200 text-rose-800 font-semibold">
+                                        TA: {record.blood_pressure} mmHg
+                                    </span>
+                                )}
+                                {record.weight && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-blue-200 text-blue-800 font-semibold">
+                                        Peso: {record.weight} kg
+                                    </span>
+                                )}
+                                {record.height && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-800 font-semibold">
+                                        Talla: {record.height} cm
+                                    </span>
+                                )}
+                                {record.vital_signs?.bmi && (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">
+                                        IMC: {record.vital_signs.bmi}
+                                    </span>
+                                )}
+                                {record.temperature && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-800 font-semibold">
+                                        Temp: {record.temperature} °C
+                                    </span>
+                                )}
+                                {record.heart_rate && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-red-200 text-red-800 font-semibold">
+                                        FC: {record.heart_rate} lpm
+                                    </span>
+                                )}
+                                {record.oxygen_saturation && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white border border-cyan-200 text-cyan-800 font-semibold">
+                                        SpO2: {record.oxygen_saturation}%
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {Boolean(record.is_chronic_treatment) && (
+                            <div className="bg-indigo-50/70 p-2.5 rounded-lg border border-indigo-200 text-xs text-indigo-950 flex flex-wrap items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5 font-medium">
+                                    <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
+                                    <strong>Tratamiento Crónico / Continuo:</strong> Reposición cada {record.refill_interval_days || 30} días
+                                </span>
+                                {record.next_refill_date && (
+                                    <span className="font-semibold text-indigo-800 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                                        Próxima recompra: {format(parseISO(record.next_refill_date), 'dd/MM/yyyy')}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {(record.dispensed_at || record.recipe_status === 'dispensed') && (
                             <div className="bg-emerald-50/90 p-3 rounded-lg border border-emerald-200 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-2xs">
                                 <div className="flex items-center gap-2">
@@ -222,15 +285,30 @@ export function MedicalRecordTimeline({ patientId, familyMemberId, patientName }
                                         <h4 className="font-semibold text-sm text-amber-900 flex items-center gap-1.5">
                                             <FlaskConical className="h-4 w-4 text-amber-600" /> Estudios de Laboratorio Solicitados
                                         </h4>
-                                        {hasResults ? (
-                                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[11px] gap-1 self-start sm:self-auto">
-                                                <Check className="h-3 w-3 text-emerald-600" /> Resultados Listos
-                                            </Badge>
-                                        ) : (
-                                            <Badge variant="outline" className="bg-amber-100/60 text-amber-800 border-amber-300 text-[11px] self-start sm:self-auto">
-                                                {recOrderCode} • Pendiente de Resultados
-                                            </Badge>
-                                        )}
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-6 px-2 text-[11px] bg-white border-amber-300 text-amber-900 hover:bg-amber-100 gap-1"
+                                                onClick={() => {
+                                                    const docName = record.doctors?.name || 'Médico Tratante';
+                                                    const text = `*ORDEN MÉDICA DE LABORATORIO - SUMA SALUD*\n*Código de Orden:* ${recOrderCode}\n*Dr(a).* ${docName}\n*Paciente:* ${patientName || 'Paciente'}\n*Diagnóstico:* ${record.diagnosis || 'Evaluación clínica'}\n\n*🔬 ESTUDIOS SOLICITADOS:*\n${record.requested_studies}\n\n_Presenta este código o tu cédula en cualquier Laboratorio Aliado SUMA._`;
+                                                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                                                }}
+                                            >
+                                                <Share2 className="h-3 w-3 text-amber-700" /> Enviar Orden por WhatsApp
+                                            </Button>
+                                            {hasResults ? (
+                                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[11px] gap-1">
+                                                    <Check className="h-3 w-3 text-emerald-600" /> Resultados Listos
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="bg-amber-100/60 text-amber-800 border-amber-300 text-[11px]">
+                                                    {recOrderCode} • Pendiente
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </div>
                                     <p className="text-sm font-medium text-slate-900 whitespace-pre-wrap">{record.requested_studies}</p>
 

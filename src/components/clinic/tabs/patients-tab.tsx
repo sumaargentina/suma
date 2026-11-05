@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { getClinicPatients, getClinicAppointments, getPatientCommunications, addPatientCommunication, getFamilyMembers } from '@/lib/supabaseService';
 import { Patient, Appointment, PatientCommunication, COMMUNICATION_TEMPLATES, FamilyMember } from '@/lib/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,11 +15,17 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Search, Users, Calendar, DollarSign, Eye, ChevronLeft, ChevronRight, Phone, Mail, MapPin, User, MessageCircle, Send, History, ExternalLink, Baby } from 'lucide-react';
+import {
+    Loader2, Search, Users, Calendar, DollarSign, Eye, ChevronLeft, ChevronRight,
+    Phone, Mail, MapPin, User, MessageCircle, Send, History, ExternalLink, Baby,
+    LayoutGrid, List, FileText, FolderOpen, PlusCircle, Heart, AlertTriangle, Stethoscope
+} from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { MedicalRecordTimeline } from '@/components/doctor/patient-history/medical-record-timeline';
+import { PatientFilesGallery } from '@/components/doctor/patient-history/patient-files-gallery';
 
 interface PatientWithStats extends Patient {
     totalAppointments: number;
@@ -26,6 +33,20 @@ interface PatientWithStats extends Patient {
     totalPaid: number;
     noShowCount: number;
     attendedByDoctors: string[];
+}
+
+function formatWhatsAppPhone(phone?: string | null): string | null {
+    if (!phone) return null;
+    let digits = phone.replace(/[^\d+]/g, '');
+    if (!digits) return null;
+    if (digits.startsWith('+')) {
+        digits = digits.substring(1);
+    } else if (digits.startsWith('0')) {
+        digits = '58' + digits.substring(1);
+    } else if (digits.length === 10 && digits.startsWith('4')) {
+        digits = '58' + digits;
+    }
+    return digits.length >= 8 ? digits : null;
 }
 
 export function PatientsTab() {
@@ -38,7 +59,8 @@ export function PatientsTab() {
     const [selectedPatient, setSelectedPatient] = useState<PatientWithStats | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [detailTab, setDetailTab] = useState('info');
+    const [detailTab, setDetailTab] = useState('clinical-history');
+    const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
     // Communication state
     const [communications, setCommunications] = useState<PatientCommunication[]>([]);
@@ -56,7 +78,7 @@ export function PatientsTab() {
     const [filterAppointments, setFilterAppointments] = useState<'all' | '1' | '2-5' | '6+'>('all');
     const [sortBy, setSortBy] = useState<'recent' | 'name' | 'appointments' | 'paid'>('recent');
 
-    const PAGE_SIZE = 20;
+    const PAGE_SIZE = 18;
 
     useEffect(() => {
         if (user?.id) {
@@ -155,10 +177,8 @@ export function PatientsTab() {
     const handleSendWhatsApp = async () => {
         if (!selectedPatient?.phone || !messageText.trim() || !user?.id) return;
 
-        // Format phone for WhatsApp (remove spaces, dashes, add country code if needed)
         let phone = selectedPatient.phone.replace(/[\s\-\(\)]/g, '');
         if (!phone.startsWith('+')) {
-            // Si no tiene prefijo, agregar +58 por defecto (Venezuela)
             if (phone.startsWith('0')) phone = phone.substring(1);
             phone = phone.startsWith('58') ? `+${phone}` : `+58${phone}`;
         }
@@ -166,7 +186,6 @@ export function PatientsTab() {
         const encodedMessage = encodeURIComponent(messageText);
         const whatsappUrl = `https://wa.me/${phone.replace('+', '')}?text=${encodedMessage}`;
 
-        // Save to history
         try {
             setSendingMessage(true);
             const targetClinicId = user.role === 'secretary' ? (user as any).clinicId : user.id;
@@ -179,10 +198,7 @@ export function PatientsTab() {
                 selectedTemplate
             );
 
-            // Open WhatsApp
             window.open(whatsappUrl, '_blank');
-
-            // Refresh communications
             await loadCommunications();
 
             toast({ title: 'Mensaje enviado', description: 'Se abrió WhatsApp y se guardó en el historial.' });
@@ -203,7 +219,6 @@ export function PatientsTab() {
         const body = encodeURIComponent(messageText);
         const mailtoUrl = `mailto:${selectedPatient.email}?subject=${subject}&body=${body}`;
 
-        // Save to history
         try {
             setSendingMessage(true);
             const targetClinicId = user.role === 'secretary' ? (user as any).clinicId : user.id;
@@ -216,10 +231,7 @@ export function PatientsTab() {
                 selectedTemplate
             );
 
-            // Open email client
             window.location.href = mailtoUrl;
-
-            // Refresh communications
             await loadCommunications();
 
             toast({ title: 'Email preparado', description: 'Se abrió tu cliente de email y se guardó en el historial.' });
@@ -233,7 +245,6 @@ export function PatientsTab() {
         }
     };
 
-    // Filter and sort patients
     const filteredPatients = useMemo(() => {
         let result = [...patients];
 
@@ -332,8 +343,8 @@ export function PatientsTab() {
     return (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold tracking-tight">Pacientes</h2>
-                <p className="text-muted-foreground">Pacientes que han tenido citas con tu clínica.</p>
+                <h2 className="text-2xl font-bold tracking-tight">Pacientes e Historias Clínicas</h2>
+                <p className="text-muted-foreground">Fichas técnicas integrales y listado de pacientes atendidos en tu clínica.</p>
             </div>
 
             {/* Stats Cards */}
@@ -367,27 +378,54 @@ export function PatientsTab() {
                 </Card>
             </div>
 
-            {/* Patients Table */}
+            {/* Patients Directory */}
             <Card>
                 <CardHeader>
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div>
-                            <CardTitle>Listado de Pacientes</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                <Users className="h-5 w-5 text-primary" />
+                                Directorio de Pacientes
+                            </CardTitle>
                             <CardDescription>
                                 {filteredPatients.length === patients.length
-                                    ? `${patients.length} pacientes`
-                                    : `${filteredPatients.length} de ${patients.length}`
+                                    ? `${patients.length} pacientes registrados — Visualiza cada paciente como Ficha Técnica completa o cámbialo a Vista Listado.`
+                                    : `${filteredPatients.length} de ${patients.length} pacientes`
                                 }
                             </CardDescription>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                            {/* View Switcher */}
+                            <div className="inline-flex items-center rounded-lg border bg-slate-100/80 p-1">
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    className={cn("h-7 px-3 text-xs gap-1.5", viewMode === 'cards' ? "shadow-xs" : "text-slate-600")}
+                                    onClick={() => setViewMode('cards')}
+                                >
+                                    <LayoutGrid className="h-3.5 w-3.5" />
+                                    Fichas Técnicas
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    className={cn("h-7 px-3 text-xs gap-1.5", viewMode === 'list' ? "shadow-xs" : "text-slate-600")}
+                                    onClick={() => setViewMode('list')}
+                                >
+                                    <List className="h-3.5 w-3.5" />
+                                    Vista Listado
+                                </Button>
+                            </div>
+
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Buscar..."
+                                    placeholder="Buscar nombre, cédula..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-9 w-[180px] h-9"
+                                    className="pl-9 w-[190px] h-9"
                                 />
                             </div>
                             <Select value={filterNoShows} onValueChange={(v) => setFilterNoShows(v as any)}>
@@ -426,87 +464,302 @@ export function PatientsTab() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Paciente</TableHead>
-                                <TableHead>Contacto</TableHead>
-                                <TableHead>Profesionales</TableHead>
-                                <TableHead className="text-center">Citas</TableHead>
-                                <TableHead>Última Visita</TableHead>
-                                <TableHead className="w-[60px]"></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {paginatedPatients.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                                        No se encontraron pacientes.
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                paginatedPatients.map((patient) => (
-                                    <TableRow key={patient.id}>
-                                        <TableCell>
-                                            <div className="flex items-center gap-3">
-                                                <Avatar className="h-9 w-9">
-                                                    <AvatarImage src={patient.profileImage || undefined} />
-                                                    <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                                                        {getInitials(patient.name)}
-                                                    </AvatarFallback>
-                                                </Avatar>
-                                                <div>
-                                                    <p className="font-medium">{patient.name}</p>
-                                                    {patient.cedula && (
-                                                        <p className="text-xs text-muted-foreground">{patient.documentType || 'Cédula'}: {patient.cedula}</p>
-                                                    )}
+                    {paginatedPatients.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground border rounded-xl bg-slate-50/40">
+                            <Users className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                            <p className="font-medium">No se encontraron pacientes.</p>
+                        </div>
+                    ) : viewMode === 'cards' ? (
+                        /* VISTA FICHAS TÉCNICAS */
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {paginatedPatients.map((patient) => {
+                                const waPhone = formatWhatsAppPhone(patient.phone);
+                                return (
+                                    <Card key={patient.id} className="overflow-hidden border-slate-200 hover:border-primary/40 hover:shadow-md transition-all flex flex-col justify-between">
+                                        <div>
+                                            <div className="p-4 bg-gradient-to-r from-slate-50 via-white to-blue-50/30 border-b flex items-start justify-between gap-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <Avatar className="h-12 w-12 border-2 border-primary/15 shadow-xs shrink-0">
+                                                        <AvatarImage src={patient.profileImage || undefined} />
+                                                        <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                                                            {getInitials(patient.name)}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <h3 className="font-bold text-slate-900 truncate text-base">{patient.name}</h3>
+                                                            {patient.bloodType && (
+                                                                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px] px-1.5 py-0 font-bold">
+                                                                    <Heart className="h-2.5 w-2.5 mr-0.5 fill-red-500 text-red-500" />
+                                                                    {patient.bloodType}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                                                                {patient.documentType || 'CI'}: {patient.cedula || 'S/R'}
+                                                            </span>
+                                                            {patient.age && <span>• {patient.age} años</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <Badge variant="secondary" className="shrink-0 text-[11px] font-semibold">
+                                                    {patient.totalAppointments} {patient.totalAppointments === 1 ? 'cita' : 'citas'}
+                                                </Badge>
+                                            </div>
+
+                                            <div className="p-4 space-y-3 text-xs">
+                                                <div className="grid grid-cols-2 gap-2 text-slate-600">
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                        <span className="truncate">{patient.phone || 'Sin teléfono'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                        <span className="truncate">{patient.city || 'Sin ciudad'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 col-span-2 truncate">
+                                                        <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                        <span className="truncate">{patient.email || 'Sin correo'}</span>
+                                                    </div>
+                                                </div>
+
+                                                {patient.attendedByDoctors.length > 0 && (
+                                                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                                        <Stethoscope className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                                        {patient.attendedByDoctors.slice(0, 2).map((doc, i) => (
+                                                            <Badge key={i} variant="outline" className="text-[10px] py-0 px-1.5 bg-blue-50/50 text-blue-800 border-blue-200">
+                                                                {doc}
+                                                            </Badge>
+                                                        ))}
+                                                        {patient.attendedByDoctors.length > 2 && (
+                                                            <span className="text-[10px] text-muted-foreground">+{patient.attendedByDoctors.length - 2} más</span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {(patient.allergies || (patient as any).chronicConditions || (patient as any).chronic_conditions) && (
+                                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                                        {patient.allergies && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-medium truncate max-w-full">
+                                                                <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                                                                <strong>Alergia:</strong> {patient.allergies}
+                                                            </span>
+                                                        )}
+                                                        {((patient as any).chronicConditions || (patient as any).chronic_conditions) && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-medium truncate max-w-full">
+                                                                <Stethoscope className="h-3 w-3 text-blue-600 shrink-0" />
+                                                                {(patient as any).chronicConditions || (patient as any).chronic_conditions}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center">
+                                                    <div className="bg-slate-50 rounded-lg p-1.5">
+                                                        <span className="text-[10px] text-muted-foreground block">Última Visita</span>
+                                                        <span className="font-semibold text-slate-800 text-xs">
+                                                            {patient.lastVisit ? format(parseISO(patient.lastVisit), "dd/MM/yy") : 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-slate-50 rounded-lg p-1.5">
+                                                        <span className="text-[10px] text-muted-foreground block">Total Pagado</span>
+                                                        <span className="font-semibold text-emerald-700 text-xs">
+                                                            {formatCurrency(patient.totalPaid)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-slate-50 rounded-lg p-1.5">
+                                                        <span className="text-[10px] text-muted-foreground block">Inasistencias</span>
+                                                        <span className={cn("font-semibold text-xs", patient.noShowCount > 0 ? "text-red-600" : "text-slate-700")}>
+                                                            {patient.noShowCount}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="text-sm">
-                                                {patient.email && <p className="truncate max-w-[180px]">{patient.email}</p>}
-                                                {patient.phone && <p className="text-muted-foreground">{patient.phone}</p>}
+                                        </div>
+
+                                        <CardFooter className="p-3 bg-slate-50/80 border-t flex flex-col gap-2">
+                                            <div className="grid grid-cols-3 gap-1.5 w-full">
+                                                <Button asChild size="sm" className="h-8 text-xs font-semibold gap-1 px-2">
+                                                    <Link href={`/clinic/patients/${patient.id}`}>
+                                                        <FileText className="h-3.5 w-3.5" />
+                                                        Historia
+                                                    </Link>
+                                                </Button>
+                                                <Button asChild variant="outline" size="sm" className="h-8 text-xs font-medium gap-1 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                                    <Link href={`/clinic/patients/${patient.id}?tab=new-evolution`}>
+                                                        <PlusCircle className="h-3.5 w-3.5" />
+                                                        Evolución
+                                                    </Link>
+                                                </Button>
+                                                <Button asChild variant="outline" size="sm" className="h-8 text-xs font-medium gap-1 px-2 border-purple-200 text-purple-700 hover:bg-purple-50">
+                                                    <Link href={`/clinic/patients/${patient.id}?tab=files`}>
+                                                        <FolderOpen className="h-3.5 w-3.5" />
+                                                        Archivos
+                                                    </Link>
+                                                </Button>
                                             </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col gap-1">
-                                                {patient.attendedByDoctors.slice(0, 2).map((doc, i) => (
-                                                    <Badge key={i} variant="outline" className="text-xs w-fit">
-                                                        {doc}
-                                                    </Badge>
-                                                ))}
-                                                {patient.attendedByDoctors.length > 2 && (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        +{patient.attendedByDoctors.length - 2} más
-                                                    </span>
+
+                                            <div className="flex items-center justify-between gap-1.5 w-full">
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    className="h-8 text-xs flex-1 gap-1.5 font-medium"
+                                                    onClick={() => { setSelectedPatient(patient); setIsDetailOpen(true); setDetailTab('clinical-history'); }}
+                                                >
+                                                    <Eye className="h-3.5 w-3.5" />
+                                                    Vista Previa Ficha
+                                                </Button>
+
+                                                {waPhone && (
+                                                    <Button
+                                                        asChild
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 px-2.5 text-xs border-emerald-300 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100"
+                                                        title="Abrir WhatsApp directo"
+                                                    >
+                                                        <a
+                                                            href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Hola ${patient.name}, nos comunicamos desde la clínica.`)}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                        >
+                                                            <MessageCircle className="h-3.5 w-3.5 mr-1" />
+                                                            WhatsApp
+                                                        </a>
+                                                    </Button>
                                                 )}
-                                                {patient.attendedByDoctors.length === 0 && (
-                                                    <span className="text-xs text-muted-foreground">-</span>
-                                                )}
+
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 px-2.5 text-xs"
+                                                    onClick={() => { setSelectedPatient(patient); setIsDetailOpen(true); setDetailTab('contact'); }}
+                                                    title="Plantillas de mensaje / Email"
+                                                >
+                                                    <Send className="h-3.5 w-3.5" />
+                                                </Button>
                                             </div>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <div className="flex items-center justify-center gap-1">
-                                                <Badge variant="secondary">{patient.totalAppointments}</Badge>
-                                                {patient.noShowCount > 0 && (
-                                                    <Badge variant="destructive" className="text-xs">{patient.noShowCount}</Badge>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            {patient.lastVisit ? format(parseISO(patient.lastVisit), "dd/MM/yy", { locale: es }) : '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button variant="ghost" size="icon" onClick={() => { setSelectedPatient(patient); setIsDetailOpen(true); setDetailTab('info'); }}>
-                                                <Eye className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                        </CardFooter>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        /* VISTA LISTADO (TABLA) */
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Paciente</TableHead>
+                                    <TableHead>Contacto</TableHead>
+                                    <TableHead>Profesionales</TableHead>
+                                    <TableHead className="text-center">Citas</TableHead>
+                                    <TableHead>Última Visita</TableHead>
+                                    <TableHead className="text-right">Acciones Directas</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {paginatedPatients.map((patient) => {
+                                    const waPhone = formatWhatsAppPhone(patient.phone);
+                                    return (
+                                        <TableRow key={patient.id}>
+                                            <TableCell>
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar className="h-9 w-9">
+                                                        <AvatarImage src={patient.profileImage || undefined} />
+                                                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                                                            {getInitials(patient.name)}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <div>
+                                                        <p className="font-medium">{patient.name}</p>
+                                                        {patient.cedula && (
+                                                            <p className="text-xs text-muted-foreground">{patient.documentType || 'Cédula'}: {patient.cedula}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-sm">
+                                                    {patient.email && <p className="truncate max-w-[180px]">{patient.email}</p>}
+                                                    {patient.phone && <p className="text-muted-foreground">{patient.phone}</p>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1">
+                                                    {patient.attendedByDoctors.slice(0, 2).map((doc, i) => (
+                                                        <Badge key={i} variant="outline" className="text-xs w-fit">
+                                                            {doc}
+                                                        </Badge>
+                                                    ))}
+                                                    {patient.attendedByDoctors.length > 2 && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            +{patient.attendedByDoctors.length - 2} más
+                                                        </span>
+                                                    )}
+                                                    {patient.attendedByDoctors.length === 0 && (
+                                                        <span className="text-xs text-muted-foreground">-</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <Badge variant="secondary">{patient.totalAppointments}</Badge>
+                                                    {patient.noShowCount > 0 && (
+                                                        <Badge variant="destructive" className="text-xs">{patient.noShowCount}</Badge>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {patient.lastVisit ? format(parseISO(patient.lastVisit), "dd/MM/yy", { locale: es }) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button asChild variant="default" size="sm" className="h-8 text-xs gap-1 px-2.5">
+                                                        <Link href={`/clinic/patients/${patient.id}`}>
+                                                            <FileText className="h-3.5 w-3.5" />
+                                                            Historia
+                                                        </Link>
+                                                    </Button>
+                                                    <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1 px-2 border-purple-200 text-purple-700 hover:bg-purple-50" title="Archivos y Resultados">
+                                                        <Link href={`/clinic/patients/${patient.id}?tab=files`}>
+                                                            <FolderOpen className="h-3.5 w-3.5" />
+                                                        </Link>
+                                                    </Button>
+                                                    {waPhone && (
+                                                        <Button
+                                                            asChild
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="h-8 w-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                                            title="WhatsApp directo"
+                                                        >
+                                                            <a
+                                                                href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Hola ${patient.name}, nos comunicamos desde la clínica.`)}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                            >
+                                                                <MessageCircle className="h-4 w-4" />
+                                                            </a>
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8"
+                                                        onClick={() => { setSelectedPatient(patient); setIsDetailOpen(true); setDetailTab('clinical-history'); }}
+                                                        title="Vista previa de Ficha Técnica"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    )}
 
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between mt-4 pt-4 border-t">
@@ -527,35 +780,80 @@ export function PatientsTab() {
                 </CardContent>
             </Card>
 
-            {/* Patient Detail Dialog */}
+            {/* Patient Detail Dialog (Ficha Técnica Completa) */}
             <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     {selectedPatient && (
                         <>
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-3">
-                                    <Avatar className="h-12 w-12">
-                                        <AvatarImage src={selectedPatient.profileImage || undefined} />
-                                        <AvatarFallback className="bg-primary/10 text-primary">{getInitials(selectedPatient.name)}</AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <span>{selectedPatient.name}</span>
-                                        <DialogDescription>Información del paciente</DialogDescription>
+                            <DialogHeader className="border-b pb-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <DialogTitle className="flex items-center gap-3">
+                                        <Avatar className="h-14 w-14 border-2 border-primary/20">
+                                            <AvatarImage src={selectedPatient.profileImage || undefined} />
+                                            <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">{getInitials(selectedPatient.name)}</AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xl font-bold">{selectedPatient.name}</span>
+                                                <Badge variant="outline" className="text-xs font-mono">
+                                                    {selectedPatient.documentType || 'Cédula'}: {selectedPatient.cedula || 'S/R'}
+                                                </Badge>
+                                            </div>
+                                            <DialogDescription className="mt-1">
+                                                Ficha Técnica Integral del Paciente • Historial Clínico, Archivos y Contacto Directo
+                                            </DialogDescription>
+                                        </div>
+                                    </DialogTitle>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Button asChild size="sm" className="gap-1.5">
+                                            <Link href={`/clinic/patients/${selectedPatient.id}`}>
+                                                <FileText className="h-4 w-4" />
+                                                Abrir Expediente Completo
+                                            </Link>
+                                        </Button>
+                                        {formatWhatsAppPhone(selectedPatient.phone) && (
+                                            <Button
+                                                asChild
+                                                variant="outline"
+                                                size="sm"
+                                                className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 gap-1.5"
+                                            >
+                                                <a
+                                                    href={`https://wa.me/${formatWhatsAppPhone(selectedPatient.phone)}?text=${encodeURIComponent(`Hola ${selectedPatient.name}, nos comunicamos desde la clínica.`)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                >
+                                                    <MessageCircle className="h-4 w-4" />
+                                                    WhatsApp
+                                                </a>
+                                            </Button>
+                                        )}
                                     </div>
-                                </DialogTitle>
+                                </div>
                             </DialogHeader>
 
                             <Tabs value={detailTab} onValueChange={setDetailTab} className="mt-4">
-                                <TabsList className="grid w-full grid-cols-4">
-                                    <TabsTrigger value="info">Información</TabsTrigger>
-                                    <TabsTrigger value="family">Familia</TabsTrigger>
-                                    <TabsTrigger value="contact">Contactar</TabsTrigger>
-                                    <TabsTrigger value="history">Historial</TabsTrigger>
+                                <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto gap-1 p-1">
+                                    <TabsTrigger value="clinical-history" className="text-xs py-2">Historia Clínica</TabsTrigger>
+                                    <TabsTrigger value="files" className="text-xs py-2">Archivos / Lab</TabsTrigger>
+                                    <TabsTrigger value="info" className="text-xs py-2">Ficha y Citas</TabsTrigger>
+                                    <TabsTrigger value="family" className="text-xs py-2">Familia</TabsTrigger>
+                                    <TabsTrigger value="contact" className="text-xs py-2">Contactar</TabsTrigger>
+                                    <TabsTrigger value="history" className="text-xs py-2">Comunicaciones</TabsTrigger>
                                 </TabsList>
+
+                                <TabsContent value="clinical-history" className="mt-4">
+                                    <MedicalRecordTimeline patientId={selectedPatient.id} />
+                                </TabsContent>
+
+                                <TabsContent value="files" className="mt-4">
+                                    <PatientFilesGallery patientId={selectedPatient.id} />
+                                </TabsContent>
 
                                 <TabsContent value="info" className="space-y-4 mt-4">
                                     {/* Patient Info */}
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border">
                                         <div className="flex items-center gap-2 text-sm">
                                             <Mail className="h-4 w-4 text-muted-foreground" />
                                             <span>{selectedPatient.email || 'No registrado'}</span>
@@ -601,7 +899,7 @@ export function PatientsTab() {
                                     {/* Appointments */}
                                     <div>
                                         <h4 className="font-semibold mb-2">Citas en la Clínica</h4>
-                                        <div className="border rounded-lg max-h-[200px] overflow-y-auto">
+                                        <div className="border rounded-lg max-h-[220px] overflow-y-auto">
                                             <Table>
                                                 <TableHeader>
                                                     <TableRow>

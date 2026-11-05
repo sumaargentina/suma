@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { HeaderWrapper, BottomNav } from "@/components/header";
+import { EntitySilhouette, isRealImageUrl } from "@/components/ui/entity-silhouette";
 import {
     Loader2, MapPin, Phone, Clock, Stethoscope, Building2, Users,
     ShieldCheck, Star, ChevronRight, Sparkles, Share2, Banknote
@@ -125,19 +126,17 @@ export default function ClinicPublicProfilePage() {
 
             <main className="flex-1 pb-24 md:pb-8">
                 {/* Banner de portada */}
-                <section className="relative h-32 md:h-48 bg-gradient-to-br from-primary/20 to-secondary/20">
-                    {clinic.bannerImage ? (
+                <section className="relative h-32 md:h-48 bg-gradient-to-br from-primary/20 to-secondary/20 overflow-hidden">
+                    {isRealImageUrl(clinic.bannerImage) ? (
                         <Image
-                            src={clinic.bannerImage}
+                            src={clinic.bannerImage!}
                             alt="Portada"
                             fill
                             className="object-cover"
                             priority
                         />
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Building2 className="h-16 w-16 text-primary/20" />
-                        </div>
+                        <EntitySilhouette type="clinic" variant="banner" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
                 </section>
@@ -149,19 +148,15 @@ export default function ClinicPublicProfilePage() {
                             {/* Logo flotante */}
                             <div className="shrink-0 bg-white p-1 rounded-xl shadow-lg border-2 border-white">
                                 <div className="relative h-20 w-20 md:h-28 md:w-28 rounded-lg overflow-hidden bg-white">
-                                    {clinic.logoUrl ? (
+                                    {isRealImageUrl(clinic.logoUrl) ? (
                                         <Image
-                                            src={clinic.logoUrl}
+                                            src={clinic.logoUrl!}
                                             alt={clinic.name}
                                             fill
                                             className="object-contain p-1"
                                         />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/10">
-                                            <span className="text-2xl md:text-3xl font-bold text-primary">
-                                                {clinic.name.substring(0, 2).toUpperCase()}
-                                            </span>
-                                        </div>
+                                        <EntitySilhouette type="clinic" variant="avatar" />
                                     )}
                                 </div>
                             </div>
@@ -345,19 +340,17 @@ export default function ClinicPublicProfilePage() {
                                             <Card className="group overflow-hidden hover:shadow-md transition-all border-0 shadow-sm">
                                                 <CardContent className="p-3 md:p-4">
                                                     <div className="flex gap-3">
-                                                        <div className="shrink-0 h-14 w-14 md:h-16 md:w-16 rounded-full overflow-hidden bg-white border-2 border-slate-200 shadow-sm">
-                                                            {doctor.profileImage ? (
+                                                        <div className="shrink-0 h-14 w-14 md:h-16 md:w-16 rounded-full overflow-hidden bg-white border-2 border-slate-200 shadow-sm relative">
+                                                            {isRealImageUrl(doctor.profileImage) ? (
                                                                 <Image
                                                                     src={doctor.profileImage}
                                                                     alt={doctor.name}
                                                                     width={64}
                                                                     height={64}
-                                                                    className="w-full h-full object-contain bg-white"
+                                                                    className="w-full h-full object-cover bg-white"
                                                                 />
                                                             ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold text-sm">
-                                                                    {doctor.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                                                </div>
+                                                                <EntitySilhouette type="doctor" variant="avatar" />
                                                             )}
                                                         </div>
                                                         <div className="flex-1 min-w-0">

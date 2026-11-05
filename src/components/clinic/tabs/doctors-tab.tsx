@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Doctor, ClinicBranch, ClinicSpecialty } from '@/lib/types';
-import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage, affiliateClinicDoctor, unlinkClinicDoctor } from '@/lib/supabaseService';
+import { getClinicDoctors, addDoctor, updateDoctor, getClinicBranches, getClinicSpecialties, getClinicAppointments, getDoctorAppointmentHistory, uploadPublicImage, affiliateClinicDoctor, unlinkClinicDoctor, updateClinicDoctorConfig } from '@/lib/supabaseService';
 import Image from 'next/image';
 import { Appointment } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { format, subDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Calendar as CalendarIcon, CheckCircle2, Search, AlertTriangle, Sparkles, UserCheck, UserMinus } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, Search, AlertTriangle, Sparkles, UserCheck, UserMinus, DollarSign, Trash2 } from 'lucide-react';
 import { DateRange } from "react-day-picker";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { hashPassword } from '@/lib/password-utils';
@@ -68,7 +68,11 @@ export function DoctorsTab() {
         password: '', // Only for new doctors
         profession: 'Médico',
         specialty: '',
+        consultationFee: '0',
     });
+    const [doctorClinicServices, setDoctorClinicServices] = useState<Service[]>([]);
+    const [newDocServiceName, setNewDocServiceName] = useState('');
+    const [newDocServicePrice, setNewDocServicePrice] = useState('');
 
     const [profileFile, setProfileFile] = useState<File | null>(null);
     const [bannerFile, setBannerFile] = useState<File | null>(null);
@@ -224,7 +228,10 @@ export function DoctorsTab() {
 
 
     const resetForm = () => {
-        setFormData({ dni: '', name: '', email: '', phone: '', medicalLicense: '', password: '', profession: 'Médico', specialty: '' });
+        setFormData({ dni: '', name: '', email: '', phone: '', medicalLicense: '', password: '', profession: 'Médico', specialty: '', consultationFee: '0' });
+        setDoctorClinicServices([]);
+        setNewDocServiceName('');
+        setNewDocServicePrice('');
         setProfileFile(null);
         setBannerFile(null);
         setPreviewProfile('');
@@ -234,6 +241,37 @@ export function DoctorsTab() {
         setLookupPerformed(false);
         setIsAlreadyAffiliated(false);
         setRegistrationMode('existing');
+    };
+
+    const handleAddInlineService = () => {
+        if (!newDocServiceName.trim() || !newDocServicePrice) return;
+        const priceNum = parseFloat(newDocServicePrice);
+        if (isNaN(priceNum) || priceNum < 0) return;
+
+        const newService: Service = {
+            id: `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: newDocServiceName.trim(),
+            price: priceNum
+        };
+        setDoctorClinicServices(prev => [...prev, newService]);
+        setNewDocServiceName('');
+        setNewDocServicePrice('');
+    };
+
+    const handleQuickAddInlineService = (srv: { id?: string; name: string; price: number }) => {
+        if (doctorClinicServices.some(s => s.name.toLowerCase() === srv.name.toLowerCase())) return;
+        setDoctorClinicServices(prev => [
+            ...prev,
+            {
+                id: srv.id || `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                name: srv.name,
+                price: Number(srv.price || 0)
+            }
+        ]);
+    };
+
+    const handleRemoveInlineService = (id: string) => {
+        setDoctorClinicServices(prev => prev.filter(s => s.id !== id));
     };
 
     const handleLookupDoctor = async (dniValue?: string, emailValue?: string) => {
@@ -270,6 +308,9 @@ export function DoctorsTab() {
                     medicalLicense: data.doctor.medicalLicense || prev.medicalLicense,
                     profession: data.doctor.profession || prev.profession || 'Médico',
                     specialty: data.doctor.specialty || prev.specialty || (specialties[0]?.name || ''),
+                    consultationFee: prev.consultationFee && prev.consultationFee !== '0'
+                        ? prev.consultationFee
+                        : String(data.doctor.consultationFee || 0),
                 }));
                 if (data.doctor.profileImage) setPreviewProfile(data.doctor.profileImage);
                 if (data.doctor.bannerImage) setPreviewBanner(data.doctor.bannerImage);
@@ -339,7 +380,11 @@ export function DoctorsTab() {
                 password: '', // Don't show password
                 profession: doctor.profession || 'Médico',
                 specialty: doctor.specialty,
+                consultationFee: String(doctor.consultationFee || 0),
             });
+            setDoctorClinicServices(Array.isArray(doctor.services) ? [...doctor.services] : []);
+            setNewDocServiceName('');
+            setNewDocServicePrice('');
             setPreviewProfile(doctor.profileImage || '');
             setPreviewBanner(doctor.bannerImage || '');
             setProfileFile(null);
@@ -361,6 +406,19 @@ export function DoctorsTab() {
         try {
             setIsSubmitting(true);
 
+            // Auto-agregar servicio si quedó escrito en los inputs
+            let finalServices = [...doctorClinicServices];
+            if (newDocServiceName.trim() && newDocServicePrice) {
+                const p = parseFloat(newDocServicePrice);
+                if (!isNaN(p) && p >= 0) {
+                    finalServices.push({
+                        id: `srv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: newDocServiceName.trim(),
+                        price: p
+                    });
+                }
+            }
+
             if (editingDoctor) {
                 // Upload images if new ones selected
                 let profileUrl = editingDoctor.profileImage;
@@ -373,7 +431,7 @@ export function DoctorsTab() {
                     bannerUrl = await uploadPublicImage(bannerFile, 'images', `doctors/${editingDoctor.id}/banner`);
                 }
 
-                // Update
+                // Update basic doctor data if modified
                 const updateData: any = {
                     name: formData.name,
                     email: formData.email,
@@ -392,7 +450,14 @@ export function DoctorsTab() {
                 }
 
                 await updateDoctor(editingDoctor.id, updateData);
-                toast({ title: "Médico actualizado", description: "Los cambios se guardaron correctamente." });
+
+                // Save clinic-specific services & consultationFee into doctor_workspaces!
+                await updateClinicDoctorConfig(user.id, editingDoctor.id, {
+                    consultationFee: parseFloat(formData.consultationFee) || 0,
+                    services: finalServices,
+                });
+
+                toast({ title: "Médico actualizado", description: "Los datos y el catálogo de servicios en la clínica se guardaron correctamente." });
             } else {
                 const isLinkingExisting = !!existingDoctorFound || registrationMode === 'existing';
 
@@ -415,13 +480,13 @@ export function DoctorsTab() {
                     }
                 }
 
-                let profileUrl = previewProfile || 'https://placehold.co/400x400.png';
+                let profileUrl = previewProfile || '';
                 if (profileFile) {
                     const docId = `new_${Date.now()}`;
                     profileUrl = await uploadPublicImage(profileFile, 'images', `doctors/${docId}/profile`);
                 }
 
-                let bannerUrl = previewBanner || 'https://placehold.co/1200x400.png';
+                let bannerUrl = previewBanner || '';
                 if (bannerFile) {
                     const docId = `new_${Date.now()}`;
                     bannerUrl = await uploadPublicImage(bannerFile, 'images', `doctors/${docId}/banner`);
@@ -441,6 +506,8 @@ export function DoctorsTab() {
                     password: existingDoctorFound ? undefined : formData.password,
                     profileImage: profileUrl,
                     bannerImage: bannerUrl,
+                    consultationFee: parseFloat(formData.consultationFee) || 0,
+                    services: finalServices,
                 });
 
                 toast({
@@ -550,11 +617,13 @@ export function DoctorsTab() {
                                                     id="dni"
                                                     value={formData.dni}
                                                     onChange={e => {
-                                                        const val = e.target.value;
+                                                        const val = e.target.value.replace(/\D/g, '');
                                                         setFormData(prev => ({ ...prev, dni: val }));
                                                         handleLookupDoctor(val, formData.email);
                                                     }}
-                                                    placeholder="Ej: V-15432890 o 15432890"
+                                                    placeholder="Solo números (ej: 15432890)"
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]*"
                                                     className="bg-white dark:bg-slate-950 font-mono text-xs"
                                                     required={registrationMode === 'new'}
                                                 />
@@ -676,8 +745,10 @@ export function DoctorsTab() {
                                                 <Input
                                                     id="edit-dni"
                                                     value={formData.dni}
-                                                    onChange={e => setFormData({ ...formData, dni: e.target.value })}
-                                                    placeholder="Ej: V-15432890"
+                                                    onChange={e => setFormData({ ...formData, dni: e.target.value.replace(/\D/g, '') })}
+                                                    placeholder="Solo números (ej: 15432890)"
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]*"
                                                     required
                                                 />
                                             </div>
@@ -737,6 +808,122 @@ export function DoctorsTab() {
                                                 setFormData(prev => ({ ...prev, profession, specialty }))
                                             }
                                         />
+                                    </div>
+
+                                    {/* Catálogo de Servicios y Tarifa Independiente en esta Clínica */}
+                                    <div className="p-3.5 rounded-xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div>
+                                                <Label className="text-xs font-bold text-teal-900 dark:text-teal-200 flex items-center gap-1.5">
+                                                    <Building2 className="h-3.5 w-3.5 text-teal-600" />
+                                                    Servicios y Precios de este Médico en tu Clínica
+                                                </Label>
+                                                <p className="text-[11px] text-teal-800/80 dark:text-teal-400">
+                                                    Se guardan de forma 100% independiente a su consultorio privado.
+                                                </p>
+                                            </div>
+                                            <div className="w-full sm:w-44">
+                                                <Label htmlFor="clinic-fee" className="text-[11px] font-semibold text-teal-900">Consulta Base en Clínica ($)</Label>
+                                                <div className="relative mt-0.5">
+                                                    <DollarSign className="absolute left-2.5 top-2 h-3.5 w-3.5 text-teal-700" />
+                                                    <Input
+                                                        id="clinic-fee"
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={formData.consultationFee}
+                                                        onChange={e => setFormData(prev => ({ ...prev, consultationFee: e.target.value }))}
+                                                        className="pl-7 h-8 text-xs bg-white font-semibold"
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Agregar servicio específico en la clínica */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end pt-1">
+                                            <div className="sm:col-span-6">
+                                                <Label className="text-[11px] text-slate-700">Nombre del Servicio / Estudio en la Clínica</Label>
+                                                <Input
+                                                    value={newDocServiceName}
+                                                    onChange={e => setNewDocServiceName(e.target.value)}
+                                                    placeholder="Ej. Ecografía Mamaria, Control..."
+                                                    className="h-8 text-xs bg-white mt-0.5"
+                                                />
+                                            </div>
+                                            <div className="sm:col-span-3">
+                                                <Label className="text-[11px] text-slate-700">Precio Clínica ($)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={newDocServicePrice}
+                                                    onChange={e => setNewDocServicePrice(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className="h-8 text-xs bg-white mt-0.5"
+                                                />
+                                            </div>
+                                            <div className="sm:col-span-3">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    onClick={handleAddInlineService}
+                                                    disabled={!newDocServiceName.trim() || !newDocServicePrice}
+                                                    className="w-full h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                                                >
+                                                    <Plus className="h-3.5 w-3.5 mr-1" /> Agregar
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Sugerencias rápidas del catálogo de la clínica */}
+                                        {clinicServices.length > 0 && (
+                                            <div className="space-y-1 pt-1">
+                                                <span className="text-[10px] font-semibold uppercase tracking-wider text-teal-800">
+                                                    Asignar del catálogo de la clínica con 1 clic:
+                                                </span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {clinicServices.map((cs) => {
+                                                        const added = doctorClinicServices.some(s => s.name.toLowerCase() === cs.name.toLowerCase());
+                                                        return (
+                                                            <Button
+                                                                key={cs.id || cs.name}
+                                                                type="button"
+                                                                variant={added ? "secondary" : "outline"}
+                                                                size="sm"
+                                                                disabled={added}
+                                                                onClick={() => handleQuickAddInlineService({ id: cs.id, name: cs.name, price: Number(cs.price || 0) })}
+                                                                className="h-6 text-[11px] px-2 bg-white"
+                                                            >
+                                                                {added ? '✓ ' : '+ '}{cs.name} (${cs.price || 0})
+                                                            </Button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Lista de servicios asignados a este médico en la clínica */}
+                                        {doctorClinicServices.length > 0 && (
+                                            <div className="space-y-1.5 pt-1">
+                                                {doctorClinicServices.map((srv) => (
+                                                    <div key={srv.id} className="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-teal-200 text-xs">
+                                                        <span className="font-medium text-slate-800">{srv.name}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="secondary" className="font-mono text-xs">${srv.price}</Badge>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveInlineService(srv.id)}
+                                                                className="text-red-500 hover:text-red-700 p-0.5"
+                                                                title="Quitar servicio"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Sección Contraseña: Solo si es un médico NUEVO o si se está editando con cambio de clave */}
@@ -840,13 +1027,19 @@ export function DoctorsTab() {
                                 <div className="flex items-center gap-2 text-muted-foreground">
                                     <Mail className="h-4 w-4" /> {doctor.email}
                                 </div>
+                                <div className="flex items-center justify-between text-xs pt-1 text-slate-600">
+                                    <span>Consulta en clínica: <strong>${doctor.consultationFee || 0}</strong></span>
+                                    <Badge variant="secondary" className="text-[11px]">
+                                        {(doctor.services || []).length} servicio(s) en clínica
+                                    </Badge>
+                                </div>
 
                                 <div className="flex gap-2 mt-4 pt-2 border-t">
                                     <Button variant="outline" size="sm" className="flex-1" onClick={() => handleOpenDialog(doctor)}>
                                         <Pencil className="h-3 w-3 mr-1.5" /> Editar
                                     </Button>
-                                    <Button variant="secondary" size="sm" className="flex-1" onClick={() => handleOpenConfig(doctor)}>
-                                        <Settings className="h-3 w-3 mr-1.5" /> Configurar
+                                    <Button variant="secondary" size="sm" className="flex-1 bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200" onClick={() => handleOpenConfig(doctor)}>
+                                        <Settings className="h-3 w-3 mr-1.5" /> Servicios y Horarios
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -866,6 +1059,7 @@ export function DoctorsTab() {
             {/* Configuration Modal */}
             <DoctorConfigurationModal
                 doctor={configDoctor}
+                clinicId={user?.id}
                 isOpen={isConfigOpen}
                 onClose={() => setIsConfigOpen(false)}
                 onSave={handleSaveConfig}

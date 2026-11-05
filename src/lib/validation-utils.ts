@@ -31,31 +31,21 @@ export const validatePhone = (phone: string): { isValid: boolean; sanitized: str
   };
 };
 
-export const validateCedula = (cedula: string, documentType?: 'Cédula' | 'DNI' | 'Pasaporte' | 'Otro'): { isValid: boolean; sanitized: string } => {
-  const originalCedula = cedula.trim();
+export const validateCedula = (cedula: string, _documentType?: 'Cédula' | 'DNI' | 'Pasaporte' | 'Otro'): { isValid: boolean; sanitized: string } => {
+  const originalCedula = (cedula || '').trim();
 
   // Si no hay valor, es válido (campo opcional)
   if (!originalCedula) {
     return { isValid: true, sanitized: '' };
   }
 
-  // Validar según tipo de documento
-  if (documentType === 'Pasaporte' || documentType === 'Otro') {
-    // Pasaporte u Otro: Letras, números, guiones, puntos. 4-20 caracteres
-    const genericRegex = /^[A-Z0-9.\-]{4,20}$/i;
-    return {
-      isValid: genericRegex.test(originalCedula),
-      sanitized: originalCedula.toUpperCase()
-    };
-  } else {
-    // Cédula de Identidad / DNI: 6-12 caracteres alfanuméricos (ej: 12345678, V12345678, E84123456)
-    const sanitizedCedula = originalCedula.replace(/[.\s-]/g, '').toUpperCase();
-    const cedulaRegex = /^[VEJ]?[0-9]{6,12}$/i;
-    return {
-      isValid: cedulaRegex.test(sanitizedCedula),
-      sanitized: sanitizedCedula
-    };
-  }
+  // Estrictamente numérico (sin puntos, espacios ni prefijos)
+  const sanitizedCedula = originalCedula.replace(/\D/g, '');
+  const cedulaRegex = /^[0-9]{5,12}$/;
+  return {
+    isValid: cedulaRegex.test(sanitizedCedula),
+    sanitized: sanitizedCedula
+  };
 };
 
 export const validateName = (name: string): { isValid: boolean; sanitized: string } => {

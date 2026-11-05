@@ -118,9 +118,7 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
     setIsCheckingCedula(true);
     const timer = setTimeout(async () => {
       try {
-        const finalCedula = documentType === 'Cédula'
-          ? `${cedulaPrefix}-${clean}`
-          : cedulaNumber.trim().toUpperCase();
+        const finalCedula = clean;
         const res = await fetch('/api/validate-unique', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -272,10 +270,8 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   const handleCompleteProfile = async () => {
     if (!user) return;
 
-    const rawCedula = cedulaNumber.trim();
-    const finalCedula = documentType === 'Cédula' 
-      ? `${cedulaPrefix}-${rawCedula.replace(/\D/g, '')}` 
-      : rawCedula.toUpperCase();
+    const rawCedula = cedulaNumber.replace(/\D/g, '');
+    const finalCedula = rawCedula;
 
     if (!birthDate || !gender || !rawCedula || !phone || !locationData.state || !locationData.city) {
       toast({
@@ -535,10 +531,12 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   <div className="relative">
                     <input
                       id="welcome-cedula"
-                      type="text"
-                      placeholder={documentType === 'Pasaporte' ? 'Ej. ABC123456' : 'Ej. 12345678'}
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Solo números (ej. 12345678)"
                       value={cedulaNumber}
-                      onChange={(e) => setCedulaNumber(e.target.value.toUpperCase().slice(0, 20))}
+                      onChange={(e) => setCedulaNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
                       className={cn(
                         "w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 h-10",
                         cedulaError

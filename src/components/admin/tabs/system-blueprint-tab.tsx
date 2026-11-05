@@ -178,14 +178,26 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
         ],
         status: "completed",
       },
+      {
+        title: "1.9. Notificación Automática y Modal de Valoración Post-Consulta (Médicos y Clínicas)",
+        howItWorks:
+          "Apenas una cita médica pasa al estado «Atendido», el sistema envía automáticamente una notificación interactiva al paciente (`⭐ Califica al Dr(a). ...`), despliega un aviso destacado en la parte superior de su panel y habilita el botón «Calificar Doctor» con un modal de 1 a 5 estrellas y etiquetas rápidas de opinión.",
+        interactions: [
+          {
+            targetDept: "Médicos Especialistas y Clínicas",
+            detail: "Recalcula en tiempo real el promedio de estrellas (`rating`) y total de reseñas (`review_count`) visible en las tarjetas y perfiles públicos.",
+          },
+        ],
+        status: "enhanced",
+      },
     ],
   },
   {
     id: "doctor",
     name: "2. Departamento y Rol: MÉDICO ESPECIALISTA (Consultorio Digital + Modo Dual)",
-    subtitle: "Gestión clínica avanzada, emisión de récipes/órdenes, cupones propios, alianzas B2B y doble espacio de trabajo",
+    subtitle: "Gestión clínica avanzada, fichas técnicas de pacientes, galería de archivos WebP/PDF, emisión de récipes/órdenes y doble espacio de trabajo",
     badge: "100% Operativo",
-    progress: 96,
+    progress: 98,
     color: "blue",
     summary:
       "El Médico dispone de un consultorio digital completo para administrar sus citas, historias clínicas, ingresos, cupones promocionales, alianzas con farmacias/laboratorios y jornadas de salud. Además, cuenta con Cambio de Espacio de Trabajo en 1 Clic para actuar como Paciente usando su misma cuenta.",
@@ -274,6 +286,42 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
         ],
         status: "completed",
       },
+      {
+        title: "2.8. Directorio de Pacientes con Vista Dual («Fichas Técnicas» y «Vista Listado») y Acciones en 1 Clic",
+        howItWorks:
+          "La lista de pacientes muestra por defecto una Ficha Técnica completa por cada paciente (cédula, edad, grupo sanguíneo, alergias, patologías, teléfono, ciudad, última visita, total pagado e inasistencias) e incluye un selector superior para alternar a Vista Listado (tabla). Desde la misma ficha el médico tiene botones directos para: abrir la Historia Clínica, registrar Nueva Evolución, ver/subir Archivos y Resultados, comunicarse por WhatsApp directo, abrir el Chat interno o desplegar el Modal de Vista Previa con el Historial Clínico y Archivos integrados.",
+        interactions: [
+          {
+            targetDept: "Pacientes, Clínicas y Laboratorios",
+            detail: "Conecta en un solo clic el directorio de pacientes con su expediente médico completo, galería de estudios y canales de comunicación inmediata.",
+          },
+        ],
+        status: "enhanced",
+      },
+      {
+        title: "2.9. Galería Unificada de Archivos Médicos y Resultados con Compresión Automática a WebP",
+        howItWorks:
+          "En la pestaña «Archivos» de la Historia Clínica (y dentro del modal de Ficha Técnica), el médico visualiza todos los estudios adjuntos tanto por especialistas como por Laboratorios Clínicos. Permite subir informes en PDF o imágenes médicas (radiografías, ecografías, capturas de exámenes), comprimiendo automáticamente cualquier imagen al formato ligero `.webp` con indicador de ahorro de peso en KB, manteniendo documentos PDF intactos con visor integrado.",
+        interactions: [
+          {
+            targetDept: "Laboratorios Clínicos y Clínicas",
+            detail: "Sincroniza mediante `/api/patient-files` tanto `medical_attachments` como `laboratory_orders` para que el médico vea al instante cualquier resultado cargado por un laboratorio o colega.",
+          },
+        ],
+        status: "enhanced",
+      },
+      {
+        title: "2.10. Triaje de Signos Vitales (IMC Automático), Alergias/Condiciones en Vivo, Tratamientos Crónicos y Cierre Automático de Cita",
+        howItWorks:
+          "1) Signos Vitales Estructurados: El formulario de Nueva Evolución (con soporte de dictado IA) captura Tensión Arterial, Peso, Talla (calculando el IMC automáticamente), Temperatura, Frecuencia Cardíaca y SpO2, sincronizando el peso y talla en la ficha del paciente. 2) Alergias, Grupo Sanguíneo y Condiciones: El paciente las registra desde su perfil y el médico o clínica las confirma o actualiza en vivo desde la cabecera de la Historia Clínica. 3) Vínculo Cita ↔ Consulta: Al hacer clic en «Pasar a Consulta» desde una cita y guardar la evolución, el sistema marca automáticamente la cita como «Atendido». 4) Videollamada Online: Permite generar una sala instantánea o pegar link de Meet/Zoom y enviarlo en 1 clic por WhatsApp. 5) Tratamiento Crónico y Documentos Oficiales: Incluye interruptor de tratamiento continuo (15, 30, 60 o 90 días) y emite Récipes, Informes/Reposos y Órdenes de Laboratorio con Firma y Sello Digital del médico.",
+        interactions: [
+          {
+            targetDept: "Pacientes, Clínicas, Farmacias y Laboratorios",
+            detail: "Unifica todo el flujo clínico tanto para Médicos Independientes como para Médicos de Clínicas, actualizando signos vitales, asistencia de citas, récipes con firma/sello y órdenes de laboratorio en tiempo real.",
+          },
+        ],
+        status: "enhanced",
+      },
     ],
   },
   {
@@ -351,36 +399,36 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
   {
     id: "clinic",
     name: "4. Departamento y Rol: CLÍNICAS, HOSPITALES Y CENTROS MÉDICOS",
-    subtitle: "Gestión hospitalaria, directorio de especialistas adscritos, presupuestos quirúrgicos y admisión",
-    badge: "95% Operativo",
-    progress: 93,
+    subtitle: "Gestión hospitalaria, fichas técnicas de pacientes, historias clínicas compartidas, directorio de especialistas y presupuestos",
+    badge: "98% Operativo",
+    progress: 96,
     color: "indigo",
     summary:
       "Permite a Clínicas y Centros de Salud gestionar su infraestructura médica, vincular a su staff de especialistas, recibir citas centralizadas, emitir presupuestos quirúrgicos/hospitalarios y organizar jornadas médicas.",
     functions: [
       {
-        title: "4.1. Perfil Institucional, Servicios de Emergencia/UCI y Seguros Aceptados",
+        title: "4.1. Perfil Institucional, Tarjetas en Carrusel, Servicios 24h y Siluetas Institucionales",
         howItWorks:
-          "Configuración de especialidades disponibles, servicios 24h (Emergencia, Quirófano, UCI, Hospitalización, Ambulancia, Laboratorio e Imagenología interna) y convenios con aseguradoras.",
+          "Configuración de especialidades disponibles, servicios 24h (Emergencia, Quirófano, UCI, Hospitalización, Ambulancia, Laboratorio e Imagenología interna) y convenios con aseguradoras. Presenta tarjetas institucionales en carrusel horizontal con botón «Ver todas las clínicas» y siluetas vectoriales limpias cuando la entidad aún no ha subido logo o portada.",
         interactions: [
           {
             targetDept: "Pacientes",
             detail: "Aparece destacado en el buscador de Clínicas con acceso rápido a contacto de emergencia y solicitud de presupuestos.",
           },
         ],
-        status: "completed",
+        status: "enhanced",
       },
       {
-        title: "4.2. Staff de Médicos Adscritos (`clinic_doctors`) y Citas Institucionales",
+        title: "4.2. Staff de Médicos Adscritos y Catálogo de Servicios/Precios Independientes por Clínica (`doctor_workspaces`)",
         howItWorks:
-          "La clínica asocia médicos registrados en SUMA a sus consultorios internos, permitiendo gestionar horarios dentro de la institución y visualizar el flujo de citas agendadas en la sede.",
+          "La clínica vincula médicos que ya pertenecen a SUMA (buscándolos por Cédula/DNI numérico o Correo) o registra médicos nuevos. Permite configurar para cada doctor su tarifa de consulta, horarios y servicios médicos específicos dentro de esa clínica (`doctor_workspaces`), sin mezclar ni alterar los servicios o precios de su consultorio privado.",
         interactions: [
           {
             targetDept: "Médicos y Pacientes",
-            detail: "Sincroniza la agenda del especialista con la ubicación física de la clínica.",
+            detail: "Cuando el paciente agenda con el médico a través de la clínica, visualiza exclusivamente los horarios, tarifas y servicios que el doctor presta en esa institución.",
           },
         ],
-        status: "completed",
+        status: "enhanced",
       },
       {
         title: "4.3. Presupuestos Quirúrgicos (`clinic_quotes`), Cupones de Clínica y Jornadas",
@@ -394,14 +442,26 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
         ],
         status: "completed",
       },
+      {
+        title: "4.4. Directorio Institucional de Pacientes con «Fichas Técnicas», «Vista Listado», Historial y Archivos WebP/PDF",
+        howItWorks:
+          "El módulo de pacientes de la clínica permite alternar entre la vista de Fichas Técnicas detalladas y Vista Listado. Cada ficha ofrece acceso directo en 1 clic a la Historia Clínica institucional (`/clinic/patients/[id]`), Nueva Evolución, Galería de Archivos/Resultados (con compresión automática a `.webp` para imágenes y soporte PDF), contacto por WhatsApp y Modal de Vista Previa con línea de tiempo clínica.",
+        interactions: [
+          {
+            targetDept: "Médicos Adscritos, Laboratorios y Pacientes",
+            detail: "Centraliza la historia clínica y los archivos diagnósticos de los pacientes atendidos por los distintos especialistas de la clínica.",
+          },
+        ],
+        status: "enhanced",
+      },
     ],
   },
   {
     id: "laboratory",
     name: "5. Departamento y Rol: LABORATORIOS CLÍNICOS E IMAGENOLOGÍA",
-    subtitle: "Recepción de órdenes médicas, catálogo de bioanálisis/perfiles, toma a domicilio y entrega de resultados",
-    badge: "95% Operativo",
-    progress: 92,
+    subtitle: "Recepción de órdenes médicas, carga directa de resultados a la historia del paciente (WebP/PDF), catálogo y domicilio",
+    badge: "98% Operativo",
+    progress: 96,
     color: "purple",
     summary:
       "Conecta a los Laboratorios Clínicos y Centros de Diagnóstico por Imagen con las órdenes emitidas por los médicos en consulta, permitiendo cotizar perfiles de exámenes y entregar resultados digitales.",
@@ -429,6 +489,18 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
           },
         ],
         status: "completed",
+      },
+      {
+        title: "5.3. Carga Directa de Resultados y Estudios a la Historia del Paciente (Con o Sin Orden Previa + Compresión WebP)",
+        howItWorks:
+          "El laboratorio puede adjuntar resultados tanto sobre una orden médica existente como de forma directa buscando al paciente por Cédula/DNI (incluso si no tenía una orden previa en el sistema). Soporta documentos PDF y convierte automáticamente cualquier imagen diagnóstica al formato comprimido `.webp` antes de subirla, registrando el estudio simultáneamente en `laboratory_orders` y en `medical_attachments`.",
+        interactions: [
+          {
+            targetDept: "Médicos Especialistas, Clínicas y Pacientes",
+            detail: "El médico tratante y la clínica visualizan inmediatamente el archivo subido por el laboratorio dentro de la pestaña «Archivos» y en la línea de tiempo de la Historia Clínica del paciente.",
+          },
+        ],
+        status: "enhanced",
       },
     ],
   },
@@ -526,6 +598,18 @@ const DEPARTMENTS_DATA: DepartmentBlueprint[] = [
         ],
         status: "completed",
       },
+      {
+        title: "7.5. Blindaje Global de Identidad Única (Cédula/DNI Estrictamente Numérico, Correo, Teléfono y Matrícula) y Siluetas Institucionales",
+        howItWorks:
+          "Valida en tiempo real y a nivel de base de datos (triggers PostgreSQL `normalize_numeric_cedula` y `unique-validation.ts`) que todas las Cédulas/DNIs se almacenen únicamente con dígitos numéricos (sin puntos, espacios ni prefijos) y que ninguna Cédula, Correo Electrónico, Teléfono o Matrícula Médica pueda duplicarse entre distintos usuarios (permitiendo únicamente el Modo Dual Paciente del propio médico bajo su mismo ID). Además, reemplaza cualquier imagen vacía por siluetas vectoriales institucionales (`EntitySilhouette`) para médicos, clínicas, laboratorios y farmacias.",
+        interactions: [
+          {
+            targetDept: "Todos los Roles (Pacientes, Médicos, Clínicas, Farmacias, Laboratorios y Vendedoras)",
+            detail: "Garantiza búsquedas exactas por cédula en clínicas, farmacias y laboratorios, evitando registros duplicados y manteniendo una estética limpia en toda la plataforma.",
+          },
+        ],
+        status: "enhanced",
+      },
     ],
   },
 ];
@@ -569,6 +653,15 @@ const CROSS_DEPARTMENT_FLOWS = [
       "3. El Paciente visualiza todos sus eventos suscritos en la pestaña «Mis Jornadas» de su panel y abre su Ticket QR.",
       "4. El día del evento, el organizador abre el Modal Rápido de Pacientes y marca la asistencia.",
       "5. Al cumplirse la fecha de vencimiento, el evento pasa automáticamente a «🏁 Evento Culminado» (tono visual claro y bloqueo de nuevas inscripciones).",
+    ],
+  },
+  {
+    title: "Flujo 5: Ciclo de Historia Clínica, Fichas Técnicas de Pacientes y Resultados de Laboratorio (WebP / PDF)",
+    steps: [
+      "1. El Médico o la Clínica ingresa a su sección «Pacientes» y visualiza por defecto las Fichas Técnicas completas (o alterna a Vista Listado).",
+      "2. Desde la Ficha Técnica del paciente, en 1 clic abre el Historial Clínico, redacta una Nueva Evolución, consulta Archivos o abre WhatsApp directo.",
+      "3. Tanto el Médico como el Laboratorio Clínico pueden subir archivos a la historia del paciente: los documentos PDF se almacenan íntegros y cualquier imagen médica se comprime automáticamente al formato `.webp` para máxima velocidad y ahorro de espacio.",
+      "4. Todos los archivos y resultados subidos por el Laboratorio o por otros especialistas aparecen de forma inmediata y unificada en la pestaña «Archivos» y en la línea de tiempo clínica del Médico.",
     ],
   },
 ];

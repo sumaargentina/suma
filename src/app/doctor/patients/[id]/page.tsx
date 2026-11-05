@@ -21,6 +21,8 @@ export default function PatientHistoryPage() {
     const { id: patientId } = useParams();
     const searchParams = useSearchParams();
     const familyMemberId = searchParams.get('familyMemberId');
+    const appointmentId = searchParams.get('appointmentId');
+    const tabParam = searchParams.get('tab');
     const { user, loading } = useAuth();
     const { professionsCatalog } = useSettings();
     const capabilities = resolveDoctorCapabilities(user, professionsCatalog);
@@ -30,7 +32,9 @@ export default function PatientHistoryPage() {
     const [patient, setPatient] = useState<any>(null);
     const [familyMember, setFamilyMember] = useState<any>(null);
     const [isLoadingPatient, setIsLoadingPatient] = useState(true);
-    const [activeTab, setActiveTab] = useState('summary');
+    const [activeTab, setActiveTab] = useState(
+        tabParam && ['summary', 'history', 'new-evolution', 'files'].includes(tabParam) ? tabParam : 'summary'
+    );
     const [lastRecord, setLastRecord] = useState<any>(null);
 
     useEffect(() => {
@@ -124,7 +128,7 @@ export default function PatientHistoryPage() {
                 </Button>
 
                 {/* Patient Profile Header */}
-                <PatientProfileHeader patient={patient} familyMember={familyMember} />
+                <PatientProfileHeader patient={patient} familyMember={familyMember} onUpdated={fetchPatientData} />
 
                 {/* Main Content Tabs */}
                 {!capabilities.hasMedicalRecord ? (
@@ -190,6 +194,16 @@ export default function PatientHistoryPage() {
                                                 </div>
                                             )}
                                         </div>
+                                        {(lastRecord.blood_pressure || lastRecord.weight || lastRecord.height || lastRecord.temperature || lastRecord.heart_rate || lastRecord.oxygen_saturation) && (
+                                            <div className="pt-2 border-t flex flex-wrap gap-2 text-xs">
+                                                {lastRecord.blood_pressure && <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-800 border border-rose-200 font-semibold">TA: {lastRecord.blood_pressure} mmHg</span>}
+                                                {lastRecord.weight && <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-semibold">Peso: {lastRecord.weight} kg</span>}
+                                                {lastRecord.height && <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-semibold">Talla: {lastRecord.height} cm</span>}
+                                                {lastRecord.temperature && <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-semibold">Temp: {lastRecord.temperature} °C</span>}
+                                                {lastRecord.heart_rate && <span className="px-2.5 py-1 rounded-md bg-red-50 text-red-800 border border-red-200 font-semibold">FC: {lastRecord.heart_rate} lpm</span>}
+                                                {lastRecord.oxygen_saturation && <span className="px-2.5 py-1 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 font-semibold">SpO2: {lastRecord.oxygen_saturation}%</span>}
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="text-center py-6 text-muted-foreground space-y-2">
@@ -201,13 +215,26 @@ export default function PatientHistoryPage() {
                                 )}
                             </div>
 
-                            {/* Widgets de Resumen: Alergias */}
-                            <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
-                                <h3 className="font-semibold flex items-center gap-2 mb-4">
+                            {/* Widgets de Resumen: Alergias y Condiciones Activas */}
+                            <div className="rounded-xl border bg-card text-card-foreground shadow p-6 space-y-4">
+                                <h3 className="font-semibold flex items-center gap-2">
                                     <Activity className="h-5 w-5 text-blue-500" />
-                                    Condiciones Activas
+                                    Alergias y Condiciones Activas
                                 </h3>
-                                <p className="text-muted-foreground text-sm">Sin condiciones registradas.</p>
+                                <div className="space-y-3 text-sm">
+                                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200/80">
+                                        <span className="text-xs font-bold text-amber-800 uppercase block">Alergias Reportadas</span>
+                                        <p className="mt-1 font-medium text-amber-950">
+                                            {patient.allergies || 'Sin alergias registradas.'}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200/80">
+                                        <span className="text-xs font-bold text-blue-800 uppercase block">Condiciones / Antecedentes</span>
+                                        <p className="mt-1 font-medium text-blue-950">
+                                            {patient.chronic_conditions || patient.chronicConditions || lastRecord?.diagnosis || 'Sin condiciones registradas.'}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </TabsContent>
@@ -221,7 +248,12 @@ export default function PatientHistoryPage() {
                             patientId={patientId as string}
                             familyMemberId={familyMemberId || undefined}
                             doctorId={user!.id}
-                            onSuccess={() => setActiveTab('history')}
+                            appointmentId={appointmentId || undefined}
+                            onSuccess={() => {
+                                setActiveTab('history');
+                                fetchLastRecord();
+                                fetchPatientData();
+                            }}
                         />
                     </TabsContent>
 

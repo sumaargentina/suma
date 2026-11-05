@@ -78,6 +78,9 @@ export default function ProfilePage() {
   const [documentType, setDocumentType] = useState<DocumentType>('Cédula');
   const [phone, setPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+58');
+  const [bloodType, setBloodType] = useState<string>('');
+  const [allergies, setAllergies] = useState<string>('');
+  const [chronicConditions, setChronicConditions] = useState<string>('');
   const [locationData, setLocationData] = useState<LocationData>({
     country: user?.country || 'VE',
     state: user?.state || '',
@@ -196,6 +199,9 @@ export default function ProfilePage() {
       address: user.address || '',
     });
     setProfileImage(user.profileImage ?? null);
+    setBloodType((user as any).bloodType || (user as any).blood_type || '');
+    setAllergies((user as any).allergies || '');
+    setChronicConditions((user as any).chronicConditions || (user as any).chronic_conditions || '');
 
     if (user.password === 'OAUTH_GOOGLE_USER') {
       setIsGoogleLinked(true);
@@ -230,6 +236,9 @@ export default function ProfilePage() {
           if (fresh.profileImage) {
             setProfileImage(fresh.profileImage);
           }
+          setBloodType(fresh.bloodType || fresh.blood_type || '');
+          setAllergies(fresh.allergies || '');
+          setChronicConditions(fresh.chronicConditions || fresh.chronic_conditions || '');
         }
       }).catch((err) => console.error("Error fetching fresh profile in page:", err));
     }
@@ -476,6 +485,9 @@ export default function ProfilePage() {
       city: locationData.city,
       sector: locationData.sector,
       address: locationData.address,
+      bloodType: (bloodType || null) as any,
+      allergies: allergies.trim() || null,
+      chronicConditions: chronicConditions.trim() || null,
     });
 
     // Refrescar usuario desde la base de datos y actualizar estado global y localStorage
@@ -690,9 +702,11 @@ export default function ProfilePage() {
                     <div className="relative">
                       <Input
                         id="cedula"
-                        value={cedula}
-                        onChange={(e) => setCedula(e.target.value)}
-                        placeholder={documentType === 'Pasaporte' ? 'ej., ABC123456' : 'ej., 12345678'}
+                        value={cedula.replace(/\D/g, '')}
+                        onChange={(e) => setCedula(e.target.value.replace(/\D/g, ''))}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Solo números (ej: 12345678)"
                         disabled={!!user?.cedula}
                         className={cn(
                           user?.cedula && "bg-slate-50 dark:bg-slate-900 cursor-not-allowed",
@@ -788,6 +802,49 @@ export default function ProfilePage() {
                       <option value="masculino">Hombre (Masculino)</option>
                       <option value="femenino">Mujer (Femenino)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">Datos Clínicos Básicos (Visible para tu Médico en Consulta)</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Puedes registrar aquí tu tipo de sangre, alergias o condiciones médicas para que tu médico las tenga presentes en tu Ficha Técnica. Tu médico también podrá confirmarlas o actualizarlas durante la consulta.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bloodType">Grupo Sanguíneo</Label>
+                      <select
+                        id="bloodType"
+                        value={bloodType}
+                        onChange={(e) => setBloodType(e.target.value)}
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <option value="">Sin especificar</option>
+                        {['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'].map((bt) => (
+                          <option key={bt} value={bt}>{bt}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="allergies">Alergias a Medicamentos o Alimentos</Label>
+                      <Input
+                        id="allergies"
+                        value={allergies}
+                        onChange={(e) => setAllergies(e.target.value)}
+                        placeholder="Ej: Penicilina, AINES, Mariscos (o 'Ninguna')"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="chronicConditions">Condiciones Médicas o Antecedentes Importantes</Label>
+                    <Input
+                      id="chronicConditions"
+                      value={chronicConditions}
+                      onChange={(e) => setChronicConditions(e.target.value)}
+                      placeholder="Ej: Hipertensión arterial, Asma, Diabetes tipo 2..."
+                    />
                   </div>
                 </div>
 
